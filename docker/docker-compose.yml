@@ -1,0 +1,252 @@
+version: '3.8'
+
+services:
+  # API Gateway Service
+  api-gateway:
+    build:
+      context: ../
+      dockerfile: services/api-gateway/Dockerfile
+    container_name: bmtc-api-gateway-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+      - redpanda
+    networks:
+      - bmtc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # User Service
+  user-service:
+    build:
+      context: ../
+      dockerfile: services/user-service/Dockerfile
+    container_name: bmtc-user-service-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - bmtc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Location Service
+  location-service:
+    build:
+      context: ../
+      dockerfile: services/location-service/Dockerfile
+    container_name: bmtc-location-service-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - influxdb
+      - redpanda
+    networks:
+      - bmtc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Real-time Service
+  realtime-service:
+    build:
+      context: ../
+      dockerfile: services/realtime-service/Dockerfile
+    container_name: bmtc-realtime-service-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - redpanda
+    networks:
+      - bmtc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ML Validation Service
+  ml-validation-service:
+    build:
+      context: ../
+      dockerfile: services/ml-validation-service/Dockerfile
+    container_name: bmtc-ml-validation-service-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3004
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redpanda
+    networks:
+      - bmtc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Gamification Service
+  gamification-service:
+    build:
+      context: ../
+      dockerfile: services/gamification-service/Dockerfile
+    container_name: bmtc-gamification-service-prod
+    environment:
+      NODE_ENV: production
+      PORT: 3005
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - bmtc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # PostgreSQL
+  postgres:
+    image: postgis/postgis:15-3.3
+    container_name: bmtc-postgres-prod
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME}
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+    networks:
+      - bmtc-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER} -d ${DATABASE_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: bmtc-redis-prod
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - bmtc-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # InfluxDB
+  influxdb:
+    image: influxdb:2.7-alpine
+    container_name: bmtc-influxdb-prod
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUXDB_USERNAME}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUXDB_PASSWORD}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUXDB_ORG}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUXDB_BUCKET}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_TOKEN}
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+      - influxdb_config:/etc/influxdb2
+    restart: unless-stopped
+    networks:
+      - bmtc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redpanda (Kafka)
+  redpanda:
+    image: redpandadata/redpanda:latest
+    container_name: bmtc-redpanda-prod
+    command:
+      - redpanda
+      - start
+      - --smp
+      - "1"
+      - --reserve-memory
+      - "0M"
+      - --overprovisioned
+      - --node-id
+      - "0"
+      - --kafka-addr
+      - "PLAINTEXT://0.0.0.0:29092"
+      - --advertise-kafka-addr
+      - "PLAINTEXT://redpanda:29092"
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    restart: unless-stopped
+    networks:
+      - bmtc-network
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster info"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: bmtc-nginx-prod
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - api-gateway
+    restart: unless-stopped
+    networks:
+      - bmtc-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+  redis_data:
+  influxdb_data:
+  influxdb_config:
+  redpanda_data:
+
+networks:
+  bmtc-network:
+    driver: bridge

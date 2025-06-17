@@ -1,0 +1,352 @@
+name: Pull Request Checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [ main, develop ]
+
+jobs:
+  # PR Information and Validation
+  pr-validation:
+    name: PR Validation
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Validate PR title
+      uses: amannn/action-semantic-pull-request@v5
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        types: |
+          feat
+          fix
+          docs
+          style
+          refactor
+          perf
+          test
+          build
+          ci
+          chore
+          revert
+        requireScope: false
+        ignoreLabels: |
+          bot
+          ignore-semantic-check
+    
+    - name: Check PR size
+      run: |
+        PR_SIZE=$(git diff --name-only ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }} | wc -l)
+        echo "PR changes $PR_SIZE files"
+        
+        if [ "$PR_SIZE" -gt 50 ]; then
+          echo "⚠️ Large PR detected ($PR_SIZE files changed)"
+          echo "Consider breaking this into smaller PRs for easier review"
+        fi
+        
+        # Check for large files
+        LARGE_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }} | xargs ls -la 2>/dev/null | awk '$5 > 1000000 {print $9 " (" $5 " bytes)"}' || true)
+        
+        if [ -n "$LARGE_FILES" ]; then
+          echo "⚠️ Large files detected:"
+          echo "$LARGE_FILES"
+        fi
+    
+    - name: Check for breaking changes
+      run: |
+        # Check commit messages for BREAKING CHANGE
+        BREAKING_CHANGES=$(git log --oneline ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }} | grep -i "BREAKING CHANGE" || true)
+        
+        if [ -n "$BREAKING_CHANGES" ]; then
+          echo "🚨 Breaking changes detected:"
+          echo "$BREAKING_CHANGES"
+          echo "Make sure to update documentation and version accordingly"
+        fi
+
+  # Fast feedback - only essential checks
+  quick-checks:
+    name: Quick Checks
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci --prefer-offline --no-audit
+    
+    - name: Check TypeScript compilation
+      run: npm run type-check
+    
+    - name: Run linting (with auto-fix suggestion)
+      run: |
+        npm run lint 2>&1 | tee lint-output.txt
+        
+        if [ ${PIPESTATUS[0]} -ne 0 ]; then
+          echo ""
+          echo "💡 Linting failed. You can auto-fix many issues by running:"
+          echo "   npm run lint:fix"
+          echo ""
+          exit 1
+        fi
+    
+    - name: Check code formatting
+      run: |
+        npx prettier --check "**/*.{js,ts,tsx,json,md,yml,yaml}" 2>&1 | tee prettier-output.txt
+        
+        if [ ${PIPESTATUS[0]} -ne 0 ]; then
+          echo ""
+          echo "💡 Code formatting issues found. Fix them by running:"
+          echo "   npx prettier --write \"**/*.{js,ts,tsx,json,md,yml,yaml}\""
+          echo ""
+          exit 1
+        fi
+
+  # Test matrix for different scenarios
+  test-matrix:
+    name: Test Matrix
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    
+    strategy:
+      matrix:
+        node-version: [18, 20]
+        test-type: [unit, integration]
+    
+    services:
+      postgres:
+        image: postgis/postgis:15-3.3
+        env:
+          POSTGRES_DB: bmtc_transit_test
+          POSTGRES_USER: bmtc_user
+          POSTGRES_PASSWORD: bmtc_password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Wait for services
+      run: |
+        timeout 60 bash -c 'until nc -z localhost 5432; do sleep 1; done'
+        timeout 60 bash -c 'until nc -z localhost 6379; do sleep 1; done'
+    
+    - name: Run ${{ matrix.test-type }} tests
+      run: |
+        if [ "${{ matrix.test-type }}" = "unit" ]; then
+          npm test
+        else
+          npm run test:integration
+        fi
+      env:
+        NODE_ENV: test
+        DATABASE_URL: postgresql://bmtc_user:bmtc_password@localhost:5432/bmtc_transit_test
+        REDIS_URL: redis://localhost:6379
+
+  # Security checks specific to PR changes
+  security-check:
+    name: Security Check
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Check for secrets in code
+      run: |
+        # Simple regex patterns for common secrets
+        SECRETS_FOUND=false
+        
+        # Check for potential API keys
+        if git diff ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }} | grep -E "(api_key|apikey|secret|password|token)" | grep -E "=.{10,}"; then
+          echo "⚠️ Potential secrets found in code changes"
+          SECRETS_FOUND=true
+        fi
+        
+        # Check for hardcoded URLs with credentials
+        if git diff ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }} | grep -E "://[^/]*:[^/]*@"; then
+          echo "⚠️ URLs with credentials found in code changes"
+          SECRETS_FOUND=true
+        fi
+        
+        if [ "$SECRETS_FOUND" = true ]; then
+          echo ""
+          echo "Please review the above findings and ensure no sensitive information is committed"
+          echo "Consider using environment variables or GitHub secrets instead"
+        fi
+    
+    - name: Check dependencies for vulnerabilities
+      run: |
+        npm audit --audit-level=moderate || {
+          echo "⚠️ Security vulnerabilities found in dependencies"
+          echo "Run 'npm audit fix' to attempt automatic fixes"
+          echo "Review the audit report above for manual fixes needed"
+        }
+
+  # Build verification
+  build-check:
+    name: Build Verification
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Build all packages
+      run: npm run build
+    
+    - name: Check build outputs
+      run: |
+        echo "Checking build outputs..."
+        for service in services/*/; do
+          if [ -d "$service/dist" ]; then
+            echo "✅ $service built successfully"
+          else
+            echo "❌ $service build failed - no dist directory"
+          fi
+        done
+    
+    - name: Test Docker builds (if Dockerfile changed)
+      run: |
+        # Check if any Dockerfile was changed
+        CHANGED_DOCKERFILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }} | grep -E "(Dockerfile|\.dockerfile)" || true)
+        
+        if [ -n "$CHANGED_DOCKERFILES" ]; then
+          echo "Docker files changed, testing builds..."
+          for dockerfile in $CHANGED_DOCKERFILES; do
+            if [[ $dockerfile == services/*/Dockerfile* ]]; then
+              service=$(echo $dockerfile | cut -d'/' -f2)
+              echo "Testing Docker build for $service..."
+              docker build -t test-$service -f $dockerfile .
+            fi
+          done
+        else
+          echo "No Dockerfile changes detected, skipping Docker build test"
+        fi
+
+  # Comment with PR summary
+  pr-summary:
+    name: PR Summary
+    runs-on: ubuntu-latest
+    needs: [pr-validation, quick-checks, test-matrix, security-check, build-check]
+    if: always() && github.event.pull_request.draft == false
+    
+    steps:
+    - name: Create PR comment
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const results = {
+            validation: '${{ needs.pr-validation.result }}',
+            quickChecks: '${{ needs.quick-checks.result }}',
+            tests: '${{ needs.test-matrix.result }}',
+            security: '${{ needs.security-check.result }}',
+            build: '${{ needs.build-check.result }}'
+          };
+          
+          const getEmoji = (result) => {
+            switch(result) {
+              case 'success': return '✅';
+              case 'failure': return '❌';
+              case 'cancelled': return '⏭️';
+              case 'skipped': return '⏭️';
+              default: return '⏳';
+            }
+          };
+          
+          const summary = `## 🔍 PR Check Summary
+          
+          | Check | Status | Result |
+          |-------|--------|---------|
+          | PR Validation | ${getEmoji(results.validation)} | ${results.validation} |
+          | Quick Checks | ${getEmoji(results.quickChecks)} | ${results.quickChecks} |
+          | Tests | ${getEmoji(results.tests)} | ${results.tests} |
+          | Security | ${getEmoji(results.security)} | ${results.security} |
+          | Build | ${getEmoji(results.build)} | ${results.build} |
+          
+          ${Object.values(results).every(r => r === 'success') ? 
+            '🎉 All checks passed! This PR is ready for review.' : 
+            '⚠️ Some checks failed. Please review the details above and fix any issues.'}
+          
+          ---
+          *This comment was automatically generated by the PR check workflow.*`;
+          
+          // Find existing comment
+          const comments = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          });
+          
+          const botComment = comments.data.find(comment => 
+            comment.user.type === 'Bot' && comment.body.includes('PR Check Summary')
+          );
+          
+          if (botComment) {
+            // Update existing comment
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: botComment.id,
+              body: summary
+            });
+          } else {
+            // Create new comment
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: summary
+            });
+          }

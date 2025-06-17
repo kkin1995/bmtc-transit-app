@@ -1,0 +1,282 @@
+version: '3.8'
+
+services:
+  # PostgreSQL - Primary database
+  postgres:
+    image: postgis/postgis:15-3.3
+    container_name: bmtc-postgres
+    environment:
+      POSTGRES_DB: bmtc_transit_dev
+      POSTGRES_USER: bmtc_user
+      POSTGRES_PASSWORD: bmtc_password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    networks:
+      - bmtc-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bmtc_user -d bmtc_transit_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis - Caching and session storage
+  redis:
+    image: redis:7-alpine
+    container_name: bmtc-redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - bmtc-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # InfluxDB - Time-series data
+  influxdb:
+    image: influxdb:2.7-alpine
+    container_name: bmtc-influxdb
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: admin123
+      DOCKER_INFLUXDB_INIT_ORG: bmtc-org
+      DOCKER_INFLUXDB_INIT_BUCKET: location-data
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: dev-token-change-in-production
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+      - influxdb_config:/etc/influxdb2
+    networks:
+      - bmtc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redpanda - Kafka alternative for local development
+  redpanda:
+    image: redpandadata/redpanda:latest
+    container_name: bmtc-redpanda
+    command:
+      - redpanda
+      - start
+      - --smp
+      - "1"
+      - --reserve-memory
+      - "0M"
+      - --overprovisioned
+      - --node-id
+      - "0"
+      - --kafka-addr
+      - "PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092"
+      - --advertise-kafka-addr
+      - "PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092"
+    ports:
+      - "9092:9092"
+      - "9644:9644"
+      - "29092:29092"
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    networks:
+      - bmtc-network
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster info"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Nginx - API Gateway for development
+  nginx:
+    image: nginx:alpine
+    container_name: bmtc-nginx
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.dev.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api-gateway
+    networks:
+      - bmtc-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # API Gateway Service
+  api-gateway:
+    build:
+      context: ../
+      dockerfile: services/api-gateway/Dockerfile.dev
+    container_name: bmtc-api-gateway
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgresql://bmtc_user:bmtc_password@postgres:5432/bmtc_transit_dev
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: redpanda:29092
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../services/api-gateway:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    networks:
+      - bmtc-network
+    develop:
+      watch:
+        - action: sync
+          path: ../services/api-gateway/src
+          target: /app/src
+        - action: rebuild
+          path: ../services/api-gateway/package.json
+
+  # User Service
+  user-service:
+    build:
+      context: ../
+      dockerfile: services/user-service/Dockerfile.dev
+    container_name: bmtc-user-service
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      DATABASE_URL: postgresql://bmtc_user:bmtc_password@postgres:5432/bmtc_transit_dev
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "3001:3001"
+    volumes:
+      - ../services/user-service:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - bmtc-network
+    develop:
+      watch:
+        - action: sync
+          path: ../services/user-service/src
+          target: /app/src
+
+  # Location Service
+  location-service:
+    build:
+      context: ../
+      dockerfile: services/location-service/Dockerfile.dev
+    container_name: bmtc-location-service
+    environment:
+      NODE_ENV: development
+      PORT: 3002
+      DATABASE_URL: postgresql://bmtc_user:bmtc_password@postgres:5432/bmtc_transit_dev
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_TOKEN: dev-token-change-in-production
+      INFLUXDB_ORG: bmtc-org
+      INFLUXDB_BUCKET: location-data
+      KAFKA_BROKERS: redpanda:29092
+    ports:
+      - "3002:3002"
+    volumes:
+      - ../services/location-service:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    networks:
+      - bmtc-network
+
+  # Real-time Service
+  realtime-service:
+    build:
+      context: ../
+      dockerfile: services/realtime-service/Dockerfile.dev
+    container_name: bmtc-realtime-service
+    environment:
+      NODE_ENV: development
+      PORT: 3003
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: redpanda:29092
+    ports:
+      - "3003:3003"
+    volumes:
+      - ../services/realtime-service:/app
+      - /app/node_modules
+    depends_on:
+      redis:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    networks:
+      - bmtc-network
+
+  # Monitoring - Prometheus (optional for development)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: bmtc-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - bmtc-network
+    profiles:
+      - monitoring
+
+  # Grafana - Visualization (optional for development)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: bmtc-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - bmtc-network
+    profiles:
+      - monitoring
+
+volumes:
+  postgres_data:
+  redis_data:
+  influxdb_data:
+  influxdb_config:
+  redpanda_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  bmtc-network:
+    driver: bridge

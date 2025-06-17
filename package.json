@@ -1,0 +1,84 @@
+{
+  "name": "bmtc-transit-app",
+  "version": "1.0.0",
+  "description": "Crowdsourced real-time transit tracking system for BMTC",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "services/*",
+    "mobile"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run services:up\" \"npm run api:dev\" \"npm run mobile:dev\"",
+    "services:up": "docker compose -f docker/docker-compose.dev.yml up -d",
+    "services:down": "docker compose -f docker/docker-compose.dev.yml down",
+    "services:logs": "docker compose -f docker/docker-compose.dev.yml logs -f",
+    "services:restart": "npm run services:down && npm run services:up",
+    "api:dev": "npm run dev --workspace=api-gateway",
+    "api:build": "npm run build --workspace=api-gateway",
+    "mobile:dev": "npm run start --workspace=mobile",
+    "mobile:ios": "npm run ios --workspace=mobile",
+    "mobile:android": "npm run android --workspace=mobile",
+    "test": "npm run test --workspaces",
+    "test:integration": "npm run test:integration --workspaces",
+    "test:e2e": "npm run test:e2e --workspace=e2e-tests",
+    "lint": "npm run lint --workspaces",
+    "lint:fix": "npm run lint:fix --workspaces",
+    "type-check": "npm run type-check --workspaces",
+    "build": "npm run build --workspaces",
+    "db:migrate": "npm run migrate --workspace=location-service",
+    "db:seed": "npm run seed --workspace=location-service",
+    "db:reset": "npm run db:migrate && npm run db:seed",
+    "docker:build": "docker compose -f docker/docker-compose.yml build",
+    "docker:up": "docker compose -f docker/docker-compose.yml up -d",
+    "docker:down": "docker compose -f docker/docker-compose.yml down",
+    "setup": "npm install && npm run services:up && npm run db:migrate && npm run db:seed",
+    "clean": "npm run services:down && docker system prune -f && npm run clean --workspaces",
+    "postinstall": "husky install"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "concurrently": "^8.2.0",
+    "eslint": "^8.57.1",
+    "eslint-config-airbnb": "^19.0.4",
+    "eslint-config-airbnb-typescript": "^18.0.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-jsx-a11y": "^6.8.0",
+    "eslint-plugin-prettier": "^5.1.3",
+    "eslint-plugin-react": "^7.33.2",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "husky": "^8.0.3",
+    "lint-staged": "^15.2.2",
+    "prettier": "^3.2.5",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/bmtc-transit-app.git"
+  },
+  "keywords": [
+    "transit",
+    "real-time",
+    "crowdsourced",
+    "bangalore",
+    "bmtc",
+    "react-native"
+  ],
+  "author": "BMTC Transit App Team",
+  "license": "MIT",
+  "lint-staged": {
+    "*.{js,ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  }
+}
