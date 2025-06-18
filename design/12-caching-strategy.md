@@ -2,7 +2,10 @@
 
 ## Overview
 
-The caching strategy is designed to optimize performance, reduce latency, enable offline functionality, and minimize database load for the BMTC Transit App. This multi-layered caching approach ensures efficient data access patterns while maintaining data consistency and freshness for real-time transit information.
+The caching strategy is designed to optimize performance, reduce latency, enable
+offline functionality, and minimize database load for the BMTC Transit App. This
+multi-layered caching approach ensures efficient data access patterns while
+maintaining data consistency and freshness for real-time transit information.
 
 ## Multi-Layer Caching Architecture
 
@@ -162,8 +165,8 @@ interface StaticDataCacheStrategy {
 }
 
 interface CacheConfig {
-  ttl: number;           // Time to live in seconds
-  maxSize: number;       // Maximum cache size
+  ttl: number; // Time to live in seconds
+  maxSize: number; // Maximum cache size
   compressionEnabled: boolean;
   invalidationStrategy: 'time' | 'version' | 'event';
   storage: 'memory' | 'disk' | 'hybrid';
@@ -172,42 +175,43 @@ interface CacheConfig {
 class StaticDataCacheManager {
   private cacheConfigs: StaticDataCacheStrategy = {
     routes: {
-      ttl: 86400,        // 24 hours
-      maxSize: 50 * 1024 * 1024,  // 50MB
+      ttl: 86400, // 24 hours
+      maxSize: 50 * 1024 * 1024, // 50MB
       compressionEnabled: true,
       invalidationStrategy: 'version',
-      storage: 'hybrid'
+      storage: 'hybrid',
     },
     stops: {
-      ttl: 604800,       // 7 days
-      maxSize: 20 * 1024 * 1024,  // 20MB
+      ttl: 604800, // 7 days
+      maxSize: 20 * 1024 * 1024, // 20MB
       compressionEnabled: true,
       invalidationStrategy: 'version',
-      storage: 'disk'
+      storage: 'disk',
     },
     staticMaps: {
-      ttl: 2592000,      // 30 days
+      ttl: 2592000, // 30 days
       maxSize: 100 * 1024 * 1024, // 100MB
       compressionEnabled: false,
       invalidationStrategy: 'time',
-      storage: 'disk'
+      storage: 'disk',
     },
     appAssets: {
-      ttl: 2592000,      // 30 days
+      ttl: 2592000, // 30 days
       maxSize: 200 * 1024 * 1024, // 200MB
       compressionEnabled: true,
       invalidationStrategy: 'version',
-      storage: 'disk'
-    }
+      storage: 'disk',
+    },
   };
 
   async cacheRouteData(routes: Route[]): Promise<void> {
     const config = this.cacheConfigs.routes;
-    
+
     // Compress data if enabled
-    const data = config.compressionEnabled ? 
-      await this.compressData(routes) : routes;
-    
+    const data = config.compressionEnabled
+      ? await this.compressData(routes)
+      : routes;
+
     // Store in appropriate cache layer
     if (config.storage === 'hybrid') {
       // Store hot routes in memory, all routes on disk
@@ -215,14 +219,14 @@ class StaticDataCacheManager {
       await this.memoryCache.set('hot_routes', hotRoutes, config.ttl);
       await this.diskCache.set('all_routes', data, config.ttl);
     }
-    
+
     // Set version for invalidation
     await this.setDataVersion('routes', this.generateVersion());
   }
 
   async getRouteData(routeId?: string): Promise<Route[]> {
     const config = this.cacheConfigs.routes;
-    
+
     // Try memory cache first for hot data
     if (config.storage === 'hybrid') {
       const hotRoutes = await this.memoryCache.get('hot_routes');
@@ -230,15 +234,16 @@ class StaticDataCacheManager {
         return this.filterRoutes(hotRoutes, routeId);
       }
     }
-    
+
     // Fall back to disk cache
     const cachedData = await this.diskCache.get('all_routes');
     if (cachedData) {
-      const routes = config.compressionEnabled ? 
-        await this.decompressData(cachedData) : cachedData;
+      const routes = config.compressionEnabled
+        ? await this.decompressData(cachedData)
+        : cachedData;
       return this.filterRoutes(routes, routeId);
     }
-    
+
     // Cache miss - fetch from database
     return await this.fetchAndCacheRoutes(routeId);
   }
@@ -263,7 +268,7 @@ interface RealTimeDataCache {
 }
 
 interface RealTimeCacheConfig extends CacheConfig {
-  updateFrequency: number;  // Milliseconds
+  updateFrequency: number; // Milliseconds
   staleWhileRevalidate: boolean;
   partitioning: 'route' | 'geographic' | 'user';
 }
@@ -272,79 +277,89 @@ class RealTimeDataCacheManager {
   private redis: RedisClusterClient;
   private cacheConfigs: RealTimeDataCache = {
     vehicleLocations: {
-      ttl: 30,           // 30 seconds
-      maxSize: 10 * 1024 * 1024,  // 10MB per partition
+      ttl: 30, // 30 seconds
+      maxSize: 10 * 1024 * 1024, // 10MB per partition
       compressionEnabled: false,
       invalidationStrategy: 'time',
       storage: 'memory',
-      updateFrequency: 10000,     // 10 seconds
+      updateFrequency: 10000, // 10 seconds
       staleWhileRevalidate: true,
-      partitioning: 'route'
+      partitioning: 'route',
     },
     serviceAlerts: {
-      ttl: 300,          // 5 minutes
-      maxSize: 1 * 1024 * 1024,   // 1MB
+      ttl: 300, // 5 minutes
+      maxSize: 1 * 1024 * 1024, // 1MB
       compressionEnabled: true,
       invalidationStrategy: 'event',
       storage: 'memory',
-      updateFrequency: 60000,     // 1 minute
+      updateFrequency: 60000, // 1 minute
       staleWhileRevalidate: true,
-      partitioning: 'geographic'
+      partitioning: 'geographic',
     },
     liveETAs: {
-      ttl: 60,           // 1 minute
-      maxSize: 5 * 1024 * 1024,   // 5MB
+      ttl: 60, // 1 minute
+      maxSize: 5 * 1024 * 1024, // 5MB
       compressionEnabled: false,
       invalidationStrategy: 'time',
       storage: 'memory',
-      updateFrequency: 15000,     // 15 seconds
+      updateFrequency: 15000, // 15 seconds
       staleWhileRevalidate: true,
-      partitioning: 'route'
+      partitioning: 'route',
     },
     userSessions: {
-      ttl: 3600,         // 1 hour
-      maxSize: 1024,     // 1KB per session
+      ttl: 3600, // 1 hour
+      maxSize: 1024, // 1KB per session
       compressionEnabled: false,
       invalidationStrategy: 'event',
       storage: 'memory',
-      updateFrequency: 0,         // Event-driven
+      updateFrequency: 0, // Event-driven
       staleWhileRevalidate: false,
-      partitioning: 'user'
-    }
+      partitioning: 'user',
+    },
   };
 
-  async updateVehicleLocation(routeId: string, vehicleData: VehicleLocation): Promise<void> {
+  async updateVehicleLocation(
+    routeId: string,
+    vehicleData: VehicleLocation
+  ): Promise<void> {
     const config = this.cacheConfigs.vehicleLocations;
     const cacheKey = `vehicles:${routeId}`;
-    
+
     // Update vehicle location in route-partitioned cache
-    await this.redis.hset(cacheKey, vehicleData.vehicleId, JSON.stringify({
-      ...vehicleData,
-      timestamp: Date.now(),
-      ttl: config.ttl
-    }));
-    
+    await this.redis.hset(
+      cacheKey,
+      vehicleData.vehicleId,
+      JSON.stringify({
+        ...vehicleData,
+        timestamp: Date.now(),
+        ttl: config.ttl,
+      })
+    );
+
     // Set expiration
     await this.redis.expire(cacheKey, config.ttl);
-    
+
     // Publish update to subscribers
-    await this.redis.publish(`vehicle_updates:${routeId}`, JSON.stringify(vehicleData));
+    await this.redis.publish(
+      `vehicle_updates:${routeId}`,
+      JSON.stringify(vehicleData)
+    );
   }
 
   async getVehicleLocations(routeId: string): Promise<VehicleLocation[]> {
     const cacheKey = `vehicles:${routeId}`;
     const cachedData = await this.redis.hgetall(cacheKey);
-    
+
     if (!cachedData || Object.keys(cachedData).length === 0) {
       // Cache miss - trigger background refresh
       this.refreshVehicleLocations(routeId);
       return [];
     }
-    
+
     // Filter out stale data and parse
     const currentTime = Date.now();
     const validVehicles: VehicleLocation[] = [];
-    
+
     for (const [vehicleId, dataStr] of Object.entries(cachedData)) {
       try {
         const data = JSON.parse(dataStr);
@@ -358,43 +373,43 @@ class RealTimeDataCacheManager {
         console.error(`Error parsing vehicle data for ${vehicleId}:`, error);
       }
     }
-    
+
     return validVehicles;
   }
 
   async cacheServiceAlert(alert: ServiceAlert): Promise<void> {
     const config = this.cacheConfigs.serviceAlerts;
     const cacheKey = `alerts:${alert.severity}`;
-    
+
     // Store alert with geographic partitioning
     const alertData = {
       ...alert,
-      cachedAt: Date.now()
+      cachedAt: Date.now(),
     };
-    
+
     if (config.compressionEnabled) {
       alertData.data = await this.compressData(alert.data);
     }
-    
+
     await this.redis.zadd(cacheKey, alert.priority, JSON.stringify(alertData));
     await this.redis.expire(cacheKey, config.ttl);
-    
+
     // Invalidate related caches
     await this.invalidateRelatedCaches('service_alerts', alert.affectedRoutes);
   }
 
   // Stale-while-revalidate pattern
   async getWithStaleWhileRevalidate<T>(
-    cacheKey: string, 
+    cacheKey: string,
     fetchFunction: () => Promise<T>,
     ttl: number
   ): Promise<T> {
     const cachedData = await this.redis.get(cacheKey);
-    
+
     if (cachedData) {
       const parsed = JSON.parse(cachedData);
       const age = Date.now() - parsed.timestamp;
-      
+
       if (age < ttl * 1000) {
         // Fresh data
         return parsed.data;
@@ -404,7 +419,7 @@ class RealTimeDataCacheManager {
         return parsed.data;
       }
     }
-    
+
     // No cached data - fetch synchronously
     const freshData = await fetchFunction();
     await this.cacheData(cacheKey, freshData, ttl);
@@ -446,67 +461,67 @@ interface OfflineCacheConfig extends CacheConfig {
 class OfflineCacheManager {
   private sqliteDB: SQLiteDatabase;
   private asyncStorage: AsyncStorageStatic;
-  
+
   private cacheConfigs: OfflineCacheStrategy = {
     essentialData: {
-      ttl: 604800,       // 7 days
-      maxSize: 50 * 1024 * 1024,  // 50MB
+      ttl: 604800, // 7 days
+      maxSize: 50 * 1024 * 1024, // 50MB
       compressionEnabled: true,
       invalidationStrategy: 'version',
       storage: 'disk',
       priority: 'critical',
       downloadStrategy: 'prefetch',
-      syncStrategy: 'wifi_only'
+      syncStrategy: 'wifi_only',
     },
     userData: {
-      ttl: 2592000,      // 30 days
-      maxSize: 10 * 1024 * 1024,  // 10MB
+      ttl: 2592000, // 30 days
+      maxSize: 10 * 1024 * 1024, // 10MB
       compressionEnabled: false,
       invalidationStrategy: 'event',
       storage: 'disk',
       priority: 'important',
       downloadStrategy: 'on_demand',
-      syncStrategy: 'immediate'
+      syncStrategy: 'immediate',
     },
     mapTiles: {
-      ttl: 2592000,      // 30 days
+      ttl: 2592000, // 30 days
       maxSize: 200 * 1024 * 1024, // 200MB
       compressionEnabled: false,
       invalidationStrategy: 'time',
       storage: 'disk',
       priority: 'important',
       downloadStrategy: 'background',
-      syncStrategy: 'wifi_only'
+      syncStrategy: 'wifi_only',
     },
     searchIndex: {
-      ttl: 604800,       // 7 days
-      maxSize: 5 * 1024 * 1024,   // 5MB
+      ttl: 604800, // 7 days
+      maxSize: 5 * 1024 * 1024, // 5MB
       compressionEnabled: true,
       invalidationStrategy: 'version',
       storage: 'disk',
       priority: 'nice_to_have',
       downloadStrategy: 'background',
-      syncStrategy: 'wifi_only'
-    }
+      syncStrategy: 'wifi_only',
+    },
   };
 
   async prefetchEssentialData(): Promise<void> {
     const config = this.cacheConfigs.essentialData;
-    
+
     // Check available storage space
     const availableSpace = await this.getAvailableStorageSpace();
     if (availableSpace < config.maxSize) {
       await this.cleanupOldCache();
     }
-    
+
     // Prefetch critical data
     const essentialDataTasks = [
       this.prefetchPopularRoutes(),
       this.prefetchMajorStops(),
       this.prefetchRouteGeometries(),
-      this.prefetchScheduleData()
+      this.prefetchScheduleData(),
     ];
-    
+
     await Promise.all(essentialDataTasks);
   }
 
@@ -514,18 +529,18 @@ class OfflineCacheManager {
     try {
       // Get user's frequently used routes
       const userRoutes = await this.getUserFrequentRoutes();
-      
+
       // Get city's popular routes
       const popularRoutes = await this.getCityPopularRoutes();
-      
+
       // Combine and deduplicate
       const routesToCache = [...new Set([...userRoutes, ...popularRoutes])];
-      
+
       for (const routeId of routesToCache) {
         const routeData = await this.fetchRouteData(routeId);
         await this.cacheRouteForOffline(routeId, routeData);
       }
-      
+
       console.log(`Prefetched ${routesToCache.length} popular routes`);
     } catch (error) {
       console.error('Error prefetching popular routes:', error);
@@ -535,10 +550,10 @@ class OfflineCacheManager {
   async enableOfflineMode(): Promise<void> {
     // Mark app as offline
     await this.asyncStorage.setItem('offline_mode', 'true');
-    
+
     // Switch to offline data sources
     this.configureOfflineDataSources();
-    
+
     // Start background sync monitoring
     this.startOfflineSyncMonitoring();
   }
@@ -546,20 +561,21 @@ class OfflineCacheManager {
   async syncWhenOnline(): Promise<void> {
     const isOnline = await this.checkNetworkConnectivity();
     const isWifiConnected = await this.checkWifiConnectivity();
-    
+
     if (!isOnline) return;
-    
+
     // Get pending sync operations
     const pendingSyncs = await this.getPendingSyncOperations();
-    
+
     for (const syncOp of pendingSyncs) {
-      const config = this.cacheConfigs[syncOp.dataType as keyof OfflineCacheStrategy];
-      
+      const config =
+        this.cacheConfigs[syncOp.dataType as keyof OfflineCacheStrategy];
+
       // Check sync strategy
       if (config.syncStrategy === 'wifi_only' && !isWifiConnected) {
         continue; // Skip this sync operation
       }
-      
+
       try {
         await this.executeSyncOperation(syncOp);
         await this.markSyncCompleted(syncOp.id);
@@ -570,45 +586,55 @@ class OfflineCacheManager {
     }
   }
 
-  private async cacheRouteForOffline(routeId: string, routeData: any): Promise<void> {
+  private async cacheRouteForOffline(
+    routeId: string,
+    routeData: any
+  ): Promise<void> {
     const config = this.cacheConfigs.essentialData;
-    
+
     // Compress data if configured
-    const dataToStore = config.compressionEnabled ? 
-      await this.compressData(routeData) : routeData;
-    
+    const dataToStore = config.compressionEnabled
+      ? await this.compressData(routeData)
+      : routeData;
+
     // Store in SQLite for offline access
-    await this.sqliteDB.execute(`
+    await this.sqliteDB.execute(
+      `
       INSERT OR REPLACE INTO offline_routes 
       (route_id, data, cached_at, expires_at) 
       VALUES (?, ?, ?, ?)
-    `, [
-      routeId,
-      JSON.stringify(dataToStore),
-      Date.now(),
-      Date.now() + (config.ttl * 1000)
-    ]);
+    `,
+      [
+        routeId,
+        JSON.stringify(dataToStore),
+        Date.now(),
+        Date.now() + config.ttl * 1000,
+      ]
+    );
   }
 
   async getOfflineRouteData(routeId: string): Promise<any> {
-    const result = await this.sqliteDB.execute(`
+    const result = await this.sqliteDB.execute(
+      `
       SELECT data, cached_at, expires_at 
       FROM offline_routes 
       WHERE route_id = ? AND expires_at > ?
-    `, [routeId, Date.now()]);
-    
+    `,
+      [routeId, Date.now()]
+    );
+
     if (result.rows.length === 0) {
       throw new Error(`Route ${routeId} not available offline`);
     }
-    
+
     const row = result.rows[0];
     const config = this.cacheConfigs.essentialData;
-    
+
     // Decompress if needed
-    const data = config.compressionEnabled ? 
-      await this.decompressData(JSON.parse(row.data)) : 
-      JSON.parse(row.data);
-    
+    const data = config.compressionEnabled
+      ? await this.decompressData(JSON.parse(row.data))
+      : JSON.parse(row.data);
+
     return data;
   }
 }
@@ -636,7 +662,7 @@ interface CacheInvalidationEvent {
 class CacheInvalidationManager implements CacheInvalidationManager {
   private redis: RedisClusterClient;
   private eventEmitter: EventEmitter;
-  
+
   setupEventListeners(): void {
     // Listen for route updates
     this.eventEmitter.on('route_updated', async (routeId: string) => {
@@ -644,48 +670,51 @@ class CacheInvalidationManager implements CacheInvalidationManager {
         type: 'route_update',
         affectedKeys: [`route:${routeId}:*`, `trips:*:${routeId}:*`],
         scope: 'route_specific',
-        priority: 'high'
+        priority: 'high',
       });
     });
-    
+
     // Listen for service alerts
-    this.eventEmitter.on('service_alert_created', async (alert: ServiceAlert) => {
-      await this.invalidateByEvent({
-        type: 'service_alert',
-        affectedKeys: alert.affectedRoutes.map(r => `route:${r}:*`),
-        scope: 'regional',
-        priority: 'immediate'
-      });
-    });
-    
+    this.eventEmitter.on(
+      'service_alert_created',
+      async (alert: ServiceAlert) => {
+        await this.invalidateByEvent({
+          type: 'service_alert',
+          affectedKeys: alert.affectedRoutes.map(r => `route:${r}:*`),
+          scope: 'regional',
+          priority: 'immediate',
+        });
+      }
+    );
+
     // Listen for user actions
     this.eventEmitter.on('user_preferences_updated', async (userId: string) => {
       await this.invalidateByEvent({
         type: 'user_action',
         affectedKeys: [`user:${userId}:*`],
         scope: 'user_specific',
-        priority: 'medium'
+        priority: 'medium',
       });
     });
   }
 
   async invalidateByEvent(event: CacheInvalidationEvent): Promise<void> {
     console.log(`Processing cache invalidation event: ${event.type}`);
-    
+
     // Handle based on priority
     if (event.priority === 'immediate') {
       await this.immediateInvalidation(event.affectedKeys);
     } else {
       await this.scheduleInvalidation(event);
     }
-    
+
     // Notify other cache layers
     await this.propagateInvalidation(event);
   }
 
   private async immediateInvalidation(keys: string[]): Promise<void> {
     const pipeline = this.redis.pipeline();
-    
+
     for (const keyPattern of keys) {
       if (keyPattern.includes('*')) {
         // Pattern-based deletion
@@ -698,20 +727,25 @@ class CacheInvalidationManager implements CacheInvalidationManager {
         pipeline.del(keyPattern);
       }
     }
-    
+
     await pipeline.exec();
   }
 
-  private async scheduleInvalidation(event: CacheInvalidationEvent): Promise<void> {
+  private async scheduleInvalidation(
+    event: CacheInvalidationEvent
+  ): Promise<void> {
     // Queue invalidation for later processing
     const invalidationJob = {
       id: `invalidation_${Date.now()}`,
       event,
       scheduledAt: Date.now(),
-      priority: event.priority
+      priority: event.priority,
     };
-    
-    await this.redis.lpush('cache_invalidation_queue', JSON.stringify(invalidationJob));
+
+    await this.redis.lpush(
+      'cache_invalidation_queue',
+      JSON.stringify(invalidationJob)
+    );
   }
 }
 ```
@@ -738,7 +772,7 @@ interface CacheMetrics {
 class CachePerformanceMonitor implements CachePerformanceMonitor {
   private influxDB: InfluxDBClient;
   private redis: RedisClusterClient;
-  
+
   trackCacheHit(key: string, latency: number): void {
     // Track cache hit with latency
     const point = new Point('cache_operations')
@@ -747,7 +781,7 @@ class CachePerformanceMonitor implements CachePerformanceMonitor {
       .floatField('latency_ms', latency)
       .intField('count', 1)
       .timestamp(new Date());
-    
+
     this.influxDB.writePoint(point);
   }
 
@@ -758,7 +792,7 @@ class CachePerformanceMonitor implements CachePerformanceMonitor {
       .tag('cache_key', this.sanitizeKeyForMetrics(key))
       .intField('count', 1)
       .timestamp(new Date());
-    
+
     this.influxDB.writePoint(point);
   }
 
@@ -773,27 +807,27 @@ class CachePerformanceMonitor implements CachePerformanceMonitor {
       FROM cache_operations 
       WHERE time >= now() - 1h
     `;
-    
+
     const result = await this.influxDB.query(query);
     const stats = result[0];
-    
+
     const hitRate = stats.hits / stats.total_operations;
     const missRate = stats.misses / stats.total_operations;
-    
+
     // Get Redis memory info
     const memoryInfo = await this.redis.info('memory');
     const memoryUsage = this.parseMemoryUsage(memoryInfo);
-    
+
     // Get hot keys
     const hotKeys = await this.getHotKeys();
-    
+
     return {
       hitRate,
       missRate,
       averageLatency: stats.avg_latency,
       hotKeys,
       memoryUsage,
-      evictionCount: await this.getEvictionCount()
+      evictionCount: await this.getEvictionCount(),
     };
   }
 
@@ -807,11 +841,13 @@ class CachePerformanceMonitor implements CachePerformanceMonitor {
       ORDER BY access_count DESC
       LIMIT 10
     `;
-    
+
     const result = await this.influxDB.query(hotKeysQuery);
     return result.map((row: any) => row.cache_key);
   }
 }
 ```
 
-This comprehensive caching strategy ensures optimal performance across all layers of the BMTC Transit App while supporting offline functionality and maintaining data consistency for real-time transit information.
+This comprehensive caching strategy ensures optimal performance across all
+layers of the BMTC Transit App while supporting offline functionality and
+maintaining data consistency for real-time transit information.

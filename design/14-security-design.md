@@ -2,7 +2,10 @@
 
 ## Overview
 
-The security architecture provides comprehensive protection for the BMTC Transit App, focusing on user privacy, data integrity, and system security. This design implements defense-in-depth principles with multiple security layers, robust authentication, and advanced threat detection mechanisms.
+The security architecture provides comprehensive protection for the BMTC Transit
+App, focusing on user privacy, data integrity, and system security. This design
+implements defense-in-depth principles with multiple security layers, robust
+authentication, and advanced threat detection mechanisms.
 
 ## Security Architecture Framework
 
@@ -145,7 +148,7 @@ enum MFAMethod {
   SMS = 'sms',
   EMAIL = 'email',
   TOTP = 'totp',
-  BIOMETRIC = 'biometric'
+  BIOMETRIC = 'biometric',
 }
 
 class AuthenticationService implements AuthenticationService {
@@ -158,72 +161,78 @@ class AuthenticationService implements AuthenticationService {
     try {
       // Rate limiting check
       await this.checkRateLimit(credentials.email || credentials.username);
-      
+
       // User validation
       const user = await this.validateUser(credentials);
       if (!user) {
         await this.logSecurityEvent('INVALID_LOGIN_ATTEMPT', credentials);
         throw new AuthenticationError('Invalid credentials');
       }
-      
+
       // Password verification with timing attack protection
       const isValidPassword = await this.verifyPasswordSecure(
-        credentials.password, 
+        credentials.password,
         user.passwordHash
       );
-      
+
       if (!isValidPassword) {
         await this.incrementFailedAttempts(user.id);
-        await this.logSecurityEvent('FAILED_PASSWORD_ATTEMPT', { userId: user.id });
+        await this.logSecurityEvent('FAILED_PASSWORD_ATTEMPT', {
+          userId: user.id,
+        });
         throw new AuthenticationError('Invalid credentials');
       }
-      
+
       // Check if MFA is required
       if (user.mfaEnabled) {
         return {
           success: false,
           requiresMFA: true,
           mfaChallenge: await this.generateMFAChallenge(user.id),
-          tempToken: await this.generateTempToken(user.id)
+          tempToken: await this.generateTempToken(user.id),
         };
       }
-      
+
       // Generate tokens
       const tokens = await this.generateTokens(user);
-      
+
       // Log successful authentication
       await this.logSecurityEvent('SUCCESSFUL_LOGIN', { userId: user.id });
-      
+
       return {
         success: true,
         user: this.sanitizeUser(user),
         tokens,
-        expiresIn: 3600 // 1 hour
+        expiresIn: 3600, // 1 hour
       };
-      
     } catch (error) {
-      await this.logSecurityEvent('AUTHENTICATION_ERROR', { error: error.message });
+      await this.logSecurityEvent('AUTHENTICATION_ERROR', {
+        error: error.message,
+      });
       throw error;
     }
   }
 
-  private async verifyPasswordSecure(password: string, hash: string): Promise<boolean> {
+  private async verifyPasswordSecure(
+    password: string,
+    hash: string
+  ): Promise<boolean> {
     // Use constant-time comparison to prevent timing attacks
     const startTime = process.hrtime();
-    
+
     try {
       const isValid = await bcrypt.compare(password, hash);
-      
+
       // Ensure minimum computation time to prevent timing analysis
       const elapsed = process.hrtime(startTime);
 
       const elapsedMs = elapsed[0] * 1000 + elapsed[1] / 1e6;
       const minTime = 100; // 100ms minimum
-      
+
       if (elapsedMs < minTime) {
         await this.sleep(minTime - elapsedMs);
       }
-      
+
       return isValid;
     } catch (error) {
       // Still consume minimum time even on error
@@ -238,32 +247,34 @@ class AuthenticationService implements AuthenticationService {
 
   async enableMFA(userId: string, method: MFAMethod): Promise<MFASetupResult> {
     const user = await this.getUserById(userId);
-    
+
     switch (method) {
       case MFAMethod.TOTP:
         const secret = speakeasy.generateSecret({
           name: `BMTC Transit App (${user.email})`,
-          issuer: 'BMTC Transit'
+          issuer: 'BMTC Transit',
         });
-        
+
         await this.storeMFASecret(userId, secret.base32);
-        
+
         return {
           success: true,
           qrCode: await QRCode.toDataURL(secret.otpauth_url),
           backupCodes: await this.generateBackupCodes(userId),
-          secret: secret.base32
+          secret: secret.base32,
         };
-        
+
       case MFAMethod.SMS:
-        const phoneToken = await this.generatePhoneVerificationToken(user.phoneNumber);
+        const phoneToken = await this.generatePhoneVerificationToken(
+          user.phoneNumber
+        );
         await this.sendSMSToken(user.phoneNumber, phoneToken);
-        
+
         return {
           success: true,
-          message: 'Verification code sent to your phone'
+          message: 'Verification code sent to your phone',
         };
-        
+
       default:
         throw new Error(`MFA method ${method} not supported`);
     }
@@ -301,7 +312,7 @@ class JWTService implements JWTService {
   async generateTokens(user: User): Promise<TokenPair> {
     const now = Math.floor(Date.now() / 1000);
     const accessTokenExpiry = now + 3600; // 1 hour
-    const refreshTokenExpiry = now + (7 * 24 * 3600); // 7 days
+    const refreshTokenExpiry = now + 7 * 24 * 3600; // 7 days
 
     // Access token payload - minimal data
     const accessPayload = {
@@ -322,19 +333,27 @@ class JWTService implements JWTService {
       aud: 'bmtc-refresh',
       iss: this.issuer,
       type: 'refresh',
-      jti: this.generateJTI() // Unique token ID for revocation
+      jti: this.generateJTI(), // Unique token ID for revocation
     };
 
-    const accessToken = jwt.sign(accessPayload, this.secretKey, { algorithm: this.algorithm });
-    const refreshToken = jwt.sign(refreshPayload, this.secretKey, { algorithm: this.algorithm });
+    const accessToken = jwt.sign(accessPayload, this.secretKey, {
+      algorithm: this.algorithm,
+    });
+    const refreshToken = jwt.sign(refreshPayload, this.secretKey, {
+      algorithm: this.algorithm,
+    });
 
     // Store refresh token for revocation tracking
-    await this.storeRefreshToken(user.id, refreshPayload.jti, refreshTokenExpiry);
+    await this.storeRefreshToken(
+      user.id,
+      refreshPayload.jti,
+      refreshTokenExpiry
+    );
 
     return {
       accessToken,
       refreshToken,
-      expiresIn: 3600
+      expiresIn: 3600,
     };
   }
 
@@ -348,7 +367,7 @@ class JWTService implements JWTService {
       const payload = jwt.verify(token, this.secretKey, {
         algorithms: [this.algorithm],
         issuer: this.issuer,
-        clockTolerance: 30 // 30 seconds clock skew tolerance
+        clockTolerance: 30, // 30 seconds clock skew tolerance
       }) as TokenPayload;
 
       // Additional security validations
@@ -356,9 +375,9 @@ class JWTService implements JWTService {
 
       return payload;
     } catch (error) {
-      await this.logSecurityEvent('TOKEN_VERIFICATION_FAILED', { 
+      await this.logSecurityEvent('TOKEN_VERIFICATION_FAILED', {
         error: error.message,
-        token: this.hashToken(token) // Log hash, not actual token
+        token: this.hashToken(token), // Log hash, not actual token
       });
       throw new TokenVerificationError('Invalid token');
     }
@@ -373,11 +392,12 @@ class JWTService implements JWTService {
     // Validate issued time (not too far in the past/future)
     const now = Math.floor(Date.now() / 1000);
     const maxAge = 8 * 24 * 3600; // 8 days max age
-    
-    if (payload.iat > now + 300) { // 5 minutes future tolerance
+
+    if (payload.iat > now + 300) {
+      // 5 minutes future tolerance
       throw new Error('Token issued in the future');
     }
-    
+
     if (now - payload.iat > maxAge) {
       throw new Error('Token too old');
     }
@@ -414,33 +434,55 @@ class SecurityInputValidator implements InputValidator {
     speed: Joi.number().min(0).max(200).required(), // Max 200 km/h
     heading: Joi.number().min(0).max(360).required(),
     accuracy: Joi.number().min(0).max(1000).required(),
-    timestamp: Joi.number().integer().min(Date.now() - 300000).max(Date.now() + 60000).required(),
+    timestamp: Joi.number()
+      .integer()
+      .min(Date.now() - 300000)
+      .max(Date.now() + 60000)
+      .required(),
     routeId: Joi.string().uuid().required(),
-    sessionId: Joi.string().uuid().required()
+    sessionId: Joi.string().uuid().required(),
   });
 
   private readonly userSchema = Joi.object({
-    username: Joi.string().alphanum().min(3).max(30).pattern(/^[a-zA-Z0-9_]+$/).required(),
-    email: Joi.string().email({ tlds: { allow: false } }).max(255).required(),
-    password: Joi.string().min(8).max(128)
-      .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
+    username: Joi.string()
+      .alphanum()
+      .min(3)
+      .max(30)
+      .pattern(/^[a-zA-Z0-9_]+$/)
       .required(),
-    phoneNumber: Joi.string().pattern(/^\+91[6-9]\d{9}$/).optional(),
-    displayName: Joi.string().min(1).max(100).pattern(/^[a-zA-Z0-9\s._-]+$/).optional()
+    email: Joi.string()
+      .email({ tlds: { allow: false } })
+      .max(255)
+      .required(),
+    password: Joi.string()
+      .min(8)
+      .max(128)
+      .pattern(
+        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/
+      )
+      .required(),
+    phoneNumber: Joi.string()
+      .pattern(/^\+91[6-9]\d{9}$/)
+      .optional(),
+    displayName: Joi.string()
+      .min(1)
+      .max(100)
+      .pattern(/^[a-zA-Z0-9\s._-]+$/)
+      .optional(),
   });
 
   validateLocationData(data: LocationInput): ValidationResult {
     // Basic schema validation
-    const schemaResult = this.locationSchema.validate(data, { 
+    const schemaResult = this.locationSchema.validate(data, {
       abortEarly: false,
-      stripUnknown: true 
+      stripUnknown: true,
     });
-    
+
     if (schemaResult.error) {
       return {
         valid: false,
         errors: schemaResult.error.details.map(d => d.message),
-        sanitizedData: null
+        sanitizedData: null,
       };
     }
 
@@ -448,32 +490,37 @@ class SecurityInputValidator implements InputValidator {
     const bengaluruBounds = {
       minLat: 12.7342,
       maxLat: 13.1939,
-      minLng: 77.3910,
-      maxLng: 77.7669
+      minLng: 77.391,
+      maxLng: 77.7669,
     };
 
-    if (data.latitude < bengaluruBounds.minLat || data.latitude > bengaluruBounds.maxLat ||
-        data.longitude < bengaluruBounds.minLng || data.longitude > bengaluruBounds.maxLng) {
+    if (
+      data.latitude < bengaluruBounds.minLat ||
+      data.latitude > bengaluruBounds.maxLat ||
+      data.longitude < bengaluruBounds.minLng ||
+      data.longitude > bengaluruBounds.maxLng
+    ) {
       return {
         valid: false,
         errors: ['Location outside Bengaluru metropolitan area'],
-        sanitizedData: null
+        sanitizedData: null,
       };
     }
 
     // Speed validation for transit vehicles
-    if (data.speed > 100) { // 100 km/h max for buses/metro
+    if (data.speed > 100) {
+      // 100 km/h max for buses/metro
       return {
         valid: false,
         errors: ['Speed exceeds maximum limit for transit vehicles'],
-        sanitizedData: null
+        sanitizedData: null,
       };
     }
 
     return {
       valid: true,
       errors: [],
-      sanitizedData: schemaResult.value
+      sanitizedData: schemaResult.value,
     };
   }
 
@@ -487,13 +534,14 @@ class SecurityInputValidator implements InputValidator {
       .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') // Remove script tags
       .replace(/javascript:/gi, '') // Remove javascript: protocol
       .replace(/on\w+\s*=/gi, '') // Remove event handlers
-      .replace(/[<>'"&]/g, (match) => { // HTML entity encoding
+      .replace(/[<>'"&]/g, match => {
+        // HTML entity encoding
         const entities: { [key: string]: string } = {
           '<': '&lt;',
           '>': '&gt;',
           '"': '&quot;',
           "'": '&#x27;',
-          '&': '&amp;'
+          '&': '&amp;',
         };
         return entities[match];
       });
@@ -542,10 +590,10 @@ class SecurityInputValidator implements InputValidator {
     const sqlPatterns = [
       /(\b(ALTER|CREATE|DELETE|DROP|EXEC(UTE)?|INSERT( +INTO)?|MERGE|SELECT|UPDATE|UNION( +ALL)?)\b)/i,
       /(\/\*[\s\S]*?\*\/)/i, // SQL comments
-      /(-{2,}.*$)/mi, // SQL comments
+      /(-{2,}.*$)/im, // SQL comments
       /('|(\\')|(;|\/\*|\*\/|@@|@))/i,
       /(eval\s*\()/i,
-      /(script\s*:)/i
+      /(script\s*:)/i,
     ];
 
     return sqlPatterns.some(pattern => pattern.test(input));
@@ -564,9 +612,9 @@ class SecurityInputValidator implements InputValidator {
         /\$lt/i,
         /\$regex/i,
         /\$or/i,
-        /\$and/i
+        /\$and/i,
       ];
-      
+
       return nosqlPatterns.some(pattern => pattern.test(input));
     }
   }
@@ -576,13 +624,21 @@ class SecurityInputValidator implements InputValidator {
       return false;
     }
 
-    const dangerousOperators = ['$where', '$ne', '$gt', '$lt', '$regex', '$or', '$and'];
-    
+    const dangerousOperators = [
+      '$where',
+      '$ne',
+      '$gt',
+      '$lt',
+      '$regex',
+      '$or',
+      '$and',
+    ];
+
     for (const key of Object.keys(obj)) {
       if (dangerousOperators.includes(key)) {
         return true;
       }
-      
+
       if (typeof obj[key] === 'object' && this.checkNoSQLOperators(obj[key])) {
         return true;
       }
@@ -599,13 +655,21 @@ class SecurityInputValidator implements InputValidator {
 
 ```typescript
 interface GPSSpoofingPrevention {
-  validateGPSData(locationData: LocationData, userHistory: LocationData[]): SpoofingAnalysis;
-  detectDeviceMovement(accelerometer: AccelerometerData, gps: LocationData): MovementConsistency;
-  verifyLocationContext(location: LocationData, contextData: ContextData): ContextValidation;
+  validateGPSData(
+    locationData: LocationData,
+    userHistory: LocationData[]
+  ): SpoofingAnalysis;
+  detectDeviceMovement(
+    accelerometer: AccelerometerData,
+    gps: LocationData
+  ): MovementConsistency;
+  verifyLocationContext(
+    location: LocationData,
+    contextData: ContextData
+  ): ContextValidation;
 }
 
 interface SpoofingAnalysis {
-
   isSpoofed: boolean;
   confidence: number;
   reasons: string[];
@@ -616,8 +680,11 @@ interface SpoofingAnalysis {
 class GPSSpoofingPrevention implements GPSSpoofingPrevention {
   private mlDetector: GPSSpoofingMLModel;
   private geofenceValidator: GeofenceValidator;
-  
-  validateGPSData(locationData: LocationData, userHistory: LocationData[]): SpoofingAnalysis {
+
+  validateGPSData(
+    locationData: LocationData,
+    userHistory: LocationData[]
+  ): SpoofingAnalysis {
     const checks = [
       this.checkImpossibleMovement(locationData, userHistory),
       this.checkAccuracyConsistency(locationData, userHistory),
@@ -625,15 +692,18 @@ class GPSSpoofingPrevention implements GPSSpoofingPrevention {
       this.checkSatelliteData(locationData),
       this.checkMovementPatterns(locationData, userHistory),
       this.checkGeographicConstraints(locationData),
-      this.checkTimingConsistency(locationData, userHistory)
+      this.checkTimingConsistency(locationData, userHistory),
     ];
 
     const suspiciousChecks = checks.filter(check => check.isSuspicious);
     const riskScore = this.calculateRiskScore(checks);
-    
+
     // ML-based detection
-    const mlAnalysis = this.mlDetector.analyzeSpoofing(locationData, userHistory);
-    
+    const mlAnalysis = this.mlDetector.analyzeSpoofing(
+      locationData,
+      userHistory
+    );
+
     const finalConfidence = (riskScore + mlAnalysis.confidence) / 2;
     const isSpoofed = finalConfidence > 0.75;
 
@@ -642,11 +712,14 @@ class GPSSpoofingPrevention implements GPSSpoofingPrevention {
       confidence: finalConfidence,
       reasons: [...suspiciousChecks.map(c => c.reason), ...mlAnalysis.reasons],
       riskScore,
-      recommendation: this.getRecommendation(finalConfidence, riskScore)
+      recommendation: this.getRecommendation(finalConfidence, riskScore),
     };
   }
 
-  private checkImpossibleMovement(current: LocationData, history: LocationData[]): ValidationCheck {
+  private checkImpossibleMovement(
+    current: LocationData,
+    history: LocationData[]
+  ): ValidationCheck {
     if (history.length === 0) {
       return { isSuspicious: false, reason: '', score: 0 };
     }
@@ -657,11 +730,12 @@ class GPSSpoofingPrevention implements GPSSpoofingPrevention {
     const speed = (distance / timeDiff) * 3.6; // km/h
 
     // Check for teleportation
-    if (speed > 200) { // Impossible speed for any ground transport
+    if (speed > 200) {
+      // Impossible speed for any ground transport
       return {
         isSuspicious: true,
         reason: `Impossible movement speed: ${speed.toFixed(1)} km/h`,
-        score: 0.9
+        score: 0.9,
       };
     }
 
@@ -669,12 +743,13 @@ class GPSSpoofingPrevention implements GPSSpoofingPrevention {
     if (history.length >= 2) {
       const prevSpeed = current.speed;
       const acceleration = Math.abs(speed - prevSpeed) / timeDiff;
-      
-      if (acceleration > 10) { // m/s² - impossible acceleration
+
+      if (acceleration > 10) {
+        // m/s² - impossible acceleration
         return {
           isSuspicious: true,
           reason: `Impossible acceleration: ${acceleration.toFixed(1)} m/s²`,
-          score: 0.8
+          score: 0.8,
         };
       }
     }
@@ -682,25 +757,28 @@ class GPSSpoofingPrevention implements GPSSpoofingPrevention {
     return { isSuspicious: false, reason: '', score: 0 };
   }
 
-  private checkAccuracyConsistency(current: LocationData, history: LocationData[]): ValidationCheck {
+  private checkAccuracyConsistency(
+    current: LocationData,
+    history: LocationData[]
+  ): ValidationCheck {
     // Spoofed GPS often claims unrealistically high accuracy
     if (current.accuracy < 1) {
       return {
         isSuspicious: true,
         reason: 'Unrealistically high GPS accuracy claimed',
-        score: 0.7
+        score: 0.7,
       };
     }
 
     // Check for consistent perfect accuracy (sign of simulation)
     const recentAccuracies = history.slice(-10).map(h => h.accuracy);
     const variance = this.calculateVariance(recentAccuracies);
-    
+
     if (recentAccuracies.length >= 5 && variance < 0.1) {
       return {
         isSuspicious: true,
         reason: 'GPS accuracy too consistent (possible simulation)',
-        score: 0.6
+        score: 0.6,
       };
     }
 
@@ -710,12 +788,12 @@ class GPSSpoofingPrevention implements GPSSpoofingPrevention {
   private checkSatelliteData(locationData: LocationData): ValidationCheck {
     // Check for suspicious satellite counts
     const satCount = locationData.satelliteCount;
-    
+
     if (satCount && (satCount < 4 || satCount > 12)) {
       return {
         isSuspicious: true,
         reason: `Unusual satellite count: ${satCount}`,
-        score: 0.5
+        score: 0.5,
       };
     }
 
@@ -725,14 +803,17 @@ class GPSSpoofingPrevention implements GPSSpoofingPrevention {
       return {
         isSuspicious: true,
         reason: 'Unrealistically low HDOP value',
-        score: 0.6
+        score: 0.6,
       };
     }
 
     return { isSuspicious: false, reason: '', score: 0 };
   }
 
-  private checkMovementPatterns(current: LocationData, history: LocationData[]): ValidationCheck {
+  private checkMovementPatterns(
+    current: LocationData,
+    history: LocationData[]
+  ): ValidationCheck {
     if (history.length < 5) {
       return { isSuspicious: false, reason: '', score: 0 };
     }
@@ -740,12 +821,12 @@ class GPSSpoofingPrevention implements GPSSpoofingPrevention {
     // Check for too-perfect straight lines (sign of simulation)
     const bearings = this.calculateBearings(history.concat(current));
     const bearingVariance = this.calculateVariance(bearings);
-    
+
     if (bearingVariance < 0.01 && bearings.length > 5) {
       return {
         isSuspicious: true,
         reason: 'Movement pattern too linear (possible simulation)',
-        score: 0.7
+        score: 0.7,
       };
     }
 
@@ -754,14 +835,17 @@ class GPSSpoofingPrevention implements GPSSpoofingPrevention {
       return {
         isSuspicious: true,
         reason: 'Geometric movement pattern detected',
-        score: 0.8
+        score: 0.8,
       };
     }
 
     return { isSuspicious: false, reason: '', score: 0 };
   }
 
-  private getRecommendation(confidence: number, riskScore: number): 'accept' | 'reject' | 'flag_for_review' {
+  private getRecommendation(
+    confidence: number,
+    riskScore: number
+  ): 'accept' | 'reject' | 'flag_for_review' {
     if (confidence > 0.9 || riskScore > 0.8) {
       return 'reject';
     } else if (confidence > 0.6 || riskScore > 0.5) {
@@ -801,7 +885,7 @@ enum SecurityEventType {
   GPS_SPOOFING_DETECTED = 'gps_spoofing_detected',
   UNUSUAL_API_USAGE = 'unusual_api_usage',
   DATA_BREACH_ATTEMPT = 'data_breach_attempt',
-  PRIVILEGE_ESCALATION = 'privilege_escalation'
+  PRIVILEGE_ESCALATION = 'privilege_escalation',
 }
 
 class SecurityMonitoringSystem implements SecurityMonitor {
@@ -814,7 +898,9 @@ class SecurityMonitoringSystem implements SecurityMonitor {
     this.setupRealTimeMonitoring();
   }
 
-  async detectSecurityEvents(events: SecurityEvent[]): Promise<SecurityAlert[]> {
+  async detectSecurityEvents(
+    events: SecurityEvent[]
+  ): Promise<SecurityAlert[]> {
     const alerts: SecurityAlert[] = [];
 
     // Group events by type and user
@@ -822,7 +908,7 @@ class SecurityMonitoringSystem implements SecurityMonitor {
 
     for (const [key, groupedEvents] of eventGroups) {
       const analysis = await this.analyzeEventGroup(groupedEvents);
-      
+
       if (analysis.requiresAlert) {
         alerts.push({
           id: this.generateAlertId(),
@@ -831,7 +917,7 @@ class SecurityMonitoringSystem implements SecurityMonitor {
           events: groupedEvents,
           confidence: analysis.confidence,
           recommendedActions: analysis.recommendedActions,
-          detectedAt: new Date()
+          detectedAt: new Date(),
         });
       }
     }
@@ -853,20 +939,29 @@ class SecurityMonitoringSystem implements SecurityMonitor {
 
     const analysis = {
       userId,
-      timeRange: { start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), end: new Date() },
+      timeRange: {
+        start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+        end: new Date(),
+      },
       anomalies: [],
       riskScore: 0,
-      recommendations: []
+      recommendations: [],
     };
 
     // Analyze location patterns
-    const locationAnomaly = this.detectLocationAnomalies(userEvents, baseline.locationPatterns);
+    const locationAnomaly = this.detectLocationAnomalies(
+      userEvents,
+      baseline.locationPatterns
+    );
     if (locationAnomaly.isAnomalous) {
       analysis.anomalies.push(locationAnomaly);
     }
 
     // Analyze usage patterns
-    const usageAnomaly = this.detectUsageAnomalies(userEvents, baseline.usagePatterns);
+    const usageAnomaly = this.detectUsageAnomalies(
+      userEvents,
+      baseline.usagePatterns
+    );
     if (usageAnomaly.isAnomalous) {
       analysis.anomalies.push(usageAnomaly);
     }
@@ -880,18 +975,22 @@ class SecurityMonitoringSystem implements SecurityMonitor {
     return analysis;
   }
 
-  async respondToIncident(incident: SecurityIncident): Promise<IncidentResponse> {
+  async respondToIncident(
+    incident: SecurityIncident
+  ): Promise<IncidentResponse> {
     const playbook = this.incidentResponsePlaybooks.get(incident.type);
-    
+
     if (!playbook) {
-      throw new Error(`No response playbook found for incident type: ${incident.type}`);
+      throw new Error(
+        `No response playbook found for incident type: ${incident.type}`
+      );
     }
 
     const response: IncidentResponse = {
       incidentId: incident.id,
       responseStarted: new Date(),
       actions: [],
-      status: 'in_progress'
+      status: 'in_progress',
     };
 
     try {
@@ -908,11 +1007,10 @@ class SecurityMonitoringSystem implements SecurityMonitor {
 
       response.status = 'completed';
       response.responseCompleted = new Date();
-
     } catch (error) {
       response.status = 'failed';
       response.error = error.message;
-      
+
       // Escalate to security team
       await this.escalateIncident(incident, error);
     }
@@ -920,23 +1018,29 @@ class SecurityMonitoringSystem implements SecurityMonitor {
     return response;
   }
 
-  private async executeResponseAction(action: ResponseAction, incident: SecurityIncident): Promise<ActionResult> {
+  private async executeResponseAction(
+    action: ResponseAction,
+    incident: SecurityIncident
+  ): Promise<ActionResult> {
     switch (action.type) {
       case 'block_ip':
         return await this.blockIPAddress(incident.sourceIP, action.duration);
-        
+
       case 'disable_user':
         return await this.disableUserAccount(incident.userId, action.reason);
-        
+
       case 'revoke_tokens':
         return await this.revokeUserTokens(incident.userId);
-        
+
       case 'increase_monitoring':
-        return await this.increaseUserMonitoring(incident.userId, action.duration);
-        
+        return await this.increaseUserMonitoring(
+          incident.userId,
+          action.duration
+        );
+
       case 'quarantine_data':
         return await this.quarantineUserData(incident.userId);
-        
+
       default:
         throw new Error(`Unknown response action: ${action.type}`);
     }
@@ -945,13 +1049,16 @@ class SecurityMonitoringSystem implements SecurityMonitor {
   private initializeThresholds(): void {
     this.alertThresholds = new Map([
       [SecurityEventType.FAILED_LOGIN, 5], // 5 failures in 15 minutes
-      [SecurityEventType.RATE_LIMIT_EXCEEDED, 3], // 3 rate limit hits in 5 minutes  
+      [SecurityEventType.RATE_LIMIT_EXCEEDED, 3], // 3 rate limit hits in 5 minutes
       [SecurityEventType.GPS_SPOOFING_DETECTED, 1], // Immediate alert
       [SecurityEventType.UNUSUAL_API_USAGE, 10], // 10 unusual calls in 1 hour
-      [SecurityEventType.DATA_BREACH_ATTEMPT, 1] // Immediate alert
+      [SecurityEventType.DATA_BREACH_ATTEMPT, 1], // Immediate alert
     ]);
   }
 }
 ```
 
-This comprehensive security architecture provides robust protection for the BMTC Transit App, implementing multiple layers of security controls, advanced threat detection, and automated incident response capabilities while maintaining user privacy and system performance.
+This comprehensive security architecture provides robust protection for the BMTC
+Transit App, implementing multiple layers of security controls, advanced threat
+detection, and automated incident response capabilities while maintaining user
+privacy and system performance.

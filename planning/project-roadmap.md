@@ -2,9 +2,12 @@
 
 ## Executive Summary
 
-The BMTC Transit App is a crowdsourced real-time transit tracking system for Bengaluru Metropolitan Transport Corporation. This roadmap outlines the 15-week development journey from foundation to production launch.
+The BMTC Transit App is a crowdsourced real-time transit tracking system for
+Bengaluru Metropolitan Transport Corporation. This roadmap outlines the 15-week
+development journey from foundation to production launch.
 
 ### Key Milestones
+
 - **Week 3**: Infrastructure Foundation Complete
 - **Week 6**: MVP Launch (Basic Location Sharing & Viewing)
 - **Week 9**: ML Validation System Active
@@ -60,10 +63,11 @@ Weeks 16-18: Production Ready (Sprint 5)
 ## Feature Release Timeline
 
 ### Phase 1: Foundation (Weeks 1-3)
-**Status**: Infrastructure Setup
-**Goal**: Establish development foundation
+
+**Status**: Infrastructure Setup **Goal**: Establish development foundation
 
 #### Key Deliverables:
+
 - ✅ AWS infrastructure deployed
 - ✅ CI/CD pipeline operational
 - ✅ Development environment ready
@@ -71,15 +75,18 @@ Weeks 16-18: Production Ready (Sprint 5)
 - ✅ Security baseline established
 
 #### Success Criteria:
+
 - Infrastructure deployment success rate: 100%
 - Team can deploy code in <5 minutes
 - All environments (dev/staging/prod) operational
 
 ### Phase 2: MVP Core (Weeks 4-6)
-**Status**: User Management & Location Sharing
-**Goal**: Enable basic crowdsourced location sharing
+
+**Status**: User Management & Location Sharing **Goal**: Enable basic
+crowdsourced location sharing
 
 #### Key Deliverables:
+
 - 📱 User registration with phone verification
 - 📍 Location sharing from mobile app
 - 🗺️ Basic route selection
@@ -87,15 +94,18 @@ Weeks 16-18: Production Ready (Sprint 5)
 - 🚀 MVP deployment
 
 #### Success Criteria:
+
 - 100 users can register and share location
 - Data ingestion accuracy >98%
 - Mobile app crash rate <2%
 
 ### Phase 3: Real-time Core (Weeks 7-9)
-**Status**: Live Transit Tracking
-**Goal**: Display real-time transit information to users
+
+**Status**: Live Transit Tracking **Goal**: Display real-time transit
+information to users
 
 #### Key Deliverables:
+
 - 🔄 Real-time location updates via WebSocket
 - 🗺️ Interactive map with vehicle locations
 - ⏱️ ETA calculations for stops
@@ -103,15 +113,18 @@ Weeks 16-18: Production Ready (Sprint 5)
 - 👥 Public beta launch
 
 #### Success Criteria:
+
 - Real-time latency <15 seconds
 - 500+ active beta users
 - ETA accuracy ±5 minutes
 
 ### Phase 4: Quality & Intelligence (Weeks 10-12)
-**Status**: ML-powered Data Validation
-**Goal**: Ensure data quality and prevent abuse
+
+**Status**: ML-powered Data Validation **Goal**: Ensure data quality and prevent
+abuse
 
 #### Key Deliverables:
+
 - 🤖 ML-based GPS spoofing detection
 - ⭐ Data quality scoring system
 - 📊 Anomaly detection algorithms
@@ -119,15 +132,17 @@ Weeks 16-18: Production Ready (Sprint 5)
 - 🎯 Quality-based user reputation
 
 #### Success Criteria:
+
 - GPS spoofing detection accuracy >90%
 - Data quality improvement by 20%
 - ML model inference latency <100ms
 
 ### Phase 5: Engagement & Growth (Weeks 13-15)
-**Status**: Advanced User Features
-**Goal**: Drive user engagement and retention
+
+**Status**: Advanced User Features **Goal**: Drive user engagement and retention
 
 #### Key Deliverables:
+
 - 🎮 Comprehensive gamification system
 - 👥 Social features and leaderboards
 - 🗺️ Trip planning functionality
@@ -135,15 +150,17 @@ Weeks 16-18: Production Ready (Sprint 5)
 - 🏆 Achievement and rewards system
 
 #### Success Criteria:
+
 - User engagement increase by 40%
 - 60%+ feature adoption rate
 - 25% improvement in retention
 
 ### Phase 6: Production Launch (Weeks 16-18)
-**Status**: Scale & Launch
-**Goal**: Production-ready system at scale
+
+**Status**: Scale & Launch **Goal**: Production-ready system at scale
 
 #### Key Deliverables:
+
 - 📊 Full observability and monitoring
 - ⚡ Performance optimization for scale
 - 🔒 Security hardening and compliance
@@ -151,6 +168,7 @@ Weeks 16-18: Production Ready (Sprint 5)
 - 📞 Support systems operational
 
 #### Success Criteria:
+
 - Handle 10,000+ concurrent users
 - 99.5%+ uptime
 - Security audit passed
@@ -159,25 +177,28 @@ Weeks 16-18: Production Ready (Sprint 5)
 ## Release Strategy
 
 ### MVP Release (End of Week 6)
-**Target Audience**: Early adopters, transit enthusiasts
-**Scope**: Basic location sharing and viewing
-**Success Metrics**:
+
+**Target Audience**: Early adopters, transit enthusiasts **Scope**: Basic
+location sharing and viewing **Success Metrics**:
+
 - 100+ daily active users
 - 50+ contributors sharing location daily
 - <2% crash rate
 
 ### Beta Release (End of Week 12)
-**Target Audience**: General public, limited marketing
-**Scope**: Full feature set with ML validation
-**Success Metrics**:
+
+**Target Audience**: General public, limited marketing **Scope**: Full feature
+set with ML validation **Success Metrics**:
+
 - 1,000+ daily active users
 - 70%+ data quality score
 - 60%+ weekly retention
 
 ### Production Launch (End of Week 18)
-**Target Audience**: All Bengaluru transit users
-**Scope**: Production-grade system with full marketing
-**Success Metrics**:
+
+**Target Audience**: All Bengaluru transit users **Scope**: Production-grade
+system with full marketing **Success Metrics**:
+
 - 10,000+ users within first month
 - 95%+ uptime
 - 4.0+ app store rating
@@ -185,6 +206,7 @@ Weeks 16-18: Production Ready (Sprint 5)
 ## Technology Rollout Plan
 
 ### Infrastructure Stack Deployment
+
 ```
 Week 1-2: Core Infrastructure
 ├── AWS EKS Cluster
@@ -223,6 +245,7 @@ Week 13-15: Production Hardening
 ```
 
 ### Mobile App Feature Rollout
+
 ```
 Week 1-3: App Foundation
 ├── React Native Setup
@@ -272,31 +295,37 @@ Week 16-18: Production Polish
 ### High-Priority Risks by Phase
 
 #### Phase 1 Risks (Weeks 1-3)
+
 - **Infrastructure Complexity**: Mitigate with parallel development
 - **Team Onboarding**: Address with comprehensive training
 - **Cost Overruns**: Monitor with automated alerts
 
 #### Phase 2 Risks (Weeks 4-6)
+
 - **Location Permission Issues**: Extensive device testing
 - **User Adoption**: Engage early adopters and gather feedback
 - **Data Privacy Concerns**: Clear privacy messaging
 
 #### Phase 3 Risks (Weeks 7-9)
+
 - **Real-time Performance**: Continuous optimization
 - **Scale Challenges**: Load testing and monitoring
 - **User Experience Issues**: Regular user testing
 
 #### Phase 4 Risks (Weeks 10-12)
+
 - **ML Model Accuracy**: Continuous training and validation
 - **False Positives**: Conservative thresholds and manual review
 - **Performance Impact**: Asynchronous processing
 
 #### Phase 5 Risks (Weeks 13-15)
+
 - **Feature Complexity**: Iterative development and testing
 - **User Engagement**: A/B testing and feedback loops
 - **Performance Degradation**: Continuous monitoring
 
 #### Phase 6 Risks (Weeks 16-18)
+
 - **Launch Issues**: Staged rollout and rollback procedures
 - **Scale Problems**: Load testing and auto-scaling
 - **Support Overload**: Comprehensive documentation and training
@@ -304,18 +333,21 @@ Week 16-18: Production Polish
 ## Success Metrics Dashboard
 
 ### User Metrics
+
 - **Registration Rate**: Target 95% success rate
 - **Activation Rate**: Target 70% users share location within 24 hours
 - **Retention Rate**: Target 60% weekly retention
 - **Engagement Rate**: Target 40% daily active users
 
 ### Technical Metrics
+
 - **Uptime**: Target 99.5% availability
 - **Performance**: Target <15 second end-to-end latency
 - **Quality**: Target 80% high-quality location data
 - **Scalability**: Target 10,000+ concurrent users
 
 ### Business Metrics
+
 - **User Growth**: Target 1,000 users by end of Sprint 5
 - **Data Coverage**: Target 50+ active routes with real-time data
 - **User Satisfaction**: Target 4.0+ app store rating
@@ -324,18 +356,21 @@ Week 16-18: Production Polish
 ## Dependencies & Critical Path
 
 ### External Dependencies
+
 - **Google Maps API**: Required for Week 7 (Real-time mapping)
 - **SMS Provider**: Required for Week 4 (User registration)
 - **App Store Approval**: Required for Week 6 (MVP launch)
 - **Legal Approval**: Required for Week 3 (Privacy policy)
 
 ### Internal Dependencies
+
 - **Design System**: Required for Week 4 (UI components)
 - **Security Review**: Required for Week 12 (Security compliance)
 - **Performance Testing**: Required for Week 15 (Scale validation)
 - **Content Creation**: Required for Week 18 (Launch materials)
 
 ### Critical Path Activities
+
 1. **Infrastructure Setup** (Weeks 1-3): Blocks all development
 2. **User Management** (Weeks 4-5): Blocks all user features
 3. **Real-time Processing** (Weeks 7-8): Blocks live features
@@ -344,6 +379,7 @@ Week 16-18: Production Polish
 ## Resource Allocation
 
 ### Team Allocation by Phase
+
 ```
 Phase 1 (Weeks 1-3): Infrastructure Focus
 ├── DevOps Engineer: 100% infrastructure
@@ -370,4 +406,6 @@ Phase 6 (Weeks 16-18): Production Readiness
 └── Product: 100% launch preparation
 ```
 
-This roadmap provides a comprehensive view of the BMTC Transit App development journey, ensuring all stakeholders understand the timeline, deliverables, and success criteria for each phase of the project.
+This roadmap provides a comprehensive view of the BMTC Transit App development
+journey, ensuring all stakeholders understand the timeline, deliverables, and
+success criteria for each phase of the project.

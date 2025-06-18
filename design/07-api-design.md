@@ -2,11 +2,14 @@
 
 ## Overview
 
-This document defines the RESTful API endpoints for the BMTC Transit App. The API follows REST principles, implements proper HTTP methods and status codes, and supports both mobile applications and web interfaces.
+This document defines the RESTful API endpoints for the BMTC Transit App. The
+API follows REST principles, implements proper HTTP methods and status codes,
+and supports both mobile applications and web interfaces.
 
 ## API Design Principles
 
 ### 1. RESTful Architecture
+
 - Resources identified by URIs
 - Standard HTTP methods (GET, POST, PUT, PATCH, DELETE)
 - Stateless communication
@@ -14,12 +17,14 @@ This document defines the RESTful API endpoints for the BMTC Transit App. The AP
 - Proper HTTP status codes
 
 ### 2. Versioning Strategy
+
 - URL-based versioning: `/api/v1/`
 - Backward compatibility for at least 2 versions
 - Deprecation notices for older versions
 - Migration guides for version updates
 
 ### 3. Security Standards
+
 - JWT-based authentication
 - Rate limiting and throttling
 - Input validation and sanitization
@@ -36,11 +41,13 @@ Development: https://dev-api.bmtctransit.com/v1
 ## Authentication
 
 ### JWT Authentication
+
 ```http
 Authorization: Bearer <jwt_token>
 ```
 
 ### API Key Authentication (for public endpoints)
+
 ```http
 X-API-Key: <api_key>
 ```
@@ -50,6 +57,7 @@ X-API-Key: <api_key>
 ### 1. User Management
 
 #### Register User
+
 ```http
 POST /api/v1/auth/register
 Content-Type: application/json
@@ -64,6 +72,7 @@ Content-Type: application/json
 ```
 
 **Response:**
+
 ```http
 HTTP/1.1 201 Created
 Content-Type: application/json
@@ -87,6 +96,7 @@ Content-Type: application/json
 ```
 
 #### User Login
+
 ```http
 POST /api/v1/auth/login
 Content-Type: application/json
@@ -98,6 +108,7 @@ Content-Type: application/json
 ```
 
 **Response:**
+
 ```http
 HTTP/1.1 200 OK
 Content-Type: application/json
@@ -120,12 +131,14 @@ Content-Type: application/json
 ```
 
 #### Get User Profile
+
 ```http
 GET /api/v1/users/profile
 Authorization: Bearer <token>
 ```
 
 **Response:**
+
 ```http
 HTTP/1.1 200 OK
 Content-Type: application/json
@@ -156,6 +169,7 @@ Content-Type: application/json
 ```
 
 #### Update User Profile
+
 ```http
 PATCH /api/v1/users/profile
 Authorization: Bearer <token>
@@ -169,6 +183,7 @@ Content-Type: application/json
 ```
 
 #### Update Privacy Settings
+
 ```http
 PATCH /api/v1/users/privacy-settings
 Authorization: Bearer <token>
@@ -185,6 +200,7 @@ Content-Type: application/json
 ### 2. Route Management
 
 #### Get All Routes
+
 ```http
 GET /api/v1/routes
 Query Parameters:
@@ -197,6 +213,7 @@ Query Parameters:
 ```
 
 **Response:**
+
 ```http
 HTTP/1.1 200 OK
 Content-Type: application/json
@@ -235,11 +252,13 @@ Content-Type: application/json
 ```
 
 #### Get Route Details
+
 ```http
 GET /api/v1/routes/{route_id}
 ```
 
 **Response:**
+
 ```http
 HTTP/1.1 200 OK
 Content-Type: application/json
@@ -282,6 +301,7 @@ Content-Type: application/json
 ```
 
 #### Get Route Stops
+
 ```http
 GET /api/v1/routes/{route_id}/stops
 Query Parameters:
@@ -291,6 +311,7 @@ Query Parameters:
 ### 3. Stop Management
 
 #### Get All Stops
+
 ```http
 GET /api/v1/stops
 Query Parameters:
@@ -302,11 +323,13 @@ Query Parameters:
 ```
 
 #### Get Stop Details
+
 ```http
 GET /api/v1/stops/{stop_id}
 ```
 
 **Response:**
+
 ```http
 HTTP/1.1 200 OK
 Content-Type: application/json
@@ -355,6 +378,7 @@ Content-Type: application/json
 ### 4. Location Sharing
 
 #### Start Location Sharing
+
 ```http
 POST /api/v1/location/start-sharing
 Authorization: Bearer <token>
@@ -367,6 +391,7 @@ Content-Type: application/json
 ```
 
 **Response:**
+
 ```http
 HTTP/1.1 200 OK
 Content-Type: application/json
@@ -385,6 +410,7 @@ Content-Type: application/json
 ```
 
 #### Submit Location Data
+
 ```http
 POST /api/v1/location/update
 Authorization: Bearer <token>
@@ -402,6 +428,7 @@ Content-Type: application/json
 ```
 
 **Response:**
+
 ```http
 HTTP/1.1 202 Accepted
 Content-Type: application/json
@@ -418,6 +445,7 @@ Content-Type: application/json
 ```
 
 #### Stop Location Sharing
+
 ```http
 POST /api/v1/location/stop-sharing
 Authorization: Bearer <token>
@@ -429,6 +457,7 @@ Content-Type: application/json
 ```
 
 **Response:**
+
 ```http
 HTTP/1.1 200 OK
 Content-Type: application/json
@@ -449,6 +478,7 @@ Content-Type: application/json
 ### 5. Real-Time Data
 
 #### Get Real-Time Vehicle Locations
+
 ```http
 GET /api/v1/real-time/routes/{route_id}/vehicles
 Query Parameters:
@@ -457,6 +487,7 @@ Query Parameters:
 ```
 
 **Response:**
+
 ```http
 HTTP/1.1 200 OK
 Content-Type: application/json
@@ -499,6 +530,7 @@ Content-Type: application/json
 ```
 
 #### Get Stop ETAs
+
 ```http
 GET /api/v1/real-time/stops/{stop_id}/etas
 Query Parameters:
@@ -507,6 +539,7 @@ Query Parameters:
 ```
 
 **Response:**
+
 ```http
 HTTP/1.1 200 OK
 Content-Type: application/json
@@ -537,6 +570,7 @@ Content-Type: application/json
 ### 6. Trip Planning
 
 #### Plan Trip
+
 ```http
 POST /api/v1/trips/plan
 Content-Type: application/json
@@ -561,6 +595,7 @@ Content-Type: application/json
 ```
 
 **Response:**
+
 ```http
 HTTP/1.1 200 OK
 Content-Type: application/json
@@ -622,6 +657,7 @@ Content-Type: application/json
 ```
 
 #### Get Trip Updates
+
 ```http
 GET /api/v1/trips/{trip_id}/updates
 Authorization: Bearer <token>
@@ -630,6 +666,7 @@ Authorization: Bearer <token>
 ### 7. Service Reports
 
 #### Submit Service Report
+
 ```http
 POST /api/v1/reports
 Authorization: Bearer <token>
@@ -657,6 +694,7 @@ Content-Type: application/json
 ```
 
 **Response:**
+
 ```http
 HTTP/1.1 201 Created
 Content-Type: application/json
@@ -674,6 +712,7 @@ Content-Type: application/json
 ```
 
 #### Get Reports
+
 ```http
 GET /api/v1/reports
 Query Parameters:
@@ -689,12 +728,14 @@ Query Parameters:
 ### 8. Gamification
 
 #### Get User Statistics
+
 ```http
 GET /api/v1/gamification/stats
 Authorization: Bearer <token>
 ```
 
 **Response:**
+
 ```http
 HTTP/1.1 200 OK
 Content-Type: application/json
@@ -726,6 +767,7 @@ Content-Type: application/json
 ```
 
 #### Get Leaderboards
+
 ```http
 GET /api/v1/gamification/leaderboards
 Query Parameters:
@@ -735,6 +777,7 @@ Query Parameters:
 ```
 
 **Response:**
+
 ```http
 HTTP/1.1 200 OK
 Content-Type: application/json
@@ -767,6 +810,7 @@ Content-Type: application/json
 ## Error Handling
 
 ### Standard Error Response Format
+
 ```http
 HTTP/1.1 400 Bad Request
 Content-Type: application/json
@@ -790,20 +834,21 @@ Content-Type: application/json
 
 ### Common Error Codes
 
-| HTTP Status | Error Code | Description |
-|-------------|------------|-------------|
-| 400 | VALIDATION_ERROR | Invalid request data |
-| 401 | UNAUTHORIZED | Authentication required |
-| 403 | FORBIDDEN | Insufficient permissions |
-| 404 | NOT_FOUND | Resource not found |
-| 409 | CONFLICT | Resource conflict |
-| 429 | RATE_LIMITED | Rate limit exceeded |
-| 500 | INTERNAL_ERROR | Server error |
-| 503 | SERVICE_UNAVAILABLE | Service temporarily unavailable |
+| HTTP Status | Error Code          | Description                     |
+| ----------- | ------------------- | ------------------------------- |
+| 400         | VALIDATION_ERROR    | Invalid request data            |
+| 401         | UNAUTHORIZED        | Authentication required         |
+| 403         | FORBIDDEN           | Insufficient permissions        |
+| 404         | NOT_FOUND           | Resource not found              |
+| 409         | CONFLICT            | Resource conflict               |
+| 429         | RATE_LIMITED        | Rate limit exceeded             |
+| 500         | INTERNAL_ERROR      | Server error                    |
+| 503         | SERVICE_UNAVAILABLE | Service temporarily unavailable |
 
 ## Rate Limiting
 
 ### Rate Limit Headers
+
 ```http
 X-RateLimit-Limit: 1000
 X-RateLimit-Remaining: 999
@@ -812,16 +857,17 @@ X-RateLimit-Reset: 1640995200
 
 ### Rate Limits by Endpoint Type
 
-| Endpoint Category | Limit | Window |
-|------------------|-------|---------|
-| Authentication | 5 requests | 1 minute |
-| Location Updates | 120 requests | 1 minute |
-| General API | 1000 requests | 1 hour |
-| Real-time Data | 60 requests | 1 minute |
+| Endpoint Category | Limit         | Window   |
+| ----------------- | ------------- | -------- |
+| Authentication    | 5 requests    | 1 minute |
+| Location Updates  | 120 requests  | 1 minute |
+| General API       | 1000 requests | 1 hour   |
+| Real-time Data    | 60 requests   | 1 minute |
 
 ## Pagination
 
 ### Standard Pagination Format
+
 ```json
 {
   "data": [...],
@@ -835,4 +881,5 @@ X-RateLimit-Reset: 1640995200
 }
 ```
 
-This comprehensive API design provides all necessary endpoints for the BMTC Transit App while maintaining consistency, security, and performance standards.
+This comprehensive API design provides all necessary endpoints for the BMTC
+Transit App while maintaining consistency, security, and performance standards.

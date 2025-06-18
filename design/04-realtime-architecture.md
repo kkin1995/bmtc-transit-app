@@ -2,7 +2,10 @@
 
 ## Overview
 
-The real-time data processing architecture is the core of the BMTC Transit App's crowdsourcing system. It handles location data ingestion, validation, anonymization, and distribution to provide accurate real-time transit information.
+The real-time data processing architecture is the core of the BMTC Transit App's
+crowdsourcing system. It handles location data ingestion, validation,
+anonymization, and distribution to provide accurate real-time transit
+information.
 
 ## Architecture Components
 
@@ -150,6 +153,7 @@ The real-time data processing architecture is the core of the BMTC Transit App's
 ### 1. Location Data Ingestion
 
 **Input Processing:**
+
 ```typescript
 interface LocationInput {
   user_session_id: string;
@@ -165,6 +169,7 @@ interface LocationInput {
 ```
 
 **Processing Steps:**
+
 1. **Validation**: Check data bounds, format, and required fields
 2. **Deduplication**: Remove duplicate submissions within time window
 3. **Rate Limiting**: Enforce per-user and per-route submission limits
@@ -174,6 +179,7 @@ interface LocationInput {
 ### 2. Privacy & Anonymization
 
 **Anonymization Process:**
+
 ```typescript
 interface AnonymizedLocation {
   anonymous_session_id: string; // SHA-256 hash
@@ -190,6 +196,7 @@ interface AnonymizedLocation {
 ```
 
 **Privacy Measures:**
+
 - Immediate removal of user identifiers
 - Location precision reduction (±5 meters)
 - Session ID anonymization
@@ -199,6 +206,7 @@ interface AnonymizedLocation {
 ### 3. Stream Processing Pipeline
 
 **Validation Processor:**
+
 ```typescript
 class ValidationProcessor {
   validateLocation(location: AnonymizedLocation): ValidationResult {
@@ -219,6 +227,7 @@ class ValidationProcessor {
 ```
 
 **Geospatial Processor:**
+
 ```typescript
 class GeospatialProcessor {
   validateRouteMatch(location: AnonymizedLocation): RouteMatchResult {
@@ -228,13 +237,14 @@ class GeospatialProcessor {
       nearestStop: StopInfo,
       routeSegment: SegmentInfo,
       movementDirection: 'forward' | 'backward' | 'stationary',
-      confidence: number
+      confidence: number,
     };
   }
 }
 ```
 
 **ML Anomaly Detection:**
+
 ```typescript
 class AnomalyDetectionProcessor {
   detectAnomalies(location: AnonymizedLocation, context: LocationContext): AnomalyResult {
@@ -252,6 +262,7 @@ class AnomalyDetectionProcessor {
 ### 4. Data Fusion & Aggregation
 
 **Multi-User Data Fusion:**
+
 ```typescript
 interface AggregatedLocation {
   route_id: string;
@@ -268,6 +279,7 @@ interface AggregatedLocation {
 ```
 
 **Aggregation Rules:**
+
 - Minimum 2 contributors for validation
 - Weighted averaging based on GPS accuracy
 - Outlier removal using statistical methods
@@ -277,6 +289,7 @@ interface AggregatedLocation {
 ### 5. Real-Time Distribution
 
 **WebSocket Channels:**
+
 ```typescript
 interface ChannelStructure {
   'route:${route_id}:${direction}': AggregatedLocation[];
@@ -287,6 +300,7 @@ interface ChannelStructure {
 ```
 
 **Message Types:**
+
 ```typescript
 interface LocationUpdate {
   type: 'location_update';
@@ -319,21 +333,21 @@ interface ServiceAlert {
 
 ### Throughput Requirements
 
-| Component | Target Throughput | Peak Throughput |
-|-----------|------------------|-----------------|
-| Location Ingestion | 10,000 msgs/sec | 50,000 msgs/sec |
-| Stream Processing | 15,000 msgs/sec | 75,000 msgs/sec |
-| WebSocket Distribution | 100,000 msgs/sec | 500,000 msgs/sec |
-| Database Writes | 5,000 writes/sec | 25,000 writes/sec |
+| Component              | Target Throughput | Peak Throughput   |
+| ---------------------- | ----------------- | ----------------- |
+| Location Ingestion     | 10,000 msgs/sec   | 50,000 msgs/sec   |
+| Stream Processing      | 15,000 msgs/sec   | 75,000 msgs/sec   |
+| WebSocket Distribution | 100,000 msgs/sec  | 500,000 msgs/sec  |
+| Database Writes        | 5,000 writes/sec  | 25,000 writes/sec |
 
 ### Latency Requirements
 
-| Operation | Target Latency | Max Latency |
-|-----------|---------------|-------------|
-| Location Ingestion | < 100ms | < 500ms |
-| Validation Processing | < 200ms | < 1000ms |
-| WebSocket Distribution | < 50ms | < 200ms |
-| End-to-End (Mobile to Mobile) | < 15 seconds | < 30 seconds |
+| Operation                     | Target Latency | Max Latency  |
+| ----------------------------- | -------------- | ------------ |
+| Location Ingestion            | < 100ms        | < 500ms      |
+| Validation Processing         | < 200ms        | < 1000ms     |
+| WebSocket Distribution        | < 50ms         | < 200ms      |
+| End-to-End (Mobile to Mobile) | < 15 seconds   | < 30 seconds |
 
 ### Scalability Parameters
 
@@ -342,12 +356,12 @@ kafka_cluster:
   brokers: 3-9 (auto-scaling)
   partitions_per_topic: 12
   replication_factor: 3
-  
+
 stream_processors:
   instances: 6-20 (auto-scaling)
   cpu_per_instance: 2-4 cores
   memory_per_instance: 4-8 GB
-  
+
 websocket_managers:
   instances: 4-12 (auto-scaling)
   connections_per_instance: 10,000
@@ -392,22 +406,22 @@ interface QualityMetrics {
 ```typescript
 interface RecoveryStrategy {
   kafka_broker_failure: {
-    detection_time: '< 30 seconds',
-    recovery_action: 'automatic_partition_rebalancing',
-    data_loss_prevention: 'cross_az_replication'
-  },
-  
+    detection_time: '< 30 seconds';
+    recovery_action: 'automatic_partition_rebalancing';
+    data_loss_prevention: 'cross_az_replication';
+  };
+
   stream_processor_failure: {
-    detection_time: '< 60 seconds',
-    recovery_action: 'auto_restart_and_state_recovery',
-    processing_continuity: 'remaining_instances_scale_up'
-  },
-  
+    detection_time: '< 60 seconds';
+    recovery_action: 'auto_restart_and_state_recovery';
+    processing_continuity: 'remaining_instances_scale_up';
+  };
+
   database_failure: {
-    detection_time: '< 30 seconds',
-    recovery_action: 'failover_to_replica',
-    data_consistency: 'read_replica_promotion'
-  }
+    detection_time: '< 30 seconds';
+    recovery_action: 'failover_to_replica';
+    data_consistency: 'read_replica_promotion';
+  };
 }
 ```
 
@@ -434,4 +448,5 @@ interface SystemMetrics {
 4. **Contributor Drop**: < 50% normal contributor count
 5. **Geographic Coverage**: Route coverage < 80%
 
-This real-time processing architecture ensures reliable, scalable, and privacy-preserving operation of the BMTC Transit App's crowdsourcing system.
+This real-time processing architecture ensures reliable, scalable, and
+privacy-preserving operation of the BMTC Transit App's crowdsourcing system.

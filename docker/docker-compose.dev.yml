@@ -7,16 +7,16 @@ services:
       POSTGRES_DB: bmtc_transit_dev
       POSTGRES_USER: bmtc_user
       POSTGRES_PASSWORD: bmtc_password
-      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
     ports:
-      - "5432:5432"
+      - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-scripts:/docker-entrypoint-initdb.d
     networks:
       - bmtc-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bmtc_user -d bmtc_transit_dev"]
+      test: ['CMD-SHELL', 'pg_isready -U bmtc_user -d bmtc_transit_dev']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -27,13 +27,13 @@ services:
     container_name: bmtc-redis
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     ports:
-      - "6379:6379"
+      - '6379:6379'
     volumes:
       - redis_data:/data
     networks:
       - bmtc-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -50,14 +50,14 @@ services:
       DOCKER_INFLUXDB_INIT_BUCKET: location-data
       DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: dev-token-change-in-production
     ports:
-      - "8086:8086"
+      - '8086:8086'
     volumes:
       - influxdb_data:/var/lib/influxdb2
       - influxdb_config:/etc/influxdb2
     networks:
       - bmtc-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8086/ping"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:8086/ping']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -70,26 +70,26 @@ services:
       - redpanda
       - start
       - --smp
-      - "1"
+      - '1'
       - --reserve-memory
-      - "0M"
+      - '0M'
       - --overprovisioned
       - --node-id
-      - "0"
+      - '0'
       - --kafka-addr
-      - "PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092"
+      - 'PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092'
       - --advertise-kafka-addr
-      - "PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092"
+      - 'PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092'
     ports:
-      - "9092:9092"
-      - "9644:9644"
-      - "29092:29092"
+      - '9092:9092'
+      - '9644:9644'
+      - '29092:29092'
     volumes:
       - redpanda_data:/var/lib/redpanda/data
     networks:
       - bmtc-network
     healthcheck:
-      test: ["CMD-SHELL", "rpk cluster info"]
+      test: ['CMD-SHELL', 'rpk cluster info']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -99,7 +99,7 @@ services:
     image: nginx:alpine
     container_name: bmtc-nginx
     ports:
-      - "8080:80"
+      - '8080:80'
     volumes:
       - ./nginx/nginx.dev.conf:/etc/nginx/nginx.conf:ro
     depends_on:
@@ -107,7 +107,7 @@ services:
     networks:
       - bmtc-network
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://localhost/health']
       interval: 10s
       timeout: 5s
       retries: 3
@@ -125,7 +125,7 @@ services:
       REDIS_URL: redis://redis:6379
       KAFKA_BROKERS: redpanda:29092
     ports:
-      - "3000:3000"
+      - '3000:3000'
     volumes:
       - ../services/api-gateway:/app
       - /app/node_modules
@@ -158,7 +158,7 @@ services:
       DATABASE_URL: postgresql://bmtc_user:bmtc_password@postgres:5432/bmtc_transit_dev
       REDIS_URL: redis://redis:6379
     ports:
-      - "3001:3001"
+      - '3001:3001'
     volumes:
       - ../services/user-service:/app
       - /app/node_modules
@@ -191,7 +191,7 @@ services:
       INFLUXDB_BUCKET: location-data
       KAFKA_BROKERS: redpanda:29092
     ports:
-      - "3002:3002"
+      - '3002:3002'
     volumes:
       - ../services/location-service:/app
       - /app/node_modules
@@ -217,7 +217,7 @@ services:
       REDIS_URL: redis://redis:6379
       KAFKA_BROKERS: redpanda:29092
     ports:
-      - "3003:3003"
+      - '3003:3003'
     volumes:
       - ../services/realtime-service:/app
       - /app/node_modules
@@ -234,7 +234,7 @@ services:
     image: prom/prometheus:latest
     container_name: bmtc-prometheus
     ports:
-      - "9090:9090"
+      - '9090:9090'
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -255,7 +255,7 @@ services:
     image: grafana/grafana:latest
     container_name: bmtc-grafana
     ports:
-      - "3001:3000"
+      - '3001:3000'
     environment:
       GF_SECURITY_ADMIN_PASSWORD: admin
     volumes:

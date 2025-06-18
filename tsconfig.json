@@ -37,10 +37,7 @@
       "@database/*": ["packages/database/src/*"]
     }
   },
-  "include": [
-    "services/**/*",
-    "packages/**/*"
-  ],
+  "include": ["services/**/*", "packages/**/*"],
   "exclude": [
     "node_modules",
     "dist",

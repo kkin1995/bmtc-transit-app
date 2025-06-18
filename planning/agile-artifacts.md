@@ -3,6 +3,7 @@
 ## Product Backlog Template
 
 ### Epic Template
+
 ```
 Epic: [Epic Name]
 Epic Owner: [Product Owner/Stakeholder]
@@ -33,6 +34,7 @@ Definition of Done:
 ```
 
 ### User Story Template
+
 ```
 User Story ID: US-XXX
 Epic: [Parent Epic]
@@ -74,6 +76,7 @@ Notes:
 ## Sprint Planning Templates
 
 ### Sprint Goal Template
+
 ```
 Sprint [Number]: [Sprint Name]
 Duration: [Start Date] - [End Date]
@@ -108,6 +111,7 @@ Key Dependencies:
 ```
 
 ### Daily Standup Template
+
 ```
 Date: [Current Date]
 Sprint: [Current Sprint]
@@ -140,10 +144,13 @@ Next Meeting: [Date and Time]
 ## Definition of Ready (DoR)
 
 ### User Story DoR Checklist
+
 A user story is ready for sprint planning when:
 
-- [ ] **Clear User Value**: Story clearly describes user value and business benefit
+- [ ] **Clear User Value**: Story clearly describes user value and business
+      benefit
 - [ ] **INVEST Criteria Met**:
+
   - Independent: Can be developed independently
   - Negotiable: Details can be discussed and refined
   - Valuable: Provides clear value to users or business
@@ -151,7 +158,8 @@ A user story is ready for sprint planning when:
   - Small: Can be completed within one sprint
   - Testable: Clear acceptance criteria allow for testing
 
-- [ ] **Acceptance Criteria Defined**: Clear, testable acceptance criteria written
+- [ ] **Acceptance Criteria Defined**: Clear, testable acceptance criteria
+      written
 - [ ] **Dependencies Identified**: All dependencies mapped and understood
 - [ ] **Technical Feasibility**: Technical approach discussed and agreed upon
 - [ ] **Design Assets Available**: UI/UX designs available if needed
@@ -159,6 +167,7 @@ A user story is ready for sprint planning when:
 - [ ] **Priority Assigned**: Product Owner has prioritized the story
 
 ### Epic DoR Checklist
+
 An epic is ready for breakdown when:
 
 - [ ] **Business Case Clear**: Business value and ROI understood
@@ -171,10 +180,12 @@ An epic is ready for breakdown when:
 ## Definition of Done (DoD)
 
 ### Story Level DoD
+
 A user story is considered done when:
 
 - [ ] **Code Complete**: All code written and committed to version control
-- [ ] **Code Review**: Code reviewed and approved by at least one other developer
+- [ ] **Code Review**: Code reviewed and approved by at least one other
+      developer
 - [ ] **Unit Tests**: Unit tests written with >80% code coverage
 - [ ] **Integration Tests**: Integration tests written and passing
 - [ ] **Acceptance Criteria**: All acceptance criteria verified and passing
@@ -188,19 +199,22 @@ A user story is considered done when:
 - [ ] **Product Owner Approval**: Story accepted by Product Owner
 
 ### Sprint Level DoD
+
 A sprint is considered done when:
 
 - [ ] **All Stories Complete**: All committed stories meet story-level DoD
 - [ ] **Sprint Goal Achieved**: Sprint goal has been met
 - [ ] **No Critical Bugs**: No critical or high-severity bugs remain
 - [ ] **Performance Targets**: Sprint performance targets achieved
-- [ ] **Security Review**: Security requirements validated for sprint deliverables
+- [ ] **Security Review**: Security requirements validated for sprint
+      deliverables
 - [ ] **Documentation Updated**: All relevant documentation updated
 - [ ] **Demo Prepared**: Sprint review demo prepared and tested
 - [ ] **Retrospective Completed**: Sprint retrospective conducted
 - [ ] **Next Sprint Planned**: Next sprint planning completed
 
 ### Release Level DoD
+
 A release is considered done when:
 
 - [ ] **All Features Complete**: All planned features implemented and tested
@@ -217,6 +231,7 @@ A release is considered done when:
 ## Estimation Guidelines
 
 ### Story Point Scale (Fibonacci)
+
 - **1 Point**: Trivial change, < 2 hours
   - Example: Update text label, fix typo
 - **2 Points**: Simple change, < 4 hours
@@ -233,6 +248,7 @@ A release is considered done when:
   - Example: Entire gamification system
 
 ### Planning Poker Guidelines
+
 1. **Present Story**: Product Owner presents story and answers questions
 2. **Discussion**: Team discusses technical approach and complexity
 3. **Private Estimation**: Each team member selects points privately
@@ -244,6 +260,7 @@ A release is considered done when:
 ## Sprint Tracking Templates
 
 ### Sprint Burndown Chart Data
+
 ```
 Day | Date | Ideal Remaining | Actual Remaining | Stories Completed
 1   | [Date] | [Points] | [Points] | [Story IDs]
@@ -253,6 +270,7 @@ Day | Date | Ideal Remaining | Actual Remaining | Stories Completed
 ```
 
 ### Velocity Tracking
+
 ```
 Sprint | Committed Points | Completed Points | Velocity | Team Capacity
 1 | [Points] | [Points] | [Points] | [Hours]
@@ -262,6 +280,7 @@ Average Velocity: [Calculate rolling average]
 ```
 
 ### Risk and Issue Tracking
+
 ```
 Risk/Issue ID: [Unique ID]
 Type: [Risk/Issue]
@@ -279,6 +298,7 @@ Date Resolved: [Date]
 ## Retrospective Templates
 
 ### Sprint Retrospective Template
+
 ```
 Sprint: [Sprint Number]
 Date: [Date]
@@ -317,6 +337,7 @@ Process Improvement Score: [1-5 scale]
 ```
 
 ### Release Retrospective Template
+
 ```
 Release: [Release Name/Version]
 Duration: [Start Date] - [End Date]
@@ -358,6 +379,7 @@ Recommendations for Next Release:
 ## Communication Artifacts
 
 ### Sprint Review Agenda Template
+
 ```
 Sprint Review - Sprint [Number]
 Date: [Date]
@@ -368,21 +390,21 @@ Agenda:
 1. Sprint Overview (5 min)
    - Sprint goal recap
    - Team capacity and velocity
-   
+
 2. Demo of Completed Features (30 min)
    - [Feature 1] - Demo by [Team member]
    - [Feature 2] - Demo by [Team member]
    - [Feature 3] - Demo by [Team member]
-   
+
 3. Sprint Metrics (10 min)
    - Burndown chart review
    - Quality metrics
    - Performance metrics
-   
+
 4. Stakeholder Feedback (10 min)
    - Questions and feedback
    - Change requests
-   
+
 5. Next Sprint Preview (5 min)
    - Upcoming sprint goal
    - Key features planned
@@ -392,6 +414,7 @@ Action Items:
 ```
 
 ### Stakeholder Communication Template
+
 ```
 Subject: Sprint [Number] Status Update - BMTC Transit App
 
@@ -427,4 +450,5 @@ Next Milestone:
 Questions or feedback? Please reach out to [Product Owner] or join our Sprint Review on [Date].
 ```
 
-This comprehensive set of Agile artifacts provides the framework for successful Scrum implementation throughout the BMTC Transit App development project.
+This comprehensive set of Agile artifacts provides the framework for successful
+Scrum implementation throughout the BMTC Transit App development project.

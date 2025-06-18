@@ -2,7 +2,10 @@
 
 ## Overview
 
-The BMTC Transit App is a crowdsourced real-time transit tracking system built on a distributed, scalable architecture. The system processes anonymous location data from mobile users to provide real-time vehicle tracking for Bengaluru's public transportation.
+The BMTC Transit App is a crowdsourced real-time transit tracking system built
+on a distributed, scalable architecture. The system processes anonymous location
+data from mobile users to provide real-time vehicle tracking for Bengaluru's
+public transportation.
 
 ## High-Level Architecture
 
@@ -110,6 +113,7 @@ The BMTC Transit App is a crowdsourced real-time transit tracking system built o
 ### Client Tier
 
 **Mobile Applications (Android/iOS)**
+
 - Native or React Native applications
 - Real-time location sharing with privacy controls
 - Offline-first architecture with local caching
@@ -120,6 +124,7 @@ The BMTC Transit App is a crowdsourced real-time transit tracking system built o
 ### API Gateway
 
 **Responsibilities:**
+
 - Single entry point for all client requests
 - Authentication and authorization
 - Rate limiting and DDoS protection
@@ -130,6 +135,7 @@ The BMTC Transit App is a crowdsourced real-time transit tracking system built o
 ### Microservices Tier
 
 **Location Processing Service**
+
 - Real-time location data ingestion and validation
 - Anonymous data processing and aggregation
 - GPS spoofing detection and filtering
@@ -137,41 +143,48 @@ The BMTC Transit App is a crowdsourced real-time transit tracking system built o
 - Speed validation and anomaly detection
 
 **User Service**
+
 - User registration and authentication
 - Profile management and preferences
 - Gamification system (points, achievements, leaderboards)
 - Privacy settings and data controls
 
 **Route Service**
+
 - BMTC route definitions and variants
 - Bus stop and Metro station data
 - Schedule information (for cold start)
 - Route geometry and spatial data
 
 **Trip Service**
+
 - Trip planning and routing algorithms
 - Real-time ETA calculations
 - Navigation assistance
 - Alternative route suggestions
 
 **Reporting Service**
+
 - Crowdsourced service quality reports
 - Issue tracking and aggregation
 - Crowding level reports
 - Service disruption notifications
 
 **ML/Analytics Service**
+
 - Data validation and quality scoring
 - Anomaly detection algorithms
 - Predictive analytics for ETAs
 - Usage pattern analysis
 
 **Notification Service**
+
 - Push notifications for mobile apps
 - Real-time alerts and updates
 - User engagement messaging
 
 **Real-time Stream Processing**
+
 - Apache Kafka or RabbitMQ for message queuing
 - Stream processing for real-time data
 - Event sourcing for audit trails
@@ -180,6 +193,7 @@ The BMTC Transit App is a crowdsourced real-time transit tracking system built o
 ### Data Tier
 
 **Primary Database (PostgreSQL)**
+
 - User accounts and authentication data
 - Route definitions and stop information
 - Gamification data and leaderboards
@@ -187,12 +201,14 @@ The BMTC Transit App is a crowdsourced real-time transit tracking system built o
 - System configuration and metadata
 
 **Time-Series Database (InfluxDB)**
+
 - Real-time location data (24-hour retention)
 - Vehicle movement patterns
 - Performance metrics and system monitoring
 - Usage analytics and statistics
 
 **Geospatial Database (PostGIS)**
+
 - Route geometries and spatial indexes
 - Stop locations with proximity searches
 - Geofencing for route validation
@@ -201,6 +217,7 @@ The BMTC Transit App is a crowdsourced real-time transit tracking system built o
 ## Data Flow
 
 ### Location Sharing Flow
+
 1. User activates location sharing in mobile app
 2. App validates user is on selected route
 3. GPS coordinates sent to Location Processing Service
@@ -209,6 +226,7 @@ The BMTC Transit App is a crowdsourced real-time transit tracking system built o
 6. Other users receive updates via WebSocket connections
 
 ### Real-time Display Flow
+
 1. Mobile app subscribes to route-specific WebSocket channels
 2. Location Processing Service publishes validated location updates
 3. Real-time Stream Processing distributes to subscribed clients
@@ -229,4 +247,5 @@ The BMTC Transit App is a crowdsourced real-time transit tracking system built o
 - **Encryption**: TLS 1.3 for all communications
 - **Authentication**: JWT tokens with refresh mechanism
 - **Data retention**: Automatic deletion of location data after 24 hours
-- **Privacy controls**: User-controlled location sharing with granular permissions
+- **Privacy controls**: User-controlled location sharing with granular
+  permissions

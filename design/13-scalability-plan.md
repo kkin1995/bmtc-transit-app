@@ -2,11 +2,15 @@
 
 ## Overview
 
-The scalability architecture is designed to handle the BMTC Transit App's target load of 10,000+ concurrent users with 100+ contributors per route during peak hours. This design ensures horizontal scalability, automatic resource management, and performance optimization across all system components.
+The scalability architecture is designed to handle the BMTC Transit App's target
+load of 10,000+ concurrent users with 100+ contributors per route during peak
+hours. This design ensures horizontal scalability, automatic resource
+management, and performance optimization across all system components.
 
 ## Scalability Requirements
 
 ### Target Metrics (FR-8.2.1, FR-8.2.2, FR-8.2.3, FR-8.2.4)
+
 - **Concurrent Users**: 10,000+ active users across Bengaluru
 - **Contributors per Route**: 100+ simultaneous location sharers per major route
 - **Database Scale**: Support for 1 million+ registered users
@@ -161,38 +165,38 @@ spec:
   minReplicas: 3
   maxReplicas: 20
   metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 80
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 85
-  - type: Pods
-    pods:
-      metric:
-        name: kafka_lag_sum
-      target:
-        type: AverageValue
-        averageValue: "30"
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 85
+    - type: Pods
+      pods:
+        metric:
+          name: kafka_lag_sum
+        target:
+          type: AverageValue
+          averageValue: '30'
   behavior:
     scaleUp:
       stabilizationWindowSeconds: 60
       policies:
-      - type: Percent
-        value: 100
-        periodSeconds: 15
+        - type: Percent
+          value: 100
+          periodSeconds: 15
     scaleDown:
       stabilizationWindowSeconds: 300
       policies:
-      - type: Percent
-        value: 10
-        periodSeconds: 60
+        - type: Percent
+          value: 10
+          periodSeconds: 60
 ```
 
 ### 2. Vertical Pod Autoscaler (VPA)
@@ -209,17 +213,17 @@ spec:
     kind: Deployment
     name: realtime-service
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: 'Auto'
   resourcePolicy:
     containerPolicies:
-    - containerName: realtime-service
-      maxAllowed:
-        cpu: 2
-        memory: 4Gi
-      minAllowed:
-        cpu: 100m
-        memory: 256Mi
-      controlledResources: ["cpu", "memory"]
+      - containerName: realtime-service
+        maxAllowed:
+          cpu: 2
+          memory: 4Gi
+        minAllowed:
+          cpu: 100m
+          memory: 256Mi
+        controlledResources: ['cpu', 'memory']
 ```
 
 ### 3. Custom Autoscaling Logic
@@ -252,7 +256,7 @@ class AutoScalingManager implements AutoScalingManager {
   private k8sApi: KubernetesApi;
   private metricsCollector: MetricsCollector;
   private predictionModel: CapacityPredictionModel;
-  
+
   async monitorSystemLoad(): Promise<void> {
     setInterval(async () => {
       const metrics = await this.collectSystemMetrics();
@@ -260,21 +264,24 @@ class AutoScalingManager implements AutoScalingManager {
       await this.executeScalingDecisions(decisions);
     }, 30000); // Check every 30 seconds
   }
-  
+
   async scaleServices(metrics: SystemMetrics): Promise<ScalingDecision[]> {
     const decisions: ScalingDecision[] = [];
-    
+
     // Location service scaling
     if (metrics.locationUpdatesPerSecond > 8000) {
       decisions.push({
         serviceName: 'location-service',
         action: 'scale_up',
-        targetReplicas: await this.calculateOptimalReplicas('location-service', metrics),
+        targetReplicas: await this.calculateOptimalReplicas(
+          'location-service',
+          metrics
+        ),
         reason: 'High location update rate detected',
-        confidence: 0.9
+        confidence: 0.9,
       });
     }
-    
+
     // Real-time service scaling based on WebSocket connections
     if (metrics.activeWebSocketConnections > 7500) {
       decisions.push({
@@ -282,43 +289,51 @@ class AutoScalingManager implements AutoScalingManager {
         action: 'scale_up',
         targetReplicas: Math.ceil(metrics.activeWebSocketConnections / 2500),
         reason: 'High WebSocket connection count',
-        confidence: 0.85
+        confidence: 0.85,
       });
     }
-    
+
     // Database connection scaling
     if (metrics.databaseConnectionCount > 800) {
       await this.scaleConnectionPools();
     }
-    
+
     return decisions;
   }
-  
+
   async predictCapacityNeeds(timeWindow: number): Promise<CapacityPrediction> {
     // Use historical data and ML model for prediction
     const historicalMetrics = await this.getHistoricalMetrics(timeWindow);
     const prediction = await this.predictionModel.predict(historicalMetrics);
-    
+
     return {
       predictedPeakUsers: prediction.peakUsers,
       predictedLocationUpdates: prediction.locationUpdates,
       recommendedScaling: prediction.recommendedCapacity,
       confidence: prediction.confidence,
-      timeToScale: prediction.timeToScale
+      timeToScale: prediction.timeToScale,
     };
   }
-  
-  private async calculateOptimalReplicas(serviceName: string, metrics: SystemMetrics): Promise<number> {
+
+  private async calculateOptimalReplicas(
+    serviceName: string,
+    metrics: SystemMetrics
+  ): Promise<number> {
     const currentReplicas = await this.getCurrentReplicaCount(serviceName);
     const targetCPU = 70; // Target 70% CPU utilization
     const currentCPU = await this.getCurrentCPUUtilization(serviceName);
-    
+
     // Calculate based on CPU utilization
-    const cpuBasedReplicas = Math.ceil(currentReplicas * (currentCPU / targetCPU));
-    
+    const cpuBasedReplicas = Math.ceil(
+      currentReplicas * (currentCPU / targetCPU)
+    );
+
     // Calculate based on throughput requirements
-    const throughputBasedReplicas = this.calculateThroughputBasedReplicas(serviceName, metrics);
-    
+    const throughputBasedReplicas = this.calculateThroughputBasedReplicas(
+      serviceName,
+      metrics
+    );
+
     // Take the maximum to ensure capacity
     return Math.min(20, Math.max(cpuBasedReplicas, throughputBasedReplicas, 3));
   }
@@ -341,45 +356,45 @@ class PostgreSQLScalingManager implements DatabaseScalingStrategy {
   private primaryDB: PostgreSQLConnection;
   private readReplicas: PostgreSQLConnection[];
   private shardManager: ShardManager;
-  
+
   async setupReadReplicas(): Promise<void> {
     // Create read replicas for scaling read operations
     const replicaConfigs = [
       {
         region: 'ap-south-1a',
         instanceClass: 'db.r5.large',
-        purpose: 'route_queries'
+        purpose: 'route_queries',
       },
       {
-        region: 'ap-south-1b', 
+        region: 'ap-south-1b',
         instanceClass: 'db.r5.large',
-        purpose: 'user_queries'
-      }
+        purpose: 'user_queries',
+      },
     ];
-    
+
     for (const config of replicaConfigs) {
       await this.createReadReplica(config);
     }
-    
+
     // Setup read-write splitting
     await this.configureReadWriteSplitting();
   }
-  
+
   async implementSharding(): Promise<void> {
     // Implement route-based sharding
     const shardingStrategy = {
       shardKey: 'route_id',
       shardCount: 4,
       hashFunction: 'consistent_hash',
-      rebalancingStrategy: 'gradual'
+      rebalancingStrategy: 'gradual',
     };
-    
+
     await this.shardManager.setupShards(shardingStrategy);
-    
+
     // Route queries to appropriate shards
     await this.configureShardRouting();
   }
-  
+
   private async configureReadWriteSplitting(): Promise<void> {
     // Configure PgBouncer for connection pooling and read-write splitting
     const pgBouncerConfig = `
@@ -393,7 +408,7 @@ class PostgreSQLScalingManager implements DatabaseScalingStrategy {
       default_pool_size = 50
       max_db_connections = 100
     `;
-    
+
     await this.deployPgBouncer(pgBouncerConfig);
   }
 }
@@ -404,7 +419,7 @@ class PostgreSQLScalingManager implements DatabaseScalingStrategy {
 ```typescript
 class RedisClusterManager {
   private cluster: RedisCluster;
-  
+
   async setupRedisCluster(): Promise<void> {
     const clusterConfig = {
       nodes: [
@@ -413,35 +428,35 @@ class RedisClusterManager {
         { host: 'redis-3.cluster', port: 6379 },
         { host: 'redis-4.cluster', port: 6379 },
         { host: 'redis-5.cluster', port: 6379 },
-        { host: 'redis-6.cluster', port: 6379 }
+        { host: 'redis-6.cluster', port: 6379 },
       ],
       enableOfflineQueue: false,
       retryDelayOnFailover: 100,
       enableReadyCheck: true,
-      maxRetriesPerRequest: 3
+      maxRetriesPerRequest: 3,
     };
-    
+
     this.cluster = new RedisCluster(clusterConfig);
-    
+
     // Setup data partitioning strategy
     await this.configureDataPartitioning();
   }
-  
+
   private async configureDataPartitioning(): Promise<void> {
     // Partition strategy for different data types
     const partitioningRules = {
       'user_sessions:*': 'hash_slot',
       'vehicle_locations:*': 'route_based',
       'real_time_cache:*': 'geographic',
-      'leaderboards:*': 'time_based'
+      'leaderboards:*': 'time_based',
     };
-    
+
     await this.applyPartitioningRules(partitioningRules);
   }
-  
+
   async scaleRedisCluster(targetNodes: number): Promise<void> {
     const currentNodes = await this.cluster.nodes();
-    
+
     if (targetNodes > currentNodes.length) {
       // Scale up
       await this.addRedisNodes(targetNodes - currentNodes.length);
@@ -467,7 +482,7 @@ interface ConnectionPoolManager {
 
 class DatabaseConnectionPoolManager implements ConnectionPoolManager {
   private pools: Map<string, ConnectionPool>;
-  
+
   async optimizeDatabasePools(): Promise<void> {
     // PostgreSQL connection pool optimization
     const pgPoolConfig = {
@@ -475,34 +490,34 @@ class DatabaseConnectionPoolManager implements ConnectionPoolManager {
       user: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
       database: process.env.DB_NAME,
-      min: 5,           // Minimum connections
-      max: 50,          // Maximum connections per service instance
+      min: 5, // Minimum connections
+      max: 50, // Maximum connections per service instance
       acquireTimeoutMillis: 60000,
       createTimeoutMillis: 30000,
       destroyTimeoutMillis: 5000,
       idleTimeoutMillis: 30000,
       reapIntervalMillis: 1000,
-      createRetryIntervalMillis: 200
+      createRetryIntervalMillis: 200,
     };
-    
+
     this.pools.set('postgresql', new Pool(pgPoolConfig));
-    
+
     // Redis connection pool
     const redisPoolConfig = {
       max: 20,
       min: 5,
       acquireTimeoutMillis: 30000,
       evictionRunIntervalMillis: 60000,
-      idleTimeoutMillis: 300000
+      idleTimeoutMillis: 300000,
     };
-    
+
     this.pools.set('redis', createRedisPool(redisPoolConfig));
   }
-  
+
   async adjustPoolSizes(metrics: SystemMetrics): Promise<void> {
     // Dynamic pool size adjustment based on load
     const pgPool = this.pools.get('postgresql');
-    
+
     if (metrics.databaseConnectionCount > 40) {
       // Increase pool size
       await pgPool.setMaxSize(Math.min(80, pgPool.getMaxSize() + 10));
@@ -520,18 +535,18 @@ class DatabaseConnectionPoolManager implements ConnectionPoolManager {
 class QueryOptimizationManager {
   private queryCache: Map<string, QueryResult>;
   private slowQueryThreshold: number = 1000; // 1 second
-  
+
   async optimizeQueries(): Promise<void> {
     // Implement query result caching
     await this.setupQueryCache();
-    
+
     // Monitor and optimize slow queries
     await this.monitorSlowQueries();
-    
+
     // Setup materialized views for complex aggregations
     await this.createMaterializedViews();
   }
-  
+
   private async createMaterializedViews(): Promise<void> {
     // Real-time route statistics
     await this.db.query(`
@@ -548,11 +563,11 @@ class QueryOptimizationManager {
       
       CREATE UNIQUE INDEX idx_mv_route_stats_route_id ON mv_route_stats(route_id);
     `);
-    
+
     // Setup automatic refresh
     await this.scheduleViewRefresh('mv_route_stats', 60000); // Refresh every minute
   }
-  
+
   async optimizeLocationQueries(): Promise<void> {
     // Create specialized indexes for location queries
     await this.db.query(`
@@ -596,50 +611,52 @@ class CapacityPlanner implements CapacityPlanner {
     // Base calculations for 10,000 concurrent users
     const baseUsers = 10000;
     const scaleFactor = targetUsers / baseUsers;
-    
+
     return {
       compute: {
         cpuCores: Math.ceil(80 * scaleFactor), // 80 cores for 10k users
         memory: Math.ceil(160 * scaleFactor), // 160 GB RAM
-        instances: Math.ceil(20 * scaleFactor) // 20 service instances
+        instances: Math.ceil(20 * scaleFactor), // 20 service instances
       },
       storage: {
         ssdStorage: Math.ceil(500 * scaleFactor), // 500 GB SSD
         objectStorage: Math.ceil(1000 * scaleFactor), // 1 TB object storage
-        backupStorage: Math.ceil(2000 * scaleFactor) // 2 TB backup
+        backupStorage: Math.ceil(2000 * scaleFactor), // 2 TB backup
       },
       network: {
         bandwidth: Math.ceil(10 * scaleFactor), // 10 Gbps
         dataTransfer: Math.ceil(50 * scaleFactor), // 50 TB/month
-        cdnRequests: Math.ceil(10000000 * scaleFactor) // 10M requests/month
+        cdnRequests: Math.ceil(10000000 * scaleFactor), // 10M requests/month
       },
       database: {
         primaryInstances: Math.min(1, scaleFactor), // Always 1 primary
         readReplicas: Math.ceil(2 * scaleFactor), // 2 read replicas base
         connectionLimit: Math.ceil(1000 * scaleFactor), // 1000 connections
-        iops: Math.ceil(5000 * scaleFactor) // 5000 IOPS
-      }
+        iops: Math.ceil(5000 * scaleFactor), // 5000 IOPS
+      },
     };
   }
-  
+
   estimateCosts(requirements: ResourceRequirements): CostEstimate {
     // AWS pricing estimates (monthly)
     const pricing = {
       ec2PerCore: 50, // $50/month per core
-      ramPerGB: 5,    // $5/month per GB
-      ssdPerGB: 0.1,  // $0.1/month per GB
+      ramPerGB: 5, // $5/month per GB
+      ssdPerGB: 0.1, // $0.1/month per GB
       bandwidthPerGB: 0.09, // $0.09 per GB transfer
-      rdsPerCore: 80  // $80/month per RDS core
+      rdsPerCore: 80, // $80/month per RDS core
     };
-    
+
     return {
-      compute: requirements.compute.cpuCores * pricing.ec2PerCore + 
-               requirements.compute.memory * pricing.ramPerGB,
+      compute:
+        requirements.compute.cpuCores * pricing.ec2PerCore +
+        requirements.compute.memory * pricing.ramPerGB,
       storage: requirements.storage.ssdStorage * pricing.ssdPerGB,
       network: requirements.network.dataTransfer * pricing.bandwidthPerGB,
-      database: requirements.database.primaryInstances * 4 * pricing.rdsPerCore +
-                requirements.database.readReplicas * 2 * pricing.rdsPerCore,
-      total: 0 // Calculated as sum of above
+      database:
+        requirements.database.primaryInstances * 4 * pricing.rdsPerCore +
+        requirements.database.readReplicas * 2 * pricing.rdsPerCore,
+      total: 0, // Calculated as sum of above
     };
   }
 }
@@ -694,23 +711,26 @@ class LoadTestingManager implements LoadTestingManager {
         testAPIEndpoints();
       }
     `;
-    
+
     return await this.executeK6Test(k6Script);
   }
-  
+
   async simulatePeakLoad(): Promise<void> {
     const peakScenario: LoadTestScenario = {
       concurrentUsers: 15000, // 150% of target
-      rampUpTime: 300,        // 5 minutes ramp up
-      testDuration: 1800,     // 30 minutes peak
+      rampUpTime: 300, // 5 minutes ramp up
+      testDuration: 1800, // 30 minutes peak
       locationUpdateFrequency: 5, // Every 5 seconds
-      apiRequestRate: 100     // 100 req/sec per user
+      apiRequestRate: 100, // 100 req/sec per user
     };
-    
+
     const result = await this.executeLoadTest(peakScenario);
     await this.analyzeResults(result);
   }
 }
 ```
 
-This comprehensive scalability plan ensures the BMTC Transit App can handle its target load while maintaining performance and reliability standards. The architecture supports horizontal scaling, automatic resource management, and cost-effective capacity planning.
+This comprehensive scalability plan ensures the BMTC Transit App can handle its
+target load while maintaining performance and reliability standards. The
+architecture supports horizontal scaling, automatic resource management, and
+cost-effective capacity planning.

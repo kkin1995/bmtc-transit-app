@@ -2,11 +2,15 @@
 
 ## Overview
 
-The privacy-preserving data architecture ensures complete user privacy while enabling crowdsourced transit tracking. This system implements privacy-by-design principles, immediate data anonymization, and strict data retention policies to protect user privacy without compromising system functionality.
+The privacy-preserving data architecture ensures complete user privacy while
+enabling crowdsourced transit tracking. This system implements privacy-by-design
+principles, immediate data anonymization, and strict data retention policies to
+protect user privacy without compromising system functionality.
 
 ## Privacy Principles
 
 ### 1. Privacy by Design
+
 - **Proactive not Reactive**: Privacy protection built into system design
 - **Privacy as the Default**: Maximum privacy settings enabled by default
 - **Full Functionality**: No trade-off between privacy and functionality
@@ -15,6 +19,7 @@ The privacy-preserving data architecture ensures complete user privacy while ena
 - **Respect for User Privacy**: User control over personal data
 
 ### 2. Data Minimization
+
 - Collect only essential data for transit tracking
 - Immediate anonymization of all collected data
 - No storage of personally identifiable information
@@ -170,20 +175,20 @@ class PIIRemovalService implements PIIRemovalService {
     return {
       // Remove all user identifiers
       anonymousSessionId: this.generateAnonymousSessionId(rawData.userContext),
-      
+
       // Keep only essential location data
       latitude: this.roundCoordinate(rawData.latitude, 6), // ±5m precision
       longitude: this.roundCoordinate(rawData.longitude, 6),
       timestamp: this.bucketTimestamp(rawData.timestamp, 30), // 30-second buckets
-      
+
       // Anonymized route context
       routeId: rawData.routeId, // Routes are public information
       direction: rawData.direction,
-      
+
       // Movement data without personal patterns
       speed: Math.round(rawData.speed),
       heading: Math.round(rawData.heading / 5) * 5, // 5-degree buckets
-      
+
       // Remove all PII
       // userId: REMOVED
       // deviceId: REMOVED
@@ -192,21 +197,30 @@ class PIIRemovalService implements PIIRemovalService {
       // authToken: REMOVED
     };
   }
-  
+
   generateAnonymousSessionId(userContext: UserContext): string {
     // Generate session ID without revealing user identity
     const sessionSalt = process.env.SESSION_SALT;
     const sessionData = `${userContext.temporaryId}-${Date.now()}-${Math.random()}`;
-    return crypto.createHash('sha256').update(sessionData + sessionSalt).digest('hex');
+    return crypto
+      .createHash('sha256')
+      .update(sessionData + sessionSalt)
+      .digest('hex');
   }
-  
+
   private roundCoordinate(coordinate: number, decimalPlaces: number): number {
     const multiplier = Math.pow(10, decimalPlaces);
     return Math.round(coordinate * multiplier) / multiplier;
   }
-  
-  private bucketTimestamp(timestamp: number, bucketSizeSeconds: number): number {
-    return Math.floor(timestamp / (bucketSizeSeconds * 1000)) * (bucketSizeSeconds * 1000);
+
+  private bucketTimestamp(
+    timestamp: number,
+    bucketSizeSeconds: number
+  ): number {
+    return (
+      Math.floor(timestamp / (bucketSizeSeconds * 1000)) *
+      (bucketSizeSeconds * 1000)
+    );
   }
 }
 ```
@@ -215,36 +229,42 @@ class PIIRemovalService implements PIIRemovalService {
 
 ```typescript
 interface LocationObfuscationService {
-  obfuscateLocation(location: LocationPoint, privacyLevel: PrivacyLevel): ObfuscatedLocation;
+  obfuscateLocation(
+    location: LocationPoint,
+    privacyLevel: PrivacyLevel
+  ): ObfuscatedLocation;
   addNoise(coordinate: number, noiseLevel: number): number;
   applyGeoMasking(location: LocationPoint, maskRadius: number): LocationPoint;
 }
 
 enum PrivacyLevel {
-  HIGH = 'high',     // ±50m accuracy
+  HIGH = 'high', // ±50m accuracy
   MEDIUM = 'medium', // ±20m accuracy
-  LOW = 'low'        // ±5m accuracy
+  LOW = 'low', // ±5m accuracy
 }
 
 class LocationObfuscationService implements LocationObfuscationService {
-  obfuscateLocation(location: LocationPoint, privacyLevel: PrivacyLevel): ObfuscatedLocation {
+  obfuscateLocation(
+    location: LocationPoint,
+    privacyLevel: PrivacyLevel
+  ): ObfuscatedLocation {
     const noiseLevel = this.getNoiseLevel(privacyLevel);
-    
+
     return {
       latitude: this.addNoise(location.latitude, noiseLevel),
       longitude: this.addNoise(location.longitude, noiseLevel),
       accuracy: Math.max(location.accuracy, this.getMinAccuracy(privacyLevel)),
       privacyLevel,
-      obfuscationApplied: true
+      obfuscationApplied: true,
     };
   }
-  
+
   addNoise(coordinate: number, noiseLevel: number): number {
     // Add Gaussian noise to coordinate
     const noise = this.generateGaussianNoise(0, noiseLevel);
     return coordinate + noise;
   }
-  
+
   private generateGaussianNoise(mean: number, stdDev: number): number {
     // Box-Muller transformation for Gaussian noise
     const u1 = Math.random();
@@ -252,13 +272,17 @@ class LocationObfuscationService implements LocationObfuscationService {
     const z0 = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
     return z0 * stdDev + mean;
   }
-  
+
   private getNoiseLevel(privacyLevel: PrivacyLevel): number {
     switch (privacyLevel) {
-      case PrivacyLevel.HIGH: return 0.0005; // ~50m
-      case PrivacyLevel.MEDIUM: return 0.0002; // ~20m
-      case PrivacyLevel.LOW: return 0.00005; // ~5m
-      default: return 0.0002;
+      case PrivacyLevel.HIGH:
+        return 0.0005; // ~50m
+      case PrivacyLevel.MEDIUM:
+        return 0.0002; // ~20m
+      case PrivacyLevel.LOW:
+        return 0.00005; // ~5m
+      default:
+        return 0.0002;
     }
   }
 }
@@ -281,44 +305,47 @@ class DifferentialPrivacyService implements DifferentialPrivacyService {
     const noise = -scale * Math.sign(u) * Math.log(1 - 2 * Math.abs(u));
     return value + noise;
   }
-  
+
   applyKAnonymity(dataset: LocationData[], k: number): LocationData[] {
     // Ensure each location has at least k contributors
     const groupedData = this.groupByLocation(dataset, 100); // 100m radius groups
-    
+
     return groupedData
       .filter(group => group.length >= k)
       .flat()
       .map(data => ({
         ...data,
-        contributorCount: Math.max(data.contributorCount, k)
+        contributorCount: Math.max(data.contributorCount, k),
       }));
   }
-  
-  private groupByLocation(dataset: LocationData[], radiusMeters: number): LocationData[][] {
+
+  private groupByLocation(
+    dataset: LocationData[],
+    radiusMeters: number
+  ): LocationData[][] {
     // Group locations within specified radius
     const groups: LocationData[][] = [];
     const processed = new Set<number>();
-    
+
     dataset.forEach((location, index) => {
       if (processed.has(index)) return;
-      
+
       const group = [location];
       processed.add(index);
-      
+
       for (let i = index + 1; i < dataset.length; i++) {
         if (processed.has(i)) continue;
-        
+
         const distance = this.calculateDistance(location, dataset[i]);
         if (distance <= radiusMeters) {
           group.push(dataset[i]);
           processed.add(i);
         }
       }
-      
+
       groups.push(group);
     });
-    
+
     return groups;
   }
 }
@@ -330,7 +357,11 @@ class DifferentialPrivacyService implements DifferentialPrivacyService {
 
 ```typescript
 interface ConsentManagementService {
-  recordConsent(userId: string, consentType: ConsentType, granted: boolean): Promise<void>;
+  recordConsent(
+    userId: string,
+    consentType: ConsentType,
+    granted: boolean
+  ): Promise<void>;
   checkConsent(userId: string, consentType: ConsentType): Promise<boolean>;
   revokeConsent(userId: string, consentType: ConsentType): Promise<void>;
   getConsentHistory(userId: string): Promise<ConsentRecord[]>;
@@ -340,7 +371,7 @@ enum ConsentType {
   LOCATION_SHARING = 'location_sharing',
   DATA_ANALYTICS = 'data_analytics',
   PERFORMANCE_MONITORING = 'performance_monitoring',
-  MARKETING_COMMUNICATIONS = 'marketing_communications'
+  MARKETING_COMMUNICATIONS = 'marketing_communications',
 }
 
 interface ConsentRecord {
@@ -353,25 +384,32 @@ interface ConsentRecord {
 }
 
 class ConsentManagementService implements ConsentManagementService {
-  async recordConsent(userId: string, consentType: ConsentType, granted: boolean): Promise<void> {
+  async recordConsent(
+    userId: string,
+    consentType: ConsentType,
+    granted: boolean
+  ): Promise<void> {
     const consent: ConsentRecord = {
       userId,
       consentType,
       granted,
       timestamp: new Date(),
       version: await this.getCurrentPrivacyPolicyVersion(),
-      method: 'explicit'
+      method: 'explicit',
     };
-    
+
     await this.db.consentRecords.create(consent);
-    
+
     // Trigger data processing changes based on consent
     if (!granted) {
       await this.handleConsentRevocation(userId, consentType);
     }
   }
-  
-  private async handleConsentRevocation(userId: string, consentType: ConsentType): Promise<void> {
+
+  private async handleConsentRevocation(
+    userId: string,
+    consentType: ConsentType
+  ): Promise<void> {
     switch (consentType) {
       case ConsentType.LOCATION_SHARING:
         await this.stopLocationProcessing(userId);
@@ -398,50 +436,56 @@ interface PrivacySettings {
 }
 
 interface PrivacyControlService {
-  updatePrivacySettings(userId: string, settings: Partial<PrivacySettings>): Promise<void>;
+  updatePrivacySettings(
+    userId: string,
+    settings: Partial<PrivacySettings>
+  ): Promise<void>;
   getPrivacySettings(userId: string): Promise<PrivacySettings>;
   exportUserData(userId: string): Promise<UserDataExport>;
   deleteUserData(userId: string): Promise<DeletionResult>;
 }
 
 class PrivacyControlService implements PrivacyControlService {
-  async updatePrivacySettings(userId: string, settings: Partial<PrivacySettings>): Promise<void> {
+  async updatePrivacySettings(
+    userId: string,
+    settings: Partial<PrivacySettings>
+  ): Promise<void> {
     const currentSettings = await this.getPrivacySettings(userId);
     const updatedSettings = { ...currentSettings, ...settings };
-    
+
     // Validate settings
     this.validatePrivacySettings(updatedSettings);
-    
+
     // Apply changes immediately
     await this.applyPrivacyChanges(userId, currentSettings, updatedSettings);
-    
+
     // Save updated settings
     await this.db.userPrivacySettings.upsert({
       userId,
       settings: updatedSettings,
-      updatedAt: new Date()
+      updatedAt: new Date(),
     });
   }
-  
+
   async deleteUserData(userId: string): Promise<DeletionResult> {
     const deletionRequest: DeletionRequest = {
       userId,
       requestedAt: new Date(),
       status: 'processing',
-      estimatedCompletion: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+      estimatedCompletion: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
     };
-    
+
     // Immediate actions
     await this.disableUserAccount(userId);
     await this.revokeAllConsents(userId);
-    
+
     // Schedule comprehensive data deletion
     await this.scheduleDataDeletion(userId);
-    
+
     return {
       requestId: deletionRequest.id,
       status: 'accepted',
-      estimatedCompletion: deletionRequest.estimatedCompletion
+      estimatedCompletion: deletionRequest.estimatedCompletion,
     };
   }
 }
@@ -454,7 +498,10 @@ class PrivacyControlService implements PrivacyControlService {
 ```typescript
 interface DataRetentionService {
   enforceRetentionPolicies(): Promise<void>;
-  scheduleDataExpiration(dataType: DataType, retentionPeriod: number): Promise<void>;
+  scheduleDataExpiration(
+    dataType: DataType,
+    retentionPeriod: number
+  ): Promise<void>;
   purgeExpiredData(): Promise<PurgeResult>;
 }
 
@@ -470,26 +517,26 @@ const RETENTION_POLICIES: RetentionPolicy[] = [
     dataType: 'location_data',
     retentionPeriodHours: 24, // FR-7.2.1
     purgeMethod: 'hard_delete',
-    backupRetention: 0
+    backupRetention: 0,
   },
   {
     dataType: 'user_sessions',
     retentionPeriodHours: 12,
     purgeMethod: 'hard_delete',
-    backupRetention: 0
+    backupRetention: 0,
   },
   {
     dataType: 'service_reports',
     retentionPeriodHours: 720, // 30 days - FR-7.2.4
     purgeMethod: 'soft_delete',
-    backupRetention: 7
+    backupRetention: 7,
   },
   {
     dataType: 'analytics_data',
     retentionPeriodHours: 8760, // 1 year
     purgeMethod: 'anonymize',
-    backupRetention: 30
-  }
+    backupRetention: 30,
+  },
 ];
 
 class DataRetentionService implements DataRetentionService {
@@ -499,10 +546,12 @@ class DataRetentionService implements DataRetentionService {
       await this.sleep(1000); // Prevent system overload
     }
   }
-  
+
   private async applyRetentionPolicy(policy: RetentionPolicy): Promise<void> {
-    const cutoffTime = new Date(Date.now() - policy.retentionPeriodHours * 60 * 60 * 1000);
-    
+    const cutoffTime = new Date(
+      Date.now() - policy.retentionPeriodHours * 60 * 60 * 1000
+    );
+
     switch (policy.purgeMethod) {
       case 'hard_delete':
         await this.hardDeleteData(policy.dataType, cutoffTime);
@@ -515,8 +564,11 @@ class DataRetentionService implements DataRetentionService {
         break;
     }
   }
-  
-  private async hardDeleteData(dataType: DataType, cutoffTime: Date): Promise<void> {
+
+  private async hardDeleteData(
+    dataType: DataType,
+    cutoffTime: Date
+  ): Promise<void> {
     switch (dataType) {
       case 'location_data':
         // Delete from InfluxDB
@@ -524,7 +576,7 @@ class DataRetentionService implements DataRetentionService {
           DELETE FROM location_data 
           WHERE time < '${cutoffTime.toISOString()}'
         `);
-        
+
         // Delete from Redis cache
         await this.redis.eval(`
           local keys = redis.call('keys', 'location:*')
@@ -545,65 +597,92 @@ class DataRetentionService implements DataRetentionService {
 
 ```typescript
 interface SecureDataDeletionService {
-  secureDelete(dataIdentifier: string, dataType: DataType): Promise<DeletionResult>;
+  secureDelete(
+    dataIdentifier: string,
+    dataType: DataType
+  ): Promise<DeletionResult>;
   verifyDeletion(dataIdentifier: string): Promise<boolean>;
-  generateDeletionCertificate(deletionRequest: DeletionRequest): Promise<DeletionCertificate>;
+  generateDeletionCertificate(
+    deletionRequest: DeletionRequest
+  ): Promise<DeletionCertificate>;
 }
 
 class SecureDataDeletionService implements SecureDataDeletionService {
-  async secureDelete(dataIdentifier: string, dataType: DataType): Promise<DeletionResult> {
+  async secureDelete(
+    dataIdentifier: string,
+    dataType: DataType
+  ): Promise<DeletionResult> {
     const deletionSteps: DeletionStep[] = [];
-    
+
     try {
       // Step 1: Primary database deletion
       await this.deletePrimaryData(dataIdentifier, dataType);
-      deletionSteps.push({ step: 'primary_db', status: 'completed', timestamp: new Date() });
-      
+      deletionSteps.push({
+        step: 'primary_db',
+        status: 'completed',
+        timestamp: new Date(),
+      });
+
       // Step 2: Cache deletion
       await this.deleteCachedData(dataIdentifier, dataType);
-      deletionSteps.push({ step: 'cache', status: 'completed', timestamp: new Date() });
-      
+      deletionSteps.push({
+        step: 'cache',
+        status: 'completed',
+        timestamp: new Date(),
+      });
+
       // Step 3: Backup deletion
       await this.deleteBackupData(dataIdentifier, dataType);
-      deletionSteps.push({ step: 'backups', status: 'completed', timestamp: new Date() });
-      
+      deletionSteps.push({
+        step: 'backups',
+        status: 'completed',
+        timestamp: new Date(),
+      });
+
       // Step 4: Log anonymization
       await this.anonymizeLogData(dataIdentifier);
-      deletionSteps.push({ step: 'logs', status: 'completed', timestamp: new Date() });
-      
+      deletionSteps.push({
+        step: 'logs',
+        status: 'completed',
+        timestamp: new Date(),
+      });
+
       // Step 5: Verification
-      const verificationResult = await this.verifyCompleteDeletion(dataIdentifier);
-      
+      const verificationResult =
+        await this.verifyCompleteDeletion(dataIdentifier);
+
       return {
         success: verificationResult.isComplete,
         steps: deletionSteps,
         verificationResult,
-        completedAt: new Date()
+        completedAt: new Date(),
       };
     } catch (error) {
       return {
         success: false,
         steps: deletionSteps,
         error: error.message,
-        completedAt: new Date()
+        completedAt: new Date(),
       };
     }
   }
-  
-  private async verifyCompleteDeletion(dataIdentifier: string): Promise<VerificationResult> {
+
+  private async verifyCompleteDeletion(
+    dataIdentifier: string
+  ): Promise<VerificationResult> {
     const checks = [
       this.checkPrimaryDatabase(dataIdentifier),
       this.checkCacheStorage(dataIdentifier),
       this.checkBackupSystems(dataIdentifier),
-      this.checkLogFiles(dataIdentifier)
+      this.checkLogFiles(dataIdentifier),
     ];
-    
+
     const results = await Promise.all(checks);
-    
+
     return {
       isComplete: results.every(result => !result.foundData),
       checks: results,
-      verifiedAt: new Date()
+      verifiedAt: new Date(),
     };
   }
 }
@@ -647,15 +726,15 @@ class PrivacyAuditService implements PrivacyAuditService {
         dataMinimized: operation.dataMinimized,
         consentProvided: operation.consentProvided,
         retentionApplied: operation.retentionApplied,
-        anonymized: this.isAnonymizedOperation(operation)
+        anonymized: this.isAnonymizedOperation(operation),
       },
       // userId is hashed for audit purposes
-      userHash: operation.userId ? this.hashUserId(operation.userId) : null
+      userHash: operation.userId ? this.hashUserId(operation.userId) : null,
     };
-    
+
     await this.auditDB.auditLogs.create(auditEntry);
   }
-  
+
   async validateCompliance(): Promise<ComplianceReport> {
     const checks = [
       this.checkDataMinimization(),
@@ -663,16 +742,16 @@ class PrivacyAuditService implements PrivacyAuditService {
       this.checkConsentManagement(),
       this.checkAnonymizationEffectiveness(),
       this.checkAccessControls(),
-      this.checkDeletionProcedures()
+      this.checkDeletionProcedures(),
     ];
-    
+
     const results = await Promise.all(checks);
-    
+
     return {
       overallCompliance: this.calculateComplianceScore(results),
       checks: results,
       recommendations: this.generateRecommendations(results),
-      generatedAt: new Date()
+      generatedAt: new Date(),
     };
   }
 }
@@ -682,7 +761,9 @@ class PrivacyAuditService implements PrivacyAuditService {
 
 ```typescript
 interface PrivacyImpactAssessment {
-  assessDataProcessing(processingActivity: ProcessingActivity): Promise<PrivacyImpactResult>;
+  assessDataProcessing(
+    processingActivity: ProcessingActivity
+  ): Promise<PrivacyImpactResult>;
   evaluatePrivacyRisks(dataTypes: DataType[]): Promise<RiskAssessment>;
   recommendMitigations(risks: PrivacyRisk[]): Promise<MitigationPlan>;
 }
@@ -696,34 +777,39 @@ interface PrivacyImpactResult {
 }
 
 class PrivacyImpactAssessmentService implements PrivacyImpactAssessment {
-  async assessDataProcessing(processingActivity: ProcessingActivity): Promise<PrivacyImpactResult> {
+  async assessDataProcessing(
+    processingActivity: ProcessingActivity
+  ): Promise<PrivacyImpactResult> {
     const risks = await this.identifyPrivacyRisks(processingActivity);
     const mitigations = await this.identifyMitigations(risks);
     const residualRisk = this.calculateResidualRisk(risks, mitigations);
-    
+
     return {
       riskLevel: this.calculateOverallRisk(risks),
       identifiedRisks: risks,
       mitigations,
       residualRisk,
-      approvalRequired: residualRisk !== 'acceptable'
+      approvalRequired: residualRisk !== 'acceptable',
     };
   }
-  
-  private async identifyPrivacyRisks(activity: ProcessingActivity): Promise<PrivacyRisk[]> {
+
+  private async identifyPrivacyRisks(
+    activity: ProcessingActivity
+  ): Promise<PrivacyRisk[]> {
     const risks: PrivacyRisk[] = [];
-    
+
     // Location data risks
     if (activity.dataTypes.includes('location_data')) {
       risks.push({
         type: 'location_tracking',
         severity: 'high',
         likelihood: 'medium',
-        description: 'Real-time location tracking could enable user identification',
-        impact: 'User privacy breach, potential stalking/harassment'
+        description:
+          'Real-time location tracking could enable user identification',
+        impact: 'User privacy breach, potential stalking/harassment',
       });
     }
-    
+
     // Data aggregation risks
     if (activity.involvesDataCombination) {
       risks.push({
@@ -731,13 +817,15 @@ class PrivacyImpactAssessmentService implements PrivacyImpactAssessment {
         severity: 'medium',
         likelihood: 'low',
         description: 'Data combination might reveal user patterns',
-        impact: 'Indirect user identification through behavior patterns'
+        impact: 'Indirect user identification through behavior patterns',
       });
     }
-    
+
     return risks;
   }
 }
 ```
 
-This comprehensive privacy architecture ensures that the BMTC Transit App operates with maximum user privacy protection while maintaining full functionality for crowdsourced transit tracking.
+This comprehensive privacy architecture ensures that the BMTC Transit App
+operates with maximum user privacy protection while maintaining full
+functionality for crowdsourced transit tracking.
