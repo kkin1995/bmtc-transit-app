@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/strict-boolean-expressions, arrow-body-style */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/strict-boolean-expressions, arrow-body-style, @typescript-eslint/prefer-nullish-coalescing */
 /**
  * Configuration Management
  * Environment-based configuration for BMTC Transit App services
