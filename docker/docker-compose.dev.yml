@@ -229,6 +229,66 @@ services:
     networks:
       - bmtc-network
 
+  # ML Validation Service
+  ml-validation-service:
+    build:
+      context: ../
+      dockerfile: services/ml-validation-service/Dockerfile.dev
+    container_name: bmtc-ml-validation-service
+    environment:
+      NODE_ENV: development
+      PORT: 3004
+      DATABASE_URL: postgresql://bmtc_user:bmtc_password@postgres:5432/bmtc_transit_dev
+      REDIS_URL: redis://redis:6379
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_TOKEN: dev-token-change-in-production
+      INFLUXDB_ORG: bmtc-org
+      INFLUXDB_BUCKET: location-data
+      KAFKA_BROKERS: redpanda:29092
+    ports:
+      - '3004:3004'
+    volumes:
+      - ../services/ml-validation-service:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    networks:
+      - bmtc-network
+
+  # Gamification Service
+  gamification-service:
+    build:
+      context: ../
+      dockerfile: services/gamification-service/Dockerfile.dev
+    container_name: bmtc-gamification-service
+    environment:
+      NODE_ENV: development
+      PORT: 3005
+      DATABASE_URL: postgresql://bmtc_user:bmtc_password@postgres:5432/bmtc_transit_dev
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: redpanda:29092
+    ports:
+      - '3005:3005'
+    volumes:
+      - ../services/gamification-service:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    networks:
+      - bmtc-network
+
   # Monitoring - Prometheus (optional for development)
   prometheus:
     image: prom/prometheus:latest

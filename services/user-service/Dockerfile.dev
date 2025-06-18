@@ -12,7 +12,7 @@ COPY services/user-service/package*.json ./services/user-service/
 COPY packages/*/package*.json ./packages/*/
 
 # Install dependencies
-RUN npm ci --only=development
+RUN npm install
 
 # Copy source code
 COPY . .

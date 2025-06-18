@@ -12,7 +12,7 @@ COPY services/api-gateway/package*.json ./services/api-gateway/
 COPY packages/*/package*.json ./packages/*/
 
 # Install dependencies
-RUN npm ci --only=development
+RUN npm install
 
 # Copy source code
 COPY . .
