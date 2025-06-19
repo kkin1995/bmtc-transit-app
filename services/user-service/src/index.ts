@@ -5,7 +5,7 @@
  */
 import express from 'express';
 
-const USER_SERVICE_PORT = process.env.PORT || 3001;
+const USER_SERVICE_PORT = process.env.PORT ?? '3001';
 const app = express();
 
 // Health check endpoint
@@ -14,7 +14,7 @@ app.get('/health', (req, res) => {
     status: 'healthy',
     service: 'user-service',
     timestamp: new Date().toISOString(),
-    port: USER_SERVICE_PORT
+    port: USER_SERVICE_PORT,
   });
 });
 
@@ -23,7 +23,7 @@ app.get('/', (req, res) => {
   res.status(200).json({
     message: 'BMTC Transit App User Service',
     status: 'running',
-    version: '1.0.0'
+    version: '1.0.0',
   });
 });
 

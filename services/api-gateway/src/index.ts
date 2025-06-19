@@ -5,7 +5,7 @@
  */
 import express from 'express';
 
-const API_GATEWAY_PORT = process.env.PORT || 3000;
+const API_GATEWAY_PORT = process.env.PORT ?? '3000';
 const app = express();
 
 // Health check endpoint
@@ -14,7 +14,7 @@ app.get('/health', (req, res) => {
     status: 'healthy',
     service: 'api-gateway',
     timestamp: new Date().toISOString(),
-    port: API_GATEWAY_PORT
+    port: API_GATEWAY_PORT,
   });
 });
 
@@ -23,7 +23,7 @@ app.get('/', (req, res) => {
   res.status(200).json({
     message: 'BMTC Transit App API Gateway',
     status: 'running',
-    version: '1.0.0'
+    version: '1.0.0',
   });
 });
 

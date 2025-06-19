@@ -103,26 +103,82 @@ jobs:
           timeout 60 bash -c 'until nc -z localhost 5432; do sleep 1; done'
           timeout 60 bash -c 'until nc -z localhost 6379; do sleep 1; done'
 
-      - name: Run unit tests
-        run: npm test
+      - name: Run unit tests with coverage
+        run: npm test -- --coverage --ci --watchAll=false
         env:
           NODE_ENV: test
-          DATABASE_URL: postgresql://bmtc_user:bmtc_password@localhost:5432/bmtc_transit_test
-          REDIS_URL: redis://localhost:6379
+          TEST_POSTGRES_HOST: localhost
+          TEST_POSTGRES_PORT: 5432
+          TEST_POSTGRES_DB: bmtc_transit_test
+          TEST_POSTGRES_USER: bmtc_user
+          TEST_POSTGRES_PASSWORD: bmtc_password
+          TEST_REDIS_HOST: localhost
+          TEST_REDIS_PORT: 6379
+          TEST_REDIS_DB: 1
 
       - name: Run integration tests
-        run: npm run test:integration
+        run: npm run test:integration -- --ci --watchAll=false
         env:
           NODE_ENV: test
-          DATABASE_URL: postgresql://bmtc_user:bmtc_password@localhost:5432/bmtc_transit_test
-          REDIS_URL: redis://localhost:6379
+          TEST_POSTGRES_HOST: localhost
+          TEST_POSTGRES_PORT: 5432
+          TEST_POSTGRES_DB: bmtc_transit_test
+          TEST_POSTGRES_USER: bmtc_user
+          TEST_POSTGRES_PASSWORD: bmtc_password
+          TEST_REDIS_HOST: localhost
+          TEST_REDIS_PORT: 6379
+          TEST_REDIS_DB: 1
 
-      - name: Upload coverage reports
+      - name: Check test coverage thresholds
+        run: |
+          echo "Checking coverage thresholds..."
+          if [ -f coverage/coverage-summary.json ]; then
+            node -e "
+              const coverage = require('./coverage/coverage-summary.json');
+              const { total } = coverage;
+              console.log('Coverage Summary:');
+              console.log('Lines:', total.lines.pct + '%');
+              console.log('Statements:', total.statements.pct + '%');
+              console.log('Functions:', total.functions.pct + '%');
+              console.log('Branches:', total.branches.pct + '%');
+              
+              const threshold = 80;
+              const failed = [
+                total.lines.pct < threshold && 'Lines',
+                total.statements.pct < threshold && 'Statements', 
+                total.functions.pct < threshold && 'Functions',
+                total.branches.pct < threshold && 'Branches'
+              ].filter(Boolean);
+              
+              if (failed.length > 0) {
+                console.error('❌ Coverage below threshold for:', failed.join(', '));
+                process.exit(1);
+              } else {
+                console.log('✅ All coverage thresholds met');
+              }
+            "
+          else
+            echo "No coverage report found"
+          fi
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ github.run_id }}
+          path: |
+            coverage/
+            jest-reports/
+          retention-days: 7
+
+      - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
+        if: github.event_name == 'push'
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage/lcov.info
           fail_ci_if_error: false
+          verbose: true
 
   # Build Docker Images
   build:
