@@ -10,6 +10,7 @@ class RideSegment(BaseModel):
     duration_sec: float = Field(gt=0)
     dwell_sec: Optional[float] = Field(None, ge=0)
     timestamp_utc: int
+    is_holiday: bool = False  # Optional: route weekday to weekend bin
 
     @field_validator('timestamp_utc')
     @classmethod
@@ -53,6 +54,7 @@ class ETAResponse(BaseModel):
     sample_count: int
     blend_weight: float
     last_updated: Optional[int]
+    low_n_warning: bool = False  # True when n < 8 (quantiles unreliable)
 
 
 class ConfigResponse(BaseModel):

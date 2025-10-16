@@ -42,16 +42,33 @@ def get_connection(db_path: str) -> sqlite3.Connection:
     return conn
 
 
-def compute_bin_id(timestamp_utc: int) -> int:
-    """Compute bin_id from UTC timestamp.
+def compute_bin_id(timestamp_utc: int, is_holiday: bool = False) -> int:
+    """Compute bin_id from UTC timestamp using Asia/Kolkata timezone.
 
+    Server-authoritative bin mapping - client cannot override.
     Returns 0-191 based on weekday_type (0=Mon-Fri, 1=Sat-Sun) and 15-min slot.
+
+    Args:
+        timestamp_utc: Unix timestamp in UTC
+        is_holiday: If True, route weekday timestamps to weekend bins
+
+    Returns:
+        bin_id (0-191)
     """
     from datetime import datetime
-    dt = datetime.utcfromtimestamp(timestamp_utc)
+    from zoneinfo import ZoneInfo
+
+    # Convert to Asia/Kolkata timezone
+    tz = ZoneInfo("Asia/Kolkata")
+    dt = datetime.fromtimestamp(timestamp_utc, tz=tz)
+
     weekday_type = 1 if dt.weekday() >= 5 else 0  # 5=Sat, 6=Sun
+
+    # If holiday flag is set and it's a weekday, route to weekend bins
+    if is_holiday and weekday_type == 0:
+        weekday_type = 1
+
     hour = dt.hour
     minute_slot = dt.minute // 15  # 0, 1, 2, 3
 
-    # bin_id = weekday_type * 96 + hour * 4 + minute_slot
     return weekday_type * 96 + hour * 4 + minute_slot

@@ -1,5 +1,6 @@
 """Unit tests for learning algorithms."""
 import pytest
+import time
 from app.learning import (
     update_welford,
     update_ema,
@@ -7,7 +8,9 @@ from app.learning import (
     is_outlier,
     compute_blend_weight,
     compute_blended_mean,
-    compute_percentiles
+    compute_percentiles,
+    compute_percentiles_robust,
+    compute_time_based_alpha
 )
 
 
@@ -93,3 +96,47 @@ def test_percentiles():
     p50, p90 = compute_percentiles(mean, variance)
     assert p50 == 100.0  # P50 = mean
     assert p90 == pytest.approx(112.8)  # mean + 1.28*10
+
+
+def test_percentiles_robust_low_n():
+    """Test robust percentiles with low-n protection."""
+    mean = 100.0
+    variance = 100.0  # σ=10
+    schedule_mean = 100.0
+
+    # n < 8: should trigger low_n_warning and wider band
+    p50, p90, low_n_warning = compute_percentiles_robust(mean, variance, n=5, schedule_mean=schedule_mean)
+    assert p50 == 100.0
+    assert p90 == pytest.approx(115.0)  # mean + 1.5*10
+    assert low_n_warning is True
+
+    # n >= 8: normal approximation
+    p50, p90, low_n_warning = compute_percentiles_robust(mean, variance, n=10, schedule_mean=schedule_mean)
+    assert p50 == 100.0
+    assert p90 == pytest.approx(112.8)  # mean + 1.28*10
+    assert low_n_warning is False
+
+
+def test_time_based_alpha():
+    """Test time-based alpha computation."""
+    now = int(time.time())
+
+    # First observation (None): default alpha
+    alpha = compute_time_based_alpha(None, half_life_days=30)
+    assert alpha == pytest.approx(0.1)
+
+    # Same time: alpha ≈ 0
+    alpha = compute_time_based_alpha(now, half_life_days=30)
+    assert alpha < 0.01
+
+    # 1 day elapsed: small alpha
+    alpha = compute_time_based_alpha(now - 86400, half_life_days=30)
+    assert 0.02 < alpha < 0.03
+
+    # 30 days elapsed: alpha = 0.5 (half-life)
+    alpha = compute_time_based_alpha(now - 30 * 86400, half_life_days=30)
+    assert alpha == pytest.approx(0.5, abs=0.01)
+
+    # Very old data: alpha → 1.0
+    alpha = compute_time_based_alpha(now - 365 * 86400, half_life_days=30)
+    assert alpha > 0.99

@@ -97,6 +97,65 @@ def compute_percentiles(mean: float, variance: float) -> Tuple[float, float]:
     return p50, p90
 
 
+def compute_percentiles_robust(
+    mean: float,
+    variance: float,
+    n: int,
+    schedule_mean: float
+) -> Tuple[float, float, bool]:
+    """Compute p50/p90 with low-n protection.
+
+    Args:
+        mean: Blended mean estimate
+        variance: Variance estimate
+        n: Sample count
+        schedule_mean: Fallback schedule baseline
+
+    Returns:
+        (p50, p90, low_n_warning)
+        low_n_warning=True when n < 8 (quantiles unreliable)
+    """
+    low_n_warning = n < 8
+
+    if n < 8:
+        # Fallback: Use wider confidence bands for safety
+        std_dev = math.sqrt(variance) if variance > 0 else schedule_mean * 0.1
+        p50 = mean
+        p90 = mean + 1.5 * std_dev  # Wider band for safety at low n
+        return p50, p90, low_n_warning
+    else:
+        # Normal approximation (acceptable at n≥8)
+        std_dev = math.sqrt(variance)
+        p50 = mean
+        p90 = mean + 1.28 * std_dev
+        return p50, p90, low_n_warning
+
+
+def compute_time_based_alpha(last_update: Optional[int], half_life_days: int) -> float:
+    """Compute time-based alpha from half-life.
+
+    Uses exponential decay: α(Δt) = 1 - exp(-ln(2) · Δt / half_life)
+
+    Args:
+        last_update: Unix timestamp of last update (None for first observation)
+        half_life_days: Half-life period in days (default 30)
+
+    Returns:
+        alpha in [0, 1] based on time elapsed
+        Returns 0.1 if last_update is None (first observation)
+    """
+    if last_update is None:
+        return 0.1  # Default for first observation
+
+    elapsed_sec = time.time() - last_update
+    elapsed_days = elapsed_sec / 86400
+
+    # α = 1 - exp(-ln(2) * Δt / half_life)
+    # Capped at 1.0 to prevent overflow on very old data
+    alpha = 1.0 - math.exp(-0.693147 * elapsed_days / half_life_days)
+    return min(alpha, 1.0)
+
+
 def is_stale(last_update: Optional[int]) -> bool:
     """Check if data is stale (>90 days old)."""
     if last_update is None:
@@ -119,10 +178,10 @@ def update_segment_stats(
     """
     cursor = conn.cursor()
 
-    # Fetch current stats
+    # Fetch current stats (include last_update for time-based alpha)
     cursor.execute(
         """
-        SELECT n, welford_mean, welford_m2, ema_mean, ema_var, schedule_mean
+        SELECT n, welford_mean, welford_m2, ema_mean, ema_var, schedule_mean, last_update
         FROM segment_stats
         WHERE segment_id = ? AND bin_id = ?
         """,
@@ -134,7 +193,7 @@ def update_segment_stats(
         logger.warning(f"segment_stats not found for segment_id={segment_id}, bin_id={bin_id}")
         return False
 
-    n, welford_mean, welford_m2, ema_mean, ema_var, schedule_mean = row
+    n, welford_mean, welford_m2, ema_mean, ema_var, schedule_mean, last_update = row
 
     # Check for outlier
     variance = compute_variance(welford_m2, n)
@@ -148,9 +207,10 @@ def update_segment_stats(
     # Update Welford
     n_new, welford_mean_new, welford_m2_new = update_welford(n, welford_mean, welford_m2, duration_sec)
 
-    # Update EMA
+    # Update EMA with time-based alpha (prevents stale/volatile estimates)
     settings = get_settings()
-    ema_mean_new, ema_var_new = update_ema(ema_mean, ema_var, duration_sec, settings.ema_alpha)
+    alpha = compute_time_based_alpha(last_update, settings.half_life_days)
+    ema_mean_new, ema_var_new = update_ema(ema_mean, ema_var, duration_sec, alpha)
 
     # Write back
     cursor.execute(

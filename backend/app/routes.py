@@ -13,7 +13,7 @@ from app.db import get_connection, compute_bin_id
 from app.learning import (
     update_segment_stats,
     compute_blended_mean,
-    compute_percentiles,
+    compute_percentiles_robust,
     compute_variance,
     is_stale
 )
@@ -70,8 +70,8 @@ async def ride_summary(
 
         segment_id = row[0]
 
-        # Compute time bin
-        bin_id = compute_bin_id(segment.timestamp_utc)
+        # Compute time bin (with optional holiday routing)
+        bin_id = compute_bin_id(segment.timestamp_utc, is_holiday=segment.is_holiday)
 
         # Update statistics
         accepted = update_segment_stats(conn, segment_id, bin_id, segment.duration_sec)
@@ -143,17 +143,12 @@ async def get_eta(
 
     n, welford_mean, welford_m2, schedule_mean, last_update = row
 
-    # Compute blended mean
-    if n < 5:
-        # Use blend
-        mean = compute_blended_mean(welford_mean, schedule_mean, n)
-    else:
-        # Pure learned
-        mean = welford_mean
+    # Compute blended mean (always use w(n) = n/(n+20), converges to learned as n→∞)
+    mean = compute_blended_mean(welford_mean, schedule_mean, n)
 
-    # Compute variance and percentiles
+    # Compute variance and percentiles (with low-n protection)
     variance = compute_variance(welford_m2, n)
-    p50, p90 = compute_percentiles(mean, variance)
+    p50, p90, low_n_warning = compute_percentiles_robust(mean, variance, n, schedule_mean)
 
     # Blend weight
     from app.learning import compute_blend_weight
@@ -165,7 +160,8 @@ async def get_eta(
         p90_sec=p90,
         sample_count=n,
         blend_weight=blend_weight,
-        last_updated=last_update
+        last_updated=last_update,
+        low_n_warning=low_n_warning
     )
 
 
