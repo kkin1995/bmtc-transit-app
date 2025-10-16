@@ -1,0 +1,28 @@
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# Python
+*.pyc
+__pycache__/
+.env
+.venv/
+venv/
+
+# Logs
+*.log
+
+# Temp directories
+gtfs_temp/
+backups/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+
+# GTFS extracted files (keep zip)
+gtfs/*.txt
+
+# uv
+uv.lock
