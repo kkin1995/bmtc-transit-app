@@ -1,0 +1,9 @@
+[Unit]
+Description=BMTC API Database Backup
+
+[Service]
+Type=oneshot
+User=bmtc
+Group=bmtc
+EnvironmentFile=/etc/bmtc-api/env
+ExecStart=/opt/bmtc-api/scripts/backup.sh

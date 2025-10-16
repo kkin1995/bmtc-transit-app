@@ -1,0 +1,23 @@
+[Unit]
+Description=BMTC Transit Learning API
+After=network.target
+
+[Service]
+Type=simple
+User=bmtc
+Group=bmtc
+WorkingDirectory=/opt/bmtc-api
+EnvironmentFile=/etc/bmtc-api/env
+ExecStart=/usr/local/bin/uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5s
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/bmtc-api
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,9 @@
+[Unit]
+Description=BMTC API Daily Retention Cleanup
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target
