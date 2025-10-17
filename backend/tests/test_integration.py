@@ -1,4 +1,5 @@
 """Integration tests for POST→GET flow."""
+
 import os
 import tempfile
 import time
@@ -12,26 +13,26 @@ os.environ["BMTC_DB_PATH"] = TEST_DB
 os.environ["BMTC_GTFS_PATH"] = "/tmp/gtfs"
 os.environ["BMTC_N0"] = "20"
 
-from app.main import app
-from app.db import get_connection, init_db
+from app.main import app  # noqa: E402
+from app.db import get_connection, init_db  # noqa: E402
 
 
 client = TestClient(app)
-_db_initialized = False
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def setup_db():
     """Initialize test database once for all tests."""
-    global _db_initialized
-    if not _db_initialized:
-        init_db(TEST_DB)
-        _db_initialized = True
+    # Always initialize, but remove old DB first to ensure fresh schema
+    if os.path.exists(TEST_DB):
+        os.remove(TEST_DB)
+    init_db(TEST_DB)
 
 
 def setup_test_segment():
     """Insert a test segment with schedule baseline for all bins."""
     from app.config import get_settings
+
     settings = get_settings()
     conn = get_connection(settings.db_path)
     cursor = conn.cursor()
@@ -39,13 +40,13 @@ def setup_test_segment():
     # Insert segment (idempotent)
     cursor.execute(
         "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
-        ("ROUTE1", 0, "STOP_A", "STOP_B")
+        ("ROUTE1", 0, "STOP_A", "STOP_B"),
     )
 
     # Get segment_id
     cursor.execute(
         "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
-        ("ROUTE1", 0, "STOP_A", "STOP_B")
+        ("ROUTE1", 0, "STOP_A", "STOP_B"),
     )
     segment_id = cursor.fetchone()[0]
 
@@ -56,7 +57,7 @@ def setup_test_segment():
             INSERT OR IGNORE INTO segment_stats (segment_id, bin_id, schedule_mean)
             VALUES (?, ?, ?)
             """,
-            (segment_id, bin_id, 300.0)  # 5 min schedule baseline
+            (segment_id, bin_id, 300.0),  # 5 min schedule baseline
         )
 
     conn.commit()
@@ -100,15 +101,15 @@ def test_ride_submission_and_eta():
                 "from_stop_id": "STOP_A",
                 "to_stop_id": "STOP_B",
                 "duration_sec": 320.0,
-                "timestamp_utc": int(time.time()) - 3600  # 1h ago, Mon-Fri 00:00 bin
+                "timestamp_utc": int(time.time()) - 3600,  # 1h ago, Mon-Fri 00:00 bin
             }
-        ]
+        ],
     }
 
     response = client.post(
         "/v1/ride_summary",
         json=ride_data,
-        headers={"Authorization": "Bearer test-key-12345678901234567890"}
+        headers={"Authorization": "Bearer test-key-12345678901234567890"},
     )
     assert response.status_code == 200
     result = response.json()
@@ -123,8 +124,8 @@ def test_ride_submission_and_eta():
             "direction_id": 0,
             "from_stop_id": "STOP_A",
             "to_stop_id": "STOP_B",
-            "timestamp_utc": int(time.time()) - 3600
-        }
+            "timestamp_utc": int(time.time()) - 3600,
+        },
     )
     assert response.status_code == 200
     eta = response.json()
@@ -149,15 +150,15 @@ def test_unknown_segment_rejection():
                 "from_stop_id": "X",
                 "to_stop_id": "Y",
                 "duration_sec": 100.0,
-                "timestamp_utc": int(time.time())
+                "timestamp_utc": int(time.time()),
             }
-        ]
+        ],
     }
 
     response = client.post(
         "/v1/ride_summary",
         json=ride_data,
-        headers={"Authorization": "Bearer test-key-12345678901234567890"}
+        headers={"Authorization": "Bearer test-key-12345678901234567890"},
     )
     assert response.status_code == 422
 
@@ -190,15 +191,15 @@ def test_holiday_flag_routing():
                 "to_stop_id": "STOP_B",
                 "duration_sec": 310.0,
                 "timestamp_utc": timestamp,
-                "is_holiday": True
+                "is_holiday": True,
             }
-        ]
+        ],
     }
 
     response = client.post(
         "/v1/ride_summary",
         json=ride_data,
-        headers={"Authorization": "Bearer test-key-12345678901234567890"}
+        headers={"Authorization": "Bearer test-key-12345678901234567890"},
     )
     assert response.status_code == 200
 
@@ -215,8 +216,8 @@ def test_low_n_warning_in_eta():
             "direction_id": 0,
             "from_stop_id": "STOP_A",
             "to_stop_id": "STOP_B",
-            "timestamp_utc": int(time.time()) - 3600  # Some bin with low n
-        }
+            "timestamp_utc": int(time.time()) - 3600,  # Some bin with low n
+        },
     )
     assert response.status_code == 200
     eta = response.json()

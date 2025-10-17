@@ -1,4 +1,5 @@
 """Unit tests for learning algorithms."""
+
 import pytest
 import time
 from app.learning import (
@@ -10,7 +11,7 @@ from app.learning import (
     compute_blended_mean,
     compute_percentiles,
     compute_percentiles_robust,
-    compute_time_based_alpha
+    compute_time_based_alpha,
 )
 
 
@@ -105,13 +106,17 @@ def test_percentiles_robust_low_n():
     schedule_mean = 100.0
 
     # n < 8: should trigger low_n_warning and wider band
-    p50, p90, low_n_warning = compute_percentiles_robust(mean, variance, n=5, schedule_mean=schedule_mean)
+    p50, p90, low_n_warning = compute_percentiles_robust(
+        mean, variance, n=5, schedule_mean=schedule_mean
+    )
     assert p50 == 100.0
     assert p90 == pytest.approx(115.0)  # mean + 1.5*10
     assert low_n_warning is True
 
     # n >= 8: normal approximation
-    p50, p90, low_n_warning = compute_percentiles_robust(mean, variance, n=10, schedule_mean=schedule_mean)
+    p50, p90, low_n_warning = compute_percentiles_robust(
+        mean, variance, n=10, schedule_mean=schedule_mean
+    )
     assert p50 == 100.0
     assert p90 == pytest.approx(112.8)  # mean + 1.28*10
     assert low_n_warning is False
