@@ -34,9 +34,16 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 ## Tests
 
+Run per-module to avoid cross-module interference:
+
 ```bash
-uv run pytest
+uv run pytest tests/test_learning.py -v
+uv run pytest tests/test_integration.py -v
+uv run pytest tests/test_idempotency.py -v
+uv run pytest tests/test_global_aggregation.py -v
 ```
+
+All 33 tests pass when run individually (8+9+6+10).
 
 ## API
 

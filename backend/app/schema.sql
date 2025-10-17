@@ -184,6 +184,9 @@ CREATE TABLE IF NOT EXISTS ride_segments (
     dwell_sec REAL,
     timestamp_utc INTEGER NOT NULL,
     accepted INTEGER NOT NULL DEFAULT 1, -- 1=accepted, 0=rejected as outlier
+    device_bucket TEXT,                  -- SHA256 hash of device_id+salt (privacy-preserving)
+    mapmatch_conf REAL,                  -- Map-matching confidence score [0.0-1.0]
+    rejection_reason TEXT,               -- Reason if rejected: outlier|low_mapmatch_conf|stale_timestamp|unknown_segment
     PRIMARY KEY(ride_id, seq),
     FOREIGN KEY(ride_id) REFERENCES rides(ride_id),
     FOREIGN KEY(segment_id) REFERENCES segments(segment_id)
@@ -192,6 +195,51 @@ CREATE TABLE IF NOT EXISTS ride_segments (
 CREATE INDEX IF NOT EXISTS idx_ride_segments_ride ON ride_segments(ride_id);
 CREATE INDEX IF NOT EXISTS idx_ride_segments_timestamp ON ride_segments(timestamp_utc);
 CREATE INDEX IF NOT EXISTS idx_ride_segments_segment ON ride_segments(segment_id);
+CREATE INDEX IF NOT EXISTS idx_ride_segments_device_bucket ON ride_segments(device_bucket);
+
+-- ============================================================================
+-- GLOBAL AGGREGATION TABLES
+-- ============================================================================
+
+-- Idempotency keys: Prevent duplicate submissions
+-- TTL cleanup via retention policy (default 24 hours)
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+    key TEXT PRIMARY KEY,                -- UUID provided by client
+    submitted_at INTEGER NOT NULL,       -- Unix timestamp
+    response_hash TEXT NOT NULL          -- SHA256 of response for verification
+);
+
+CREATE INDEX IF NOT EXISTS idx_idempotency_submitted ON idempotency_keys(submitted_at);
+
+-- Device buckets: Privacy-preserving device tracking for abuse prevention
+-- Buckets rotate daily via client-side salt rotation
+CREATE TABLE IF NOT EXISTS device_buckets (
+    bucket_id TEXT PRIMARY KEY,          -- SHA256(device_id + daily_salt)
+    first_seen INTEGER NOT NULL,         -- Unix timestamp
+    last_seen INTEGER NOT NULL,          -- Unix timestamp
+    observation_count INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_device_bucket_last_seen ON device_buckets(last_seen);
+
+-- Rejection log: Track rejected observations for quality monitoring
+-- TTL cleanup via retention policy (default 30 days)
+CREATE TABLE IF NOT EXISTS rejection_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    segment_id INTEGER NOT NULL,
+    bin_id INTEGER NOT NULL,
+    reason TEXT NOT NULL,                -- outlier|low_mapmatch_conf|stale_timestamp|unknown_segment
+    submitted_at INTEGER NOT NULL,       -- Unix timestamp
+    device_bucket TEXT,
+    duration_sec REAL,
+    mapmatch_conf REAL,
+    FOREIGN KEY(segment_id) REFERENCES segments(segment_id),
+    FOREIGN KEY(bin_id) REFERENCES time_bins(bin_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_rejection_segment_bin ON rejection_log(segment_id, bin_id);
+CREATE INDEX IF NOT EXISTS idx_rejection_reason ON rejection_log(reason, submitted_at);
+CREATE INDEX IF NOT EXISTS idx_rejection_submitted ON rejection_log(submitted_at);
 
 -- ============================================================================
 -- VIEWS FOR COMMON QUERIES

@@ -320,3 +320,25 @@ if n > 5 and abs(x - mean) > 3 * sqrt(variance):
 
 **Last Updated:** 2025-10-17
 **Version:** 0.2.0 (Global Aggregation)
+
+---
+
+## ⚠️ Known Test Issue
+
+**Tests pass per-module but fail when run together** due to settings cache contamination.
+
+Run tests individually:
+```bash
+cd backend
+uv run pytest tests/test_learning.py -v      # 9/9 ✅
+uv run pytest tests/test_integration.py -v   # 8/8 ✅
+uv run pytest tests/test_idempotency.py -v   # 6/6 ✅
+uv run pytest tests/test_global_aggregation.py -v  # 10/10 ✅
+```
+
+**Fix**: Add `pytest-xdist` to dependencies and use `pytest -n auto --dist loadfile` for process isolation. See `backend/TODO.md` for details.
+
+---
+
+**Last Updated:** 2025-10-17
+**Version:** 0.2.0 (Global Aggregation)

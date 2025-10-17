@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Generate sample ride data for testing."""
+
 import random
 import time
 import json
@@ -8,11 +9,14 @@ import json
 def generate_sample_rides(num_rides: int = 100):
     """Generate synthetic rides across 5 routes."""
     routes = [
-        ("ROUTE_335E", ["STOP_KR_PURAM", "STOP_SILK_BOARD", "STOP_JAYANAGAR", "STOP_JP_NAGAR"]),
+        (
+            "ROUTE_335E",
+            ["STOP_KR_PURAM", "STOP_SILK_BOARD", "STOP_JAYANAGAR", "STOP_JP_NAGAR"],
+        ),
         ("ROUTE_500K", ["STOP_YESWANTHPUR", "STOP_MAJESTIC", "STOP_SHIVAJI_NAGAR"]),
         ("ROUTE_G4", ["STOP_BANASHANKARI", "STOP_JAYANAGAR", "STOP_SHIVAJI_NAGAR"]),
         ("ROUTE_201A", ["STOP_DOMLUR", "STOP_HAL", "STOP_INDIRANAGAR"]),
-        ("ROUTE_600", ["STOP_WHITEFIELD", "STOP_MARATHAHALLI", "STOP_KORAMANGALA"])
+        ("ROUTE_600", ["STOP_WHITEFIELD", "STOP_MARATHAHALLI", "STOP_KORAMANGALA"]),
     ]
 
     rides = []
@@ -39,18 +43,20 @@ def generate_sample_rides(num_rides: int = 100):
             # Dwell time: 10-60 sec
             dwell_sec = random.uniform(10, 60)
 
-            segments.append({
-                "from_stop_id": from_stop,
-                "to_stop_id": to_stop,
-                "duration_sec": round(duration_sec, 1),
-                "dwell_sec": round(dwell_sec, 1),
-                "timestamp_utc": base_time + j * 300  # 5 min apart
-            })
+            segments.append(
+                {
+                    "from_stop_id": from_stop,
+                    "to_stop_id": to_stop,
+                    "duration_sec": round(duration_sec, 1),
+                    "dwell_sec": round(dwell_sec, 1),
+                    "timestamp_utc": base_time + j * 300,  # 5 min apart
+                }
+            )
 
         ride = {
             "route_id": route_id,
             "direction_id": direction_id,
-            "segments": segments
+            "segments": segments,
         }
         rides.append(ride)
 
