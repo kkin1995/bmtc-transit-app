@@ -1,4 +1,5 @@
 """Learning algorithms: Welford, EMA, schedule blend, outlier detection."""
+
 import logging
 import math
 import time
@@ -10,7 +11,9 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 
 
-def update_welford(n: int, mean: float, m2: float, x: float) -> Tuple[int, float, float]:
+def update_welford(
+    n: int, mean: float, m2: float, x: float
+) -> Tuple[int, float, float]:
     """Update Welford running statistics.
 
     Args:
@@ -98,10 +101,7 @@ def compute_percentiles(mean: float, variance: float) -> Tuple[float, float]:
 
 
 def compute_percentiles_robust(
-    mean: float,
-    variance: float,
-    n: int,
-    schedule_mean: float
+    mean: float, variance: float, n: int, schedule_mean: float
 ) -> Tuple[float, float, bool]:
     """Compute p50/p90 with low-n protection.
 
@@ -166,17 +166,104 @@ def is_stale(last_update: Optional[int]) -> bool:
     return (int(time.time()) - last_update) > threshold_sec
 
 
-def update_segment_stats(
+def update_device_bucket(conn, device_bucket: str) -> None:
+    """Update or create device bucket entry.
+
+    Args:
+        conn: Database connection
+        device_bucket: SHA256 device bucket ID
+    """
+    cursor = conn.cursor()
+    now = int(time.time())
+
+    # Try to update existing bucket
+    cursor.execute(
+        """
+        UPDATE device_buckets
+        SET last_seen = ?, observation_count = observation_count + 1
+        WHERE bucket_id = ?
+        """,
+        (now, device_bucket),
+    )
+
+    # If no rows updated, insert new bucket
+    if cursor.rowcount == 0:
+        cursor.execute(
+            """
+            INSERT INTO device_buckets (bucket_id, first_seen, last_seen, observation_count)
+            VALUES (?, ?, ?, 1)
+            """,
+            (device_bucket, now, now),
+        )
+
+    conn.commit()
+
+
+def log_rejection(
     conn,
     segment_id: int,
     bin_id: int,
-    duration_sec: float
-) -> bool:
-    """Update segment_stats with new observation.
+    reason: str,
+    duration_sec: float,
+    mapmatch_conf: float,
+    device_bucket: str | None = None,
+) -> None:
+    """Log rejected observation to rejection_log table.
 
-    Returns True if accepted, False if rejected as outlier.
+    Args:
+        conn: Database connection
+        segment_id: Segment ID
+        bin_id: Time bin ID
+        reason: Rejection reason
+        duration_sec: Observed duration
+        mapmatch_conf: Map-matching confidence
+        device_bucket: Optional device bucket ID
     """
     cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO rejection_log (segment_id, bin_id, reason, submitted_at, device_bucket, duration_sec, mapmatch_conf)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            segment_id,
+            bin_id,
+            reason,
+            int(time.time()),
+            device_bucket,
+            duration_sec,
+            mapmatch_conf,
+        ),
+    )
+    conn.commit()
+
+
+def update_segment_stats(
+    conn, segment_id: int, bin_id: int, duration_sec: float, mapmatch_conf: float = 1.0
+) -> tuple[bool, str | None]:
+    """Update segment_stats with new observation.
+
+    Args:
+        conn: Database connection
+        segment_id: Segment ID
+        bin_id: Time bin ID
+        duration_sec: Observed duration in seconds
+        mapmatch_conf: Map-matching confidence [0.0-1.0]
+
+    Returns:
+        (accepted: bool, rejection_reason: str | None)
+        rejection_reason is one of: 'low_mapmatch_conf', 'outlier', 'missing_stats', None if accepted
+    """
+    settings = get_settings()
+    cursor = conn.cursor()
+
+    # Check map-matching confidence threshold
+    if mapmatch_conf < settings.mapmatch_min_conf:
+        logger.info(
+            f"Low mapmatch_conf rejected: segment_id={segment_id}, bin_id={bin_id}, "
+            f"conf={mapmatch_conf:.2f}, threshold={settings.mapmatch_min_conf:.2f}"
+        )
+        return False, "low_mapmatch_conf"
 
     # Fetch current stats (include last_update for time-based alpha)
     cursor.execute(
@@ -185,13 +272,15 @@ def update_segment_stats(
         FROM segment_stats
         WHERE segment_id = ? AND bin_id = ?
         """,
-        (segment_id, bin_id)
+        (segment_id, bin_id),
     )
     row = cursor.fetchone()
 
     if row is None:
-        logger.warning(f"segment_stats not found for segment_id={segment_id}, bin_id={bin_id}")
-        return False
+        logger.warning(
+            f"segment_stats not found for segment_id={segment_id}, bin_id={bin_id}"
+        )
+        return False, "missing_stats"
 
     n, welford_mean, welford_m2, ema_mean, ema_var, schedule_mean, last_update = row
 
@@ -202,13 +291,14 @@ def update_segment_stats(
             f"Outlier rejected: segment_id={segment_id}, bin_id={bin_id}, "
             f"duration={duration_sec:.1f}, mean={welford_mean:.1f}, std={math.sqrt(variance):.1f}"
         )
-        return False
+        return False, "outlier"
 
     # Update Welford
-    n_new, welford_mean_new, welford_m2_new = update_welford(n, welford_mean, welford_m2, duration_sec)
+    n_new, welford_mean_new, welford_m2_new = update_welford(
+        n, welford_mean, welford_m2, duration_sec
+    )
 
     # Update EMA with time-based alpha (prevents stale/volatile estimates)
-    settings = get_settings()
     alpha = compute_time_based_alpha(last_update, settings.half_life_days)
     ema_mean_new, ema_var_new = update_ema(ema_mean, ema_var, duration_sec, alpha)
 
@@ -219,7 +309,16 @@ def update_segment_stats(
         SET n = ?, welford_mean = ?, welford_m2 = ?, ema_mean = ?, ema_var = ?, last_update = ?
         WHERE segment_id = ? AND bin_id = ?
         """,
-        (n_new, welford_mean_new, welford_m2_new, ema_mean_new, ema_var_new, int(time.time()), segment_id, bin_id)
+        (
+            n_new,
+            welford_mean_new,
+            welford_m2_new,
+            ema_mean_new,
+            ema_var_new,
+            int(time.time()),
+            segment_id,
+            bin_id,
+        ),
     )
     conn.commit()
-    return True
+    return True, None

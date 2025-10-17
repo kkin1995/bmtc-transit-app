@@ -1,10 +1,13 @@
 """Configuration management via environment variables."""
+
 from functools import lru_cache
+from typing import Optional
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment."""
+
     api_key: str
     db_path: str = "/var/lib/bmtc-api/bmtc.db"
     gtfs_path: str = "/var/lib/bmtc-api/gtfs"
@@ -13,7 +16,18 @@ class Settings(BaseSettings):
     half_life_days: int = 30
     stale_threshold_days: int = 90
     retention_days: int = 90
-    server_version: str = "0.1.0"
+    server_version: str = "0.2.0"  # Bumped for global aggregation
+
+    # Global aggregation settings
+    mapmatch_min_conf: float = 0.7
+    max_segments_per_ride: int = 50
+    idempotency_ttl_hours: int = 24
+    device_bucket_rate_limit: int = 500  # per hour
+    rejection_log_retention_days: int = 30
+    outlier_sigma: float = 3.0
+
+    # Optional HMAC signing
+    hmac_secret_key: Optional[str] = None
 
     class Config:
         env_prefix = "BMTC_"

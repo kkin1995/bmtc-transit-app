@@ -1,4 +1,5 @@
 """GTFS parser to load complete GTFS data + compute schedule_mean_sec per segment×bin."""
+
 import csv
 import sqlite3
 import time
@@ -48,22 +49,24 @@ def parse_gtfs(gtfs_path: str, db_conn: sqlite3.Connection) -> str:
 def load_agency(gtfs_zip: Path, cursor: sqlite3.Cursor) -> None:
     """Load agency.txt into agency table."""
     with zipfile.ZipFile(gtfs_zip) as zf:
-        with zf.open('agency.txt') as f:
-            reader = csv.DictReader(line.decode('utf-8') for line in f)
+        with zf.open("agency.txt") as f:
+            reader = csv.DictReader(line.decode("utf-8") for line in f)
             rows = []
             for row in reader:
-                rows.append((
-                    row.get('agency_id', '1'),
-                    row['agency_name'],
-                    row.get('agency_url'),
-                    row.get('agency_timezone'),
-                    row.get('agency_lang')
-                ))
+                rows.append(
+                    (
+                        row.get("agency_id", "1"),
+                        row["agency_name"],
+                        row.get("agency_url"),
+                        row.get("agency_timezone"),
+                        row.get("agency_lang"),
+                    )
+                )
 
             cursor.executemany(
                 "INSERT OR REPLACE INTO agency (agency_id, agency_name, agency_url, agency_timezone, agency_lang) "
                 "VALUES (?, ?, ?, ?, ?)",
-                rows
+                rows,
             )
     print(f"  Loaded {len(rows)} agencies")
 
@@ -71,22 +74,24 @@ def load_agency(gtfs_zip: Path, cursor: sqlite3.Cursor) -> None:
 def load_routes(gtfs_zip: Path, cursor: sqlite3.Cursor) -> None:
     """Load routes.txt into routes table."""
     with zipfile.ZipFile(gtfs_zip) as zf:
-        with zf.open('routes.txt') as f:
-            reader = csv.DictReader(line.decode('utf-8') for line in f)
+        with zf.open("routes.txt") as f:
+            reader = csv.DictReader(line.decode("utf-8") for line in f)
             rows = []
             for row in reader:
-                rows.append((
-                    row['route_id'],
-                    row.get('agency_id', '1'),
-                    row.get('route_short_name'),
-                    row.get('route_long_name'),
-                    int(row['route_type'])
-                ))
+                rows.append(
+                    (
+                        row["route_id"],
+                        row.get("agency_id", "1"),
+                        row.get("route_short_name"),
+                        row.get("route_long_name"),
+                        int(row["route_type"]),
+                    )
+                )
 
             cursor.executemany(
                 "INSERT OR REPLACE INTO routes (route_id, agency_id, route_short_name, route_long_name, route_type) "
                 "VALUES (?, ?, ?, ?, ?)",
-                rows
+                rows,
             )
     print(f"  Loaded {len(rows)} routes")
 
@@ -94,22 +99,24 @@ def load_routes(gtfs_zip: Path, cursor: sqlite3.Cursor) -> None:
 def load_stops(gtfs_zip: Path, cursor: sqlite3.Cursor) -> None:
     """Load stops.txt into stops table."""
     with zipfile.ZipFile(gtfs_zip) as zf:
-        with zf.open('stops.txt') as f:
-            reader = csv.DictReader(line.decode('utf-8') for line in f)
+        with zf.open("stops.txt") as f:
+            reader = csv.DictReader(line.decode("utf-8") for line in f)
             rows = []
             for row in reader:
-                rows.append((
-                    row['stop_id'],
-                    row['stop_name'],
-                    float(row['stop_lat']),
-                    float(row['stop_lon']),
-                    row.get('zone_id')
-                ))
+                rows.append(
+                    (
+                        row["stop_id"],
+                        row["stop_name"],
+                        float(row["stop_lat"]),
+                        float(row["stop_lon"]),
+                        row.get("zone_id"),
+                    )
+                )
 
             cursor.executemany(
                 "INSERT OR REPLACE INTO stops (stop_id, stop_name, stop_lat, stop_lon, zone_id) "
                 "VALUES (?, ?, ?, ?, ?)",
-                rows
+                rows,
             )
     print(f"  Loaded {len(rows)} stops")
 
@@ -117,28 +124,30 @@ def load_stops(gtfs_zip: Path, cursor: sqlite3.Cursor) -> None:
 def load_calendar(gtfs_zip: Path, cursor: sqlite3.Cursor) -> None:
     """Load calendar.txt into calendar table."""
     with zipfile.ZipFile(gtfs_zip) as zf:
-        with zf.open('calendar.txt') as f:
-            reader = csv.DictReader(line.decode('utf-8') for line in f)
+        with zf.open("calendar.txt") as f:
+            reader = csv.DictReader(line.decode("utf-8") for line in f)
             rows = []
             for row in reader:
-                rows.append((
-                    row['service_id'],
-                    int(row['monday']),
-                    int(row['tuesday']),
-                    int(row['wednesday']),
-                    int(row['thursday']),
-                    int(row['friday']),
-                    int(row['saturday']),
-                    int(row['sunday']),
-                    int(row['start_date']),
-                    int(row['end_date'])
-                ))
+                rows.append(
+                    (
+                        row["service_id"],
+                        int(row["monday"]),
+                        int(row["tuesday"]),
+                        int(row["wednesday"]),
+                        int(row["thursday"]),
+                        int(row["friday"]),
+                        int(row["saturday"]),
+                        int(row["sunday"]),
+                        int(row["start_date"]),
+                        int(row["end_date"]),
+                    )
+                )
 
             cursor.executemany(
                 "INSERT OR REPLACE INTO calendar "
                 "(service_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, start_date, end_date) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                rows
+                rows,
             )
     print(f"  Loaded {len(rows)} calendar entries")
 
@@ -146,23 +155,25 @@ def load_calendar(gtfs_zip: Path, cursor: sqlite3.Cursor) -> None:
 def load_trips(gtfs_zip: Path, cursor: sqlite3.Cursor) -> None:
     """Load trips.txt into trips table."""
     with zipfile.ZipFile(gtfs_zip) as zf:
-        with zf.open('trips.txt') as f:
-            reader = csv.DictReader(line.decode('utf-8') for line in f)
+        with zf.open("trips.txt") as f:
+            reader = csv.DictReader(line.decode("utf-8") for line in f)
             rows = []
             for row in reader:
-                rows.append((
-                    row['trip_id'],
-                    row['route_id'],
-                    row['service_id'],
-                    row.get('trip_headsign'),
-                    int(row.get('direction_id', 0)),
-                    row.get('shape_id')
-                ))
+                rows.append(
+                    (
+                        row["trip_id"],
+                        row["route_id"],
+                        row["service_id"],
+                        row.get("trip_headsign"),
+                        int(row.get("direction_id", 0)),
+                        row.get("shape_id"),
+                    )
+                )
 
             cursor.executemany(
                 "INSERT OR REPLACE INTO trips (trip_id, route_id, service_id, trip_headsign, direction_id, shape_id) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
-                rows
+                rows,
             )
     print(f"  Loaded {len(rows)} trips")
 
@@ -174,29 +185,31 @@ def load_stop_times(gtfs_zip: Path, cursor: sqlite3.Cursor) -> None:
     Uses batched inserts for performance.
     """
     with zipfile.ZipFile(gtfs_zip) as zf:
-        with zf.open('stop_times.txt') as f:
-            reader = csv.DictReader(line.decode('utf-8') for line in f)
+        with zf.open("stop_times.txt") as f:
+            reader = csv.DictReader(line.decode("utf-8") for line in f)
             rows = []
             batch_size = 10000
             total = 0
 
             for row in reader:
-                rows.append((
-                    row['trip_id'],
-                    int(row['stop_sequence']),
-                    row['stop_id'],
-                    row['arrival_time'],
-                    row['departure_time']
-                ))
+                rows.append(
+                    (
+                        row["trip_id"],
+                        int(row["stop_sequence"]),
+                        row["stop_id"],
+                        row["arrival_time"],
+                        row["departure_time"],
+                    )
+                )
 
                 if len(rows) >= batch_size:
                     cursor.executemany(
                         "INSERT OR REPLACE INTO stop_times (trip_id, stop_sequence, stop_id, arrival_time, departure_time) "
                         "VALUES (?, ?, ?, ?, ?)",
-                        rows
+                        rows,
                     )
                     total += len(rows)
-                    print(f"    Progress: {total:,} stop_times loaded...", end='\r')
+                    print(f"    Progress: {total:,} stop_times loaded...", end="\r")
                     rows = []
 
             # Insert remaining rows
@@ -204,7 +217,7 @@ def load_stop_times(gtfs_zip: Path, cursor: sqlite3.Cursor) -> None:
                 cursor.executemany(
                     "INSERT OR REPLACE INTO stop_times (trip_id, stop_sequence, stop_id, arrival_time, departure_time) "
                     "VALUES (?, ?, ?, ?, ?)",
-                    rows
+                    rows,
                 )
                 total += len(rows)
 
@@ -222,7 +235,9 @@ def compute_segments_and_baselines(gtfs_zip: Path, db_conn: sqlite3.Connection) 
 
     # Read calendar to determine service days
     print("  Reading calendar...")
-    cursor.execute("SELECT service_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday FROM calendar")
+    cursor.execute(
+        "SELECT service_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday FROM calendar"
+    )
     service_days = {}
     for row in cursor.fetchall():
         service_id = row[0]
@@ -245,14 +260,16 @@ def compute_segments_and_baselines(gtfs_zip: Path, db_conn: sqlite3.Connection) 
         ORDER BY st1.trip_id, st1.stop_sequence
     """)
 
-    segment_times = defaultdict(list)  # (route, dir, from_stop, to_stop, bin_id) → [durations]
+    segment_times = defaultdict(
+        list
+    )  # (route, dir, from_stop, to_stop, bin_id) → [durations]
     count = 0
 
     for row in cursor.fetchall():
         trip_id, from_stop, dep_time, to_stop, arr_time = row
         count += 1
         if count % 100000 == 0:
-            print(f"    Processed {count:,} segments...", end='\r')
+            print(f"    Processed {count:,} segments...", end="\r")
 
         if trip_id not in trip_meta:
             continue
@@ -283,17 +300,23 @@ def compute_segments_and_baselines(gtfs_zip: Path, db_conn: sqlite3.Connection) 
     segments_cache = {}  # (route, dir, from, to) → segment_id
     stats_rows = []
 
-    for (route_id, direction_id, from_stop, to_stop, bin_id), durations in segment_times.items():
+    for (
+        route_id,
+        direction_id,
+        from_stop,
+        to_stop,
+        bin_id,
+    ), durations in segment_times.items():
         # Get or create segment
         seg_key = (route_id, direction_id, from_stop, to_stop)
         if seg_key not in segments_cache:
             cursor.execute(
                 "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
-                seg_key
+                seg_key,
             )
             cursor.execute(
                 "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
-                seg_key
+                seg_key,
             )
             segment_id = cursor.fetchone()[0]
             segments_cache[seg_key] = segment_id
@@ -313,11 +336,13 @@ def compute_segments_and_baselines(gtfs_zip: Path, db_conn: sqlite3.Connection) 
         VALUES (?, ?, ?)
         ON CONFLICT(segment_id, bin_id) DO UPDATE SET schedule_mean=excluded.schedule_mean
         """,
-        stats_rows
+        stats_rows,
     )
 
     db_conn.commit()
-    print(f"  Inserted {len(segments_cache):,} segments and {len(stats_rows):,} segment_stats rows")
+    print(
+        f"  Inserted {len(segments_cache):,} segments and {len(stats_rows):,} segment_stats rows"
+    )
 
 
 def store_metadata(gtfs_zip: Path, cursor: sqlite3.Cursor) -> str:
@@ -326,29 +351,29 @@ def store_metadata(gtfs_zip: Path, cursor: sqlite3.Cursor) -> str:
 
     try:
         with zipfile.ZipFile(gtfs_zip) as zf:
-            with zf.open('feed_info.txt') as f:
-                reader = csv.DictReader(line.decode('utf-8') for line in f)
+            with zf.open("feed_info.txt") as f:
+                reader = csv.DictReader(line.decode("utf-8") for line in f)
                 for row in reader:
-                    gtfs_version = row.get('feed_version', 'unknown')
-                    publisher = row.get('feed_publisher_name', 'unknown')
-                    start_date = row.get('feed_start_date', 'unknown')
-                    end_date = row.get('feed_end_date', 'unknown')
+                    gtfs_version = row.get("feed_version", "unknown")
+                    publisher = row.get("feed_publisher_name", "unknown")
+                    start_date = row.get("feed_start_date", "unknown")
+                    end_date = row.get("feed_end_date", "unknown")
 
                     cursor.execute(
                         "INSERT OR REPLACE INTO gtfs_metadata (key, value, updated_at) VALUES (?, ?, ?)",
-                        ('gtfs_version', gtfs_version, int(time.time()))
+                        ("gtfs_version", gtfs_version, int(time.time())),
                     )
                     cursor.execute(
                         "INSERT OR REPLACE INTO gtfs_metadata (key, value, updated_at) VALUES (?, ?, ?)",
-                        ('gtfs_publisher', publisher, int(time.time()))
+                        ("gtfs_publisher", publisher, int(time.time())),
                     )
                     cursor.execute(
                         "INSERT OR REPLACE INTO gtfs_metadata (key, value, updated_at) VALUES (?, ?, ?)",
-                        ('gtfs_start_date', start_date, int(time.time()))
+                        ("gtfs_start_date", start_date, int(time.time())),
                     )
                     cursor.execute(
                         "INSERT OR REPLACE INTO gtfs_metadata (key, value, updated_at) VALUES (?, ?, ?)",
-                        ('gtfs_end_date', end_date, int(time.time()))
+                        ("gtfs_end_date", end_date, int(time.time())),
                     )
                     break
     except KeyError:
@@ -365,7 +390,7 @@ def parse_gtfs_time(time_str: str) -> int:
     GTFS times can exceed 24h (e.g., 25:30:00).
     """
     try:
-        parts = time_str.split(':')
+        parts = time_str.split(":")
         hours = int(parts[0])
         minutes = int(parts[1])
         seconds = int(parts[2])

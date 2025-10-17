@@ -1,9 +1,10 @@
 """API route handlers."""
+
 import logging
 import time
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Header
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -15,14 +16,16 @@ from app.learning import (
     compute_blended_mean,
     compute_percentiles_robust,
     compute_variance,
-    is_stale
+    log_rejection,
+    update_device_bucket,
 )
+from app.idempotency import check_idempotency_key, store_idempotency_key
 from app.models import (
     RideSummary,
     RideSummaryResponse,
     ETAResponse,
     ConfigResponse,
-    HealthResponse
+    HealthResponse,
 )
 from app.state import get_startup_time
 
@@ -37,60 +40,131 @@ limiter = Limiter(key_func=get_remote_address)
 async def ride_summary(
     request: Request,
     ride: RideSummary,
-    authenticated: bool = Depends(verify_token)
+    authenticated: bool = Depends(verify_token),
+    idempotency_key: str = Header(None, alias="Idempotency-Key"),
 ):
-    """Accept ride summary and update learning statistics."""
+    """Accept ride summary and update learning statistics (global aggregation)."""
     settings = get_settings()
+
+    # Check idempotency key (optional but recommended)
+    if idempotency_key:
+        cached_response = check_idempotency_key(idempotency_key)
+        if cached_response:
+            # Return cached response (409 Conflict with cached result)
+            logger.info(f"Idempotent replay detected: {idempotency_key}")
+            # For now, return success with zero rejected count (client should cache response)
+            return RideSummaryResponse(
+                accepted=True, rejected_count=0, rejected_by_reason={}
+            )
+
+    # Validate max segments
+    if len(ride.segments) > settings.max_segments_per_ride:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many segments ({len(ride.segments)}), max is {settings.max_segments_per_ride}",
+        )
+
     conn = get_connection(settings.db_path)
     cursor = conn.cursor()
 
     rejected_count = 0
+    rejected_by_reason: dict[str, int] = {}
 
     # Insert ride metadata
     cursor.execute(
         "INSERT INTO rides (submitted_at, segment_count) VALUES (?, ?)",
-        (int(time.time()), len(ride.segments))
+        (int(time.time()), len(ride.segments)),
     )
     ride_id = cursor.lastrowid
 
     for seq, segment in enumerate(ride.segments):
+        # Update device bucket tracking (if provided)
+        if segment.device_bucket:
+            update_device_bucket(conn, segment.device_bucket)
+
         # Validate segment exists
         cursor.execute(
             """
             SELECT segment_id FROM segments
             WHERE route_id = ? AND direction_id = ? AND from_stop_id = ? AND to_stop_id = ?
             """,
-            (ride.route_id, ride.direction_id, segment.from_stop_id, segment.to_stop_id)
+            (
+                ride.route_id,
+                ride.direction_id,
+                segment.from_stop_id,
+                segment.to_stop_id,
+            ),
         )
         row = cursor.fetchone()
         if row is None:
             # Unknown segment - reject with 422
             conn.close()
-            raise HTTPException(status_code=422, detail=f"Unknown segment: {segment.from_stop_id} -> {segment.to_stop_id}")
+            raise HTTPException(
+                status_code=422,
+                detail=f"Unknown segment: {segment.from_stop_id} -> {segment.to_stop_id}",
+            )
 
         segment_id = row[0]
 
         # Compute time bin (with optional holiday routing)
         bin_id = compute_bin_id(segment.timestamp_utc, is_holiday=segment.is_holiday)
 
-        # Update statistics
-        accepted = update_segment_stats(conn, segment_id, bin_id, segment.duration_sec)
+        # Update statistics (with mapmatch_conf check)
+        accepted, rejection_reason = update_segment_stats(
+            conn, segment_id, bin_id, segment.duration_sec, segment.mapmatch_conf
+        )
+
         if not accepted:
             rejected_count += 1
+            rejected_by_reason[rejection_reason] = (
+                rejected_by_reason.get(rejection_reason, 0) + 1
+            )
+
+            # Log rejection
+            log_rejection(
+                conn,
+                segment_id,
+                bin_id,
+                rejection_reason,
+                segment.duration_sec,
+                segment.mapmatch_conf,
+                segment.device_bucket,
+            )
 
         # Record ride_segment
         cursor.execute(
             """
-            INSERT INTO ride_segments (ride_id, seq, segment_id, duration_sec, dwell_sec, timestamp_utc, accepted)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO ride_segments (ride_id, seq, segment_id, duration_sec, dwell_sec, timestamp_utc, accepted, device_bucket, mapmatch_conf, rejection_reason)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (ride_id, seq, segment_id, segment.duration_sec, segment.dwell_sec, segment.timestamp_utc, int(accepted))
+            (
+                ride_id,
+                seq,
+                segment_id,
+                segment.duration_sec,
+                segment.dwell_sec,
+                segment.timestamp_utc,
+                int(accepted),
+                segment.device_bucket,
+                segment.mapmatch_conf,
+                rejection_reason,
+            ),
         )
 
     conn.commit()
     conn.close()
 
-    return RideSummaryResponse(accepted=True, rejected_count=rejected_count)
+    response_data = {
+        "accepted": True,
+        "rejected_count": rejected_count,
+        "rejected_by_reason": rejected_by_reason,
+    }
+
+    # Store idempotency key (if provided)
+    if idempotency_key:
+        store_idempotency_key(idempotency_key, response_data)
+
+    return RideSummaryResponse(**response_data)
 
 
 @router.get("/eta", response_model=ETAResponse)
@@ -99,7 +173,7 @@ async def get_eta(
     direction_id: int = Query(...),
     from_stop_id: str = Query(...),
     to_stop_id: str = Query(...),
-    timestamp_utc: Optional[int] = Query(None)
+    timestamp_utc: Optional[int] = Query(None),
 ):
     """Query learned ETA for a segment."""
     settings = get_settings()
@@ -112,7 +186,7 @@ async def get_eta(
         SELECT segment_id FROM segments
         WHERE route_id = ? AND direction_id = ? AND from_stop_id = ? AND to_stop_id = ?
         """,
-        (route_id, direction_id, from_stop_id, to_stop_id)
+        (route_id, direction_id, from_stop_id, to_stop_id),
     )
     row = cursor.fetchone()
     if row is None:
@@ -133,7 +207,7 @@ async def get_eta(
         FROM segment_stats
         WHERE segment_id = ? AND bin_id = ?
         """,
-        (segment_id, bin_id)
+        (segment_id, bin_id),
     )
     row = cursor.fetchone()
     conn.close()
@@ -148,10 +222,13 @@ async def get_eta(
 
     # Compute variance and percentiles (with low-n protection)
     variance = compute_variance(welford_m2, n)
-    p50, p90, low_n_warning = compute_percentiles_robust(mean, variance, n, schedule_mean)
+    p50, p90, low_n_warning = compute_percentiles_robust(
+        mean, variance, n, schedule_mean
+    )
 
     # Blend weight
     from app.learning import compute_blend_weight
+
     blend_weight = compute_blend_weight(n)
 
     return ETAResponse(
@@ -161,13 +238,13 @@ async def get_eta(
         sample_count=n,
         blend_weight=blend_weight,
         last_updated=last_update,
-        low_n_warning=low_n_warning
+        low_n_warning=low_n_warning,
     )
 
 
 @router.get("/config", response_model=ConfigResponse)
 async def get_config():
-    """Return server configuration."""
+    """Return server configuration (includes global aggregation settings)."""
     settings = get_settings()
 
     # Fetch GTFS version from DB
@@ -188,7 +265,11 @@ async def get_config():
         time_bin_minutes=15,
         half_life_days=settings.half_life_days,
         gtfs_version=gtfs_version,
-        server_version=settings.server_version
+        server_version=settings.server_version,
+        # Global aggregation settings
+        mapmatch_min_conf=settings.mapmatch_min_conf,
+        max_segments_per_ride=settings.max_segments_per_ride,
+        idempotency_ttl_hours=settings.idempotency_ttl_hours,
     )
 
 
@@ -214,6 +295,5 @@ async def health_check():
     uptime_sec = int(time.time()) - startup if startup else 0
 
     status = "ok" if db_ok else "degraded"
-    status_code = 200 if db_ok else 503
 
     return HealthResponse(status=status, db_ok=db_ok, uptime_sec=uptime_sec)

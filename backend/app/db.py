@@ -1,7 +1,7 @@
 """Database initialization and connection management."""
+
 import sqlite3
 from pathlib import Path
-from typing import Optional
 
 
 def init_db(db_path: str) -> None:
@@ -28,7 +28,7 @@ def init_db(db_path: str) -> None:
 
     conn.executemany(
         "INSERT OR IGNORE INTO time_bins (bin_id, weekday_type, hour_start, minute_start) VALUES (?, ?, ?, ?)",
-        bins
+        bins,
     )
     conn.commit()
     conn.close()

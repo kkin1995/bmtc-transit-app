@@ -1,4 +1,5 @@
 """Bootstrap script to initialize DB and load GTFS."""
+
 import sys
 from pathlib import Path
 
@@ -18,7 +19,9 @@ def main():
     if not gtfs_zip.exists():
         gtfs_zip = Path(settings.gtfs_path) / "bmtc.zip"
     if not gtfs_zip.exists():
-        print(f"GTFS zip not found at {settings.gtfs_path}/gtfs.zip or {settings.gtfs_path}/bmtc.zip")
+        print(
+            f"GTFS zip not found at {settings.gtfs_path}/gtfs.zip or {settings.gtfs_path}/bmtc.zip"
+        )
         sys.exit(1)
 
     print(f"Parsing GTFS from {gtfs_zip}...")
@@ -27,7 +30,7 @@ def main():
     conn.close()
 
     print(f"Bootstrap complete. GTFS version: {gtfs_version}")
-    print(f"Segments and segment_stats populated with schedule baselines.")
+    print("Segments and segment_stats populated with schedule baselines.")
 
 
 if __name__ == "__main__":
