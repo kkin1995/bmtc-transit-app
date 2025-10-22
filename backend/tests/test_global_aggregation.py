@@ -1,49 +1,27 @@
-"""Integration tests for global aggregation features."""
+"""Integration tests for global aggregation features.
 
-import os
-import tempfile
+Tests the global aggregation system including:
+- Idempotency key tracking
+- Device bucket management
+- Map-matching confidence filtering
+- Outlier detection and rejection
+- Rejection reason breakdown
+
+All tests use isolated fixtures from conftest.py.
+"""
+
 import time
 import pytest
-from fastapi.testclient import TestClient
 
-# Set test env vars before importing app
-TEST_DB = tempfile.mktemp(suffix=".db")
-os.environ["BMTC_API_KEY"] = "test-key-global-agg"
-os.environ["BMTC_DB_PATH"] = TEST_DB
-os.environ["BMTC_GTFS_PATH"] = "/tmp/gtfs"
-os.environ["BMTC_N0"] = "20"
-os.environ["BMTC_MAPMATCH_MIN_CONF"] = "0.7"
-os.environ["BMTC_OUTLIER_SIGMA"] = "3.0"
-os.environ["BMTC_MAX_SEGMENTS_PER_RIDE"] = "50"
-os.environ["BMTC_DEVICE_BUCKET_SIZE_HOURS"] = "24"
-os.environ["BMTC_DEVICE_BUCKET_MAX_REQUESTS"] = "100"
-os.environ["BMTC_IDEMPOTENCY_TTL_HOURS"] = "24"
-
-from app.main import app  # noqa: E402
-from app.db import get_connection, init_db  # noqa: E402
-
-# Disable rate limiting by reducing test rate
-os.environ["TESTING"] = "true"
-
-client = TestClient(app, raise_server_exceptions=True)
+# Mark all tests in this module as integration tests
+pytestmark = pytest.mark.integration
 
 
-@pytest.fixture(scope="module", autouse=True)
-def setup_db():
-    """Initialize test database once."""
-    # Remove old test DB if it exists
-    try:
-        if os.path.exists(TEST_DB):
-            os.remove(TEST_DB)
-    except Exception:
-        pass
-    # Initialize database with schema
-    init_db(TEST_DB)
-
-
-def setup_test_segment():
-    """Insert a test segment with baseline stats."""
+@pytest.fixture
+def global_agg_client(client):
+    """Provide client with test segment setup for global aggregation tests."""
     from app.config import get_settings
+    from app.db import get_connection
 
     settings = get_settings()
     conn = get_connection(settings.db_path)
@@ -54,6 +32,7 @@ def setup_test_segment():
         "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
         ("ROUTE_GLOBAL", 0, "STOP_X", "STOP_Y"),
     )
+    conn.commit()
 
     # Get segment_id
     cursor.execute(
@@ -71,15 +50,14 @@ def setup_test_segment():
         """,
         (segment_id, 0, 300.0, 0, 0.0, 0.0),
     )
-
     conn.commit()
     conn.close()
-    return segment_id
+
+    yield client
 
 
-def test_idempotency_header_handling():
+def test_idempotency_header_handling(global_agg_client, auth_headers):
     """Test that Idempotency-Key header stores keys."""
-    setup_test_segment()
     from app.config import get_settings
     from app.db import get_connection
 
@@ -100,13 +78,11 @@ def test_idempotency_header_handling():
     }
 
     # First request with idempotency key
-    response1 = client.post(
+    headers = {**auth_headers, "Idempotency-Key": "test-idem-key-unique-001"}
+    response1 = global_agg_client.post(
         "/v1/ride_summary",
         json=ride_data,
-        headers={
-            "Authorization": "Bearer test-key-global-agg",
-            "Idempotency-Key": "test-idem-key-unique-001",
-        },
+        headers=headers,
     )
     assert response1.status_code == 200
 
@@ -123,18 +99,19 @@ def test_idempotency_header_handling():
     assert row[0] == "test-idem-key-unique-001"
 
 
-def test_device_bucket_tracking():
+def test_device_bucket_tracking(global_agg_client, auth_headers):
     """Test that device buckets are created and tracked."""
-    setup_test_segment()
     from app.config import get_settings
+    from app.db import get_connection
 
     settings = get_settings()
 
-    # Submit ride with device_bucket (SHA256 hash)
+    # Submit ride with device_bucket (SHA256 hash) at top level
     test_bucket = "a" * 64  # Valid SHA256 hex string
     ride_data = {
         "route_id": "ROUTE_GLOBAL",
         "direction_id": 0,
+        "device_bucket": test_bucket,  # Top-level per v1 spec
         "segments": [
             {
                 "from_stop_id": "STOP_X",
@@ -142,15 +119,14 @@ def test_device_bucket_tracking():
                 "duration_sec": 305.0,
                 "timestamp_utc": int(time.time()) - 200,
                 "mapmatch_conf": 0.85,
-                "device_bucket": test_bucket,
             }
         ],
     }
 
-    response = client.post(
+    response = global_agg_client.post(
         "/v1/ride_summary",
         json=ride_data,
-        headers={"Authorization": "Bearer test-key-global-agg"},
+        headers=auth_headers,
     )
     assert response.status_code == 200
 
@@ -167,19 +143,19 @@ def test_device_bucket_tracking():
     assert row[0] >= 1  # Should have at least 1 observation
 
 
-def test_device_bucket_persistence():
+def test_device_bucket_persistence(global_agg_client, auth_headers):
     """Test that device buckets persist across multiple requests."""
-    setup_test_segment()
     from app.config import get_settings
+    from app.db import get_connection
 
     settings = get_settings()
-
     test_bucket = "b" * 64  # Valid SHA256 hex string
 
-    # Submit first ride
+    # Submit first ride with device_bucket at top level
     ride_data = {
         "route_id": "ROUTE_GLOBAL",
         "direction_id": 0,
+        "device_bucket": test_bucket,  # Top-level per v1 spec
         "segments": [
             {
                 "from_stop_id": "STOP_X",
@@ -187,15 +163,14 @@ def test_device_bucket_persistence():
                 "duration_sec": 300.0,
                 "timestamp_utc": int(time.time()),
                 "mapmatch_conf": 0.90,
-                "device_bucket": test_bucket,
             }
         ],
     }
 
-    client.post(
+    global_agg_client.post(
         "/v1/ride_summary",
         json=ride_data,
-        headers={"Authorization": "Bearer test-key-global-agg"},
+        headers=auth_headers,
     )
 
     # Check observation count
@@ -208,10 +183,10 @@ def test_device_bucket_persistence():
     conn.close()
 
     # Submit second ride with same bucket
-    client.post(
+    global_agg_client.post(
         "/v1/ride_summary",
         json=ride_data,
-        headers={"Authorization": "Bearer test-key-global-agg"},
+        headers=auth_headers,
     )
 
     # Count should increment
@@ -226,10 +201,8 @@ def test_device_bucket_persistence():
     assert count2 > count1
 
 
-def test_low_mapmatch_conf_rejection():
+def test_low_mapmatch_conf_rejection(global_agg_client, auth_headers):
     """Test that segments with low mapmatch_conf are rejected."""
-    setup_test_segment()
-
     ride_data = {
         "route_id": "ROUTE_GLOBAL",
         "direction_id": 0,
@@ -244,23 +217,22 @@ def test_low_mapmatch_conf_rejection():
         ],
     }
 
-    response = client.post(
+    response = global_agg_client.post(
         "/v1/ride_summary",
         json=ride_data,
-        headers={"Authorization": "Bearer test-key-global-agg"},
+        headers=auth_headers,
     )
     assert response.status_code == 200
     result = response.json()
-    # If rejections are being tracked properly
-    if result["rejected_count"] > 0:
+    # If rejections are being tracked properly (v1: rejected_segments)
+    if result["rejected_segments"] > 0:
         assert "low_mapmatch_conf" in result["rejected_by_reason"]
 
 
-def test_outlier_rejection():
+def test_outlier_rejection(global_agg_client, auth_headers):
     """Test that outlier detection works when sufficient data exists."""
-    setup_test_segment()
     from app.config import get_settings
-    from app.db import compute_bin_id
+    from app.db import compute_bin_id, get_connection
 
     settings = get_settings()
 
@@ -303,25 +275,23 @@ def test_outlier_rejection():
         ],
     }
 
-    response = client.post(
+    response = global_agg_client.post(
         "/v1/ride_summary",
         json=ride_data,
-        headers={"Authorization": "Bearer test-key-global-agg"},
+        headers=auth_headers,
     )
     assert response.status_code == 200
     result = response.json()
-    # Check if outlier was detected (depends on implementation)
-    if result["rejected_count"] > 0:
+    # Check if outlier was detected (depends on implementation) (v1: rejected_segments)
+    if result["rejected_segments"] > 0:
         assert (
             "outlier" in result["rejected_by_reason"]
             or "missing_stats" in result["rejected_by_reason"]
         )
 
 
-def test_max_segments_validation():
+def test_max_segments_validation(global_agg_client, auth_headers):
     """Test that requests exceeding max segments are rejected."""
-    setup_test_segment()
-
     # Create 51 segments (exceeds max of 50)
     segments = []
     for i in range(51):
@@ -337,18 +307,16 @@ def test_max_segments_validation():
 
     ride_data = {"route_id": "ROUTE_GLOBAL", "direction_id": 0, "segments": segments}
 
-    response = client.post(
+    response = global_agg_client.post(
         "/v1/ride_summary",
         json=ride_data,
-        headers={"Authorization": "Bearer test-key-global-agg"},
+        headers=auth_headers,
     )
     assert response.status_code == 400
 
 
-def test_rejected_by_reason_breakdown():
+def test_rejected_by_reason_breakdown(global_agg_client, auth_headers):
     """Test that rejected_by_reason provides accurate breakdown."""
-    setup_test_segment()
-
     ride_data = {
         "route_id": "ROUTE_GLOBAL",
         "direction_id": 0,
@@ -372,21 +340,21 @@ def test_rejected_by_reason_breakdown():
                 "to_stop_id": "STOP_Y",
                 "duration_sec": 330.0,
                 "timestamp_utc": int(time.time()) - 700,
-                # Missing mapmatch_conf
+                # Missing mapmatch_conf (defaults to 1.0)
             },
         ],
     }
 
-    response = client.post(
+    response = global_agg_client.post(
         "/v1/ride_summary",
         json=ride_data,
-        headers={"Authorization": "Bearer test-key-global-agg"},
+        headers=auth_headers,
     )
     assert response.status_code == 200
     result = response.json()
 
-    # Should have rejections for different reasons
-    assert result["rejected_count"] >= 1
+    # Should have rejections for different reasons (v1: rejected_segments)
+    assert result["rejected_segments"] >= 1
     assert "rejected_by_reason" in result
     reasons = result["rejected_by_reason"]
 
@@ -396,11 +364,10 @@ def test_rejected_by_reason_breakdown():
     assert "missing_stats" in reasons or "outlier" in reasons
 
 
-def test_global_aggregation_increments_n():
+def test_global_aggregation_increments_n(global_agg_client, auth_headers):
     """Test that accepted segments increment global n counter."""
-    setup_test_segment()
     from app.config import get_settings
-    from app.db import compute_bin_id
+    from app.db import compute_bin_id, get_connection
 
     settings = get_settings()
 
@@ -438,10 +405,10 @@ def test_global_aggregation_increments_n():
         ],
     }
 
-    response = client.post(
+    response = global_agg_client.post(
         "/v1/ride_summary",
         json=ride_data,
-        headers={"Authorization": "Bearer test-key-global-agg"},
+        headers=auth_headers,
     )
     assert response.status_code == 200
     result = response.json()
@@ -461,12 +428,12 @@ def test_global_aggregation_increments_n():
     new_n = row[0] if row else 0
     conn.close()
 
-    # If no rejections, n should increment
-    if result["rejected_count"] == 0:
+    # If no rejections, n should increment (v1: rejected_segments)
+    if result["rejected_segments"] == 0:
         assert new_n >= initial_n + 1
 
 
-def test_config_returns_global_aggregation_settings():
+def test_config_returns_global_aggregation_settings(client):
     """Test that /v1/config returns global aggregation settings."""
     response = client.get("/v1/config")
     assert response.status_code == 200
@@ -476,14 +443,13 @@ def test_config_returns_global_aggregation_settings():
     assert "max_segments_per_ride" in config
     assert "idempotency_ttl_hours" in config
 
-    assert config["mapmatch_min_conf"] == 0.7  # Match env var
+    assert config["mapmatch_min_conf"] == 0.7  # Match test_env
     assert config["max_segments_per_ride"] == 50
     assert config["idempotency_ttl_hours"] == 24
 
 
 def test_mapmatch_conf_default_value():
     """Test that mapmatch_conf defaults to 1.0 when not provided."""
-    # This is handled by the Pydantic model default value
     from app.models import RideSegment
     import time
 
