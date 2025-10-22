@@ -4,6 +4,95 @@
 **Stack:** FastAPI, SQLite WAL, uv package manager
 **Working Dir:** `/home/karan-kinariwala/Dropbox/KARAN/1-Projects/bmtc-transit-app`
 
+## Agent Workflow
+
+This repo uses a **lean multi-agent flow** (A1–A8) to ship safe, small increments. Each “agent” is a role with explicit inputs/outputs. Claude should **select the minimal next agent**, perform its steps, and produce the required artifacts with a small, reviewable diff.
+
+### Quick Rules
+- Prefer **additive changes**; don’t break `docs/api.md` unless PRD says so.  
+- **GETs open**, **POSTs Bearer + Idempotency**.  
+- **No PII**, never expose `device_bucket`.  
+- Default timestamps to **ISO-8601 UTC**; durations in seconds.  
+- **Single DB writer**: batch work in one transaction per POST.
+
+### When Claude Starts a Task
+1. **Route** the task to one of A1–A8 below.  
+2. **Restate** the task and constraints.  
+3. **Follow** the agent’s step-by-step guide.  
+4. **Emit** only the artifacts listed, with exact filenames.  
+5. **Propose** a concise commit message and next agent.
+
+### Agent Router (meta-prompt Claude should apply)
+- If the ask is fuzzy → **A1 Product** (produce a one-page PRD).  
+- If API shape changes → **A2 API Design**.  
+- If schema changes → **A3 Data/Schema**.  
+- If it’s pure code logic/UI of API → **A4 Implementation**.  
+- If security/privacy implications → always run **A5** after A4.  
+- If tests are missing/flaky → **A6 Testing/QA**.  
+- If observability gaps → **A7 Observability**.  
+- If ready to ship → **A8 Release/Ops**.
+
+### Swimlane (Reference)
+A1 → A2 → (A3 if needed) → A4 → A5 → A6 → A7 → A8
+
+### Handoff Contracts
+- **A1→A2:** PRD with ACs, NFRs, risks.  
+- **A2→A3/A4:** Updated `docs/api.md` with examples & errors.  
+- **A3→A4:** Up/down SQL migrations + index/EXPLAIN notes.  
+- **A4→A6:** Code and unit tests; validators present; idempotency & rate-limit implemented.  
+- **A5→A6:** Security review doc (findings + mitigations).  
+- **A6→A7:** Green suite; gaps identified → metrics list.  
+- **A7→A8:** Health checks and SQL for verification.
+
+### Security & Privacy Gate (Claude must enforce)
+- Require `Authorization: Bearer` on `POST /v1/ride_summary`; GETs open.  
+- Require `Idempotency-Key` and store `body_sha256`; 409 on mismatch.  
+- No logging of request payloads at INFO; avoid IP linkage.  
+- Enforce request size and segment count limits.  
+- Respect retention TTLs: `ride_segments` 90d, `rejection_log` 30d, `idempotency_keys` 24h.
+
+### Performance & Ops Notes
+- Use SQLite WAL; wrap POST updates in one transaction; use UPSERT.  
+- Maintain indices for `(segment_id, bin_id, n, welford_mean, welford_m2, ema_mean, schedule_mean, last_update)`.  
+- Backups hourly via systemd; retention sweeps daily.  
+- Observe p95 of `GET /v1/eta` < 200 ms (CF Tunnel).
+
+### Commit & PR Conventions
+- Conventional Commits:  
+  - `feat(api): add low_confidence and bin_window to GET /v1/eta`  
+  - `fix(rate-limit): enforce per-device_bucket cap with headers`  
+  - `docs(api): update examples and error model`  
+- Keep PRs small; include a checklist of gates passed (A5/A6/A7 as applicable).
+
+### Example “Task → Agent” Mappings
+- “Smooth ETA near bin boundaries”: A1 → A2 → A3 (maybe) → A4 → A5 → A6 → A7 → A8  
+- “Add device-bucket rate limit headers”: A2 → A4 → A5 → A6 → A7 → A8  
+- “Fix flaky test due to settings cache”: A6 only (plus minor A4 refactor)
+
+---
+
+## How Claude Should Execute
+1. **Choose agent** → announce choice and why.  
+2. **Create/modify files** exactly as named in that agent’s output spec.  
+3. **Show diff** (summarized) and **exact commands** to validate (pytest, curl).  
+4. **State next agent** to continue the flow, or declare **Done** if gates are met.
+
+---
+
+## Minimal Validation Commands (for Claude to suggest)
+```bash
+# Health
+curl -s https://<host>/v1/health | jq .
+
+# Config
+curl -s https://<host>/v1/config | jq .
+
+# ETA (unauth)
+curl -s "https://<host>/v1/eta?route_id=335E&direction_id=0&from_stop_id=20558&to_stop_id=29374" | jq .
+
+# Tests (with isolation)
+cd backend && uv run pytest -n auto --dist loadfile -q
+
 ---
 
 ## Quick Commands
@@ -171,23 +260,27 @@ bmtc-transit-app/
 
 ## Testing
 
-**Unit Tests:**
+**Full Test Suite (Recommended):**
 ```bash
 cd backend
-uv run pytest tests/test_learning.py -v     # Welford/EMA algorithms
+uv run pytest -n auto --dist loadfile -q  # All 47 tests in parallel (~9-10s)
 ```
 
-**Integration Tests:**
+**Test Modules:**
 ```bash
-uv run pytest tests/test_integration.py -v  # POST→GET flow
-uv run pytest tests/test_idempotency.py -v  # Idempotency keys
-uv run pytest tests/test_global_aggregation.py -v  # Outlier rejection
+uv run pytest tests/test_learning.py -v             # 9 unit tests (Welford/EMA algorithms)
+uv run pytest tests/test_integration.py -v          # 8 integration tests (POST→GET flow)
+uv run pytest tests/test_idempotency.py -v          # 6 tests (idempotency keys)
+uv run pytest tests/test_global_aggregation.py -v   # 10 tests (outlier rejection)
+uv run pytest tests/test_rate_limit.py -v           # 14 tests (rate limiting)
 ```
 
 **Coverage:**
 - Learning algorithms: 100%
 - API endpoints: 90%+
 - DB operations: 85%+
+
+**Test Isolation:** All tests run with complete isolation (settings, DB, env). See `backend/tests/TEST_ISOLATION.md` for details.
 
 ---
 
@@ -262,6 +355,7 @@ journalctl -u bmtc-api -f
 | `docs/quickstart.md` | 5-minute getting started |
 | `docs/PROJECT_STRUCTURE.md` | Monorepo architecture |
 | `backend/README.md` | Backend-specific setup |
+| `backend/tests/TEST_ISOLATION.md` | Test isolation strategy + parallel execution |
 
 ---
 
@@ -323,22 +417,25 @@ if n > 5 and abs(x - mean) > 3 * sqrt(variance):
 
 ---
 
-## ⚠️ Known Test Issue
+## ✅ Test Isolation (FIXED)
 
-**Tests pass per-module but fail when run together** due to settings cache contamination.
+**All 47 tests now pass reliably in parallel** with full isolation.
 
-Run tests individually:
+Run full test suite:
 ```bash
 cd backend
-uv run pytest tests/test_learning.py -v      # 9/9 ✅
-uv run pytest tests/test_integration.py -v   # 8/8 ✅
-uv run pytest tests/test_idempotency.py -v   # 6/6 ✅
-uv run pytest tests/test_global_aggregation.py -v  # 10/10 ✅
+uv run pytest -n auto --dist loadfile -q   # 47 tests, ~9-10 seconds
 ```
 
-**Fix**: Add `pytest-xdist` to dependencies and use `pytest -n auto --dist loadfile` for process isolation. See `backend/TODO.md` for details.
+**Implementation**:
+- Settings cache automatically cleared before/after each test
+- Isolated databases per test (in-memory for unit, temp file for integration)
+- pytest-xdist with loadfile distribution for parallel execution
+- pytest-randomly for order-independence verification
+
+See `backend/tests/TEST_ISOLATION.md` for complete documentation.
 
 ---
 
-**Last Updated:** 2025-10-17
-**Version:** 0.2.0 (Global Aggregation)
+**Last Updated:** 2025-10-22
+**Version:** 0.2.0 (Global Aggregation + Test Isolation)
