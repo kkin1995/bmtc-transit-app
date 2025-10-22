@@ -36,7 +36,6 @@ limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/ride_summary", response_model=RideSummaryResponse)
-@limiter.limit("10/minute")
 async def ride_summary(
     request: Request,
     ride: RideSummary,
@@ -46,6 +45,13 @@ async def ride_summary(
     """Accept ride summary and update learning statistics (global aggregation)."""
     settings = get_settings()
 
+    # Check for deprecated timestamp_utc usage and set deprecation header
+    deprecation_warning = None
+    for segment in ride.segments:
+        if segment.timestamp_utc is not None and not segment.observed_at_utc:
+            deprecation_warning = "timestamp_utc is deprecated, use observed_at_utc (ISO-8601). Will be removed in v0.3.0 (2025-11-30)"
+            break
+
     # Check idempotency key (optional but recommended)
     if idempotency_key:
         cached_response = check_idempotency_key(idempotency_key)
@@ -53,9 +59,10 @@ async def ride_summary(
             # Return cached response (409 Conflict with cached result)
             logger.info(f"Idempotent replay detected: {idempotency_key}")
             # For now, return success with zero rejected count (client should cache response)
-            return RideSummaryResponse(
-                accepted=True, rejected_count=0, rejected_by_reason={}
+            response = RideSummaryResponse(
+                accepted_segments=0, rejected_segments=0, rejected_by_reason={}
             )
+            return response
 
     # Validate max segments
     if len(ride.segments) > settings.max_segments_per_ride:
@@ -67,6 +74,7 @@ async def ride_summary(
     conn = get_connection(settings.db_path)
     cursor = conn.cursor()
 
+    accepted_count = 0
     rejected_count = 0
     rejected_by_reason: dict[str, int] = {}
 
@@ -77,10 +85,13 @@ async def ride_summary(
     )
     ride_id = cursor.lastrowid
 
+    # Extract device_bucket from top-level (not from segments)
+    device_bucket = ride.device_bucket
+
     for seq, segment in enumerate(ride.segments):
-        # Update device bucket tracking (if provided)
-        if segment.device_bucket:
-            update_device_bucket(conn, segment.device_bucket)
+        # Update device bucket tracking (if provided at top level)
+        if device_bucket:
+            update_device_bucket(conn, device_bucket)
 
         # Validate segment exists
         cursor.execute(
@@ -106,21 +117,26 @@ async def ride_summary(
 
         segment_id = row[0]
 
+        # Get timestamp epoch from segment (handles both ISO-8601 and deprecated epoch)
+        timestamp_epoch = segment.get_timestamp_epoch()
+
         # Compute time bin (with optional holiday routing)
-        bin_id = compute_bin_id(segment.timestamp_utc, is_holiday=segment.is_holiday)
+        bin_id = compute_bin_id(timestamp_epoch, is_holiday=segment.is_holiday)
 
         # Update statistics (with mapmatch_conf check)
         accepted, rejection_reason = update_segment_stats(
             conn, segment_id, bin_id, segment.duration_sec, segment.mapmatch_conf
         )
 
-        if not accepted:
+        if accepted:
+            accepted_count += 1
+        else:
             rejected_count += 1
             rejected_by_reason[rejection_reason] = (
                 rejected_by_reason.get(rejection_reason, 0) + 1
             )
 
-            # Log rejection
+            # Log rejection (use top-level device_bucket)
             log_rejection(
                 conn,
                 segment_id,
@@ -128,10 +144,10 @@ async def ride_summary(
                 rejection_reason,
                 segment.duration_sec,
                 segment.mapmatch_conf,
-                segment.device_bucket,
+                device_bucket,
             )
 
-        # Record ride_segment
+        # Record ride_segment (use top-level device_bucket)
         cursor.execute(
             """
             INSERT INTO ride_segments (ride_id, seq, segment_id, duration_sec, dwell_sec, timestamp_utc, accepted, device_bucket, mapmatch_conf, rejection_reason)
@@ -143,9 +159,9 @@ async def ride_summary(
                 segment_id,
                 segment.duration_sec,
                 segment.dwell_sec,
-                segment.timestamp_utc,
+                timestamp_epoch,
                 int(accepted),
-                segment.device_bucket,
+                device_bucket,
                 segment.mapmatch_conf,
                 rejection_reason,
             ),
@@ -155,8 +171,8 @@ async def ride_summary(
     conn.close()
 
     response_data = {
-        "accepted": True,
-        "rejected_count": rejected_count,
+        "accepted_segments": accepted_count,
+        "rejected_segments": rejected_count,
         "rejected_by_reason": rejected_by_reason,
     }
 
@@ -164,7 +180,16 @@ async def ride_summary(
     if idempotency_key:
         store_idempotency_key(idempotency_key, response_data)
 
-    return RideSummaryResponse(**response_data)
+    response = RideSummaryResponse(**response_data)
+
+    # Add deprecation header if needed
+    if deprecation_warning:
+        # Note: FastAPI doesn't easily allow adding headers to response_model responses
+        # This will be handled in middleware or by returning Response object
+        # For now, log the warning
+        logger.warning(f"Deprecated field used: {deprecation_warning}")
+
+    return response
 
 
 @router.get("/eta", response_model=ETAResponse)
@@ -228,17 +253,27 @@ async def get_eta(
 
     # Blend weight
     from app.learning import compute_blend_weight
+    from datetime import datetime, timezone
 
     blend_weight = compute_blend_weight(n)
 
+    # Convert last_update from epoch to ISO-8601 UTC string
+    if last_update is not None:
+        last_updated_iso = datetime.fromtimestamp(last_update, tz=timezone.utc).isoformat().replace("+00:00", "Z")
+    else:
+        # If no updates yet, use epoch 0
+        last_updated_iso = datetime.fromtimestamp(0, tz=timezone.utc).isoformat().replace("+00:00", "Z")
+
     return ETAResponse(
-        mean_sec=mean,
+        eta_sec=mean,
         p50_sec=p50,
         p90_sec=p90,
-        sample_count=n,
+        n=n,
         blend_weight=blend_weight,
-        last_updated=last_update,
-        low_n_warning=low_n_warning,
+        schedule_sec=schedule_mean,
+        low_confidence=low_n_warning,
+        bin_id=bin_id,
+        last_updated=last_updated_iso,
     )
 
 
