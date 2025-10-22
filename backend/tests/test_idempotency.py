@@ -1,36 +1,28 @@
-"""Unit tests for idempotency handling."""
+"""Unit tests for idempotency handling.
 
-import os
-import tempfile
+Tests the idempotency key system that prevents duplicate ride submissions.
+Uses isolated fixtures from conftest.py.
+"""
+
 import time
 import pytest
 
-# Set test env vars before imports
-TEST_DB = tempfile.mktemp(suffix=".db")
-os.environ["BMTC_API_KEY"] = "test-key"
-os.environ["BMTC_DB_PATH"] = TEST_DB
-os.environ["BMTC_IDEMPOTENCY_TTL_HOURS"] = "1"
-
-from app.db import init_db  # noqa: E402
-from app.idempotency import (  # noqa: E402
-    compute_response_hash,
-    check_idempotency_key,
-    store_idempotency_key,
-    cleanup_expired_keys,
-)
+# Mark all tests in this module as unit tests
+pytestmark = pytest.mark.unit
 
 
-@pytest.fixture(scope="module", autouse=True)
-def setup_db():
-    """Initialize test database once."""
-    # Remove old test DB if it exists to ensure fresh schema
-    if os.path.exists(TEST_DB):
-        os.remove(TEST_DB)
-    init_db(TEST_DB)
+@pytest.fixture
+def idempotency_db(temp_db):
+    """Provide database for idempotency tests."""
+    from app.db import init_db
+    db_path, conn = temp_db
+    yield db_path, conn
 
 
 def test_compute_response_hash():
     """Test response hash computation is deterministic."""
+    from app.idempotency import compute_response_hash
+
     response1 = {"accepted": True, "rejected_count": 0}
     response2 = {"rejected_count": 0, "accepted": True}  # Different order
 
@@ -42,14 +34,18 @@ def test_compute_response_hash():
     assert len(hash1) == 64  # SHA256 hex digest
 
 
-def test_idempotency_key_not_found():
+def test_idempotency_key_not_found(idempotency_db):
     """Test checking non-existent key returns None."""
+    from app.idempotency import check_idempotency_key
+
     result = check_idempotency_key("non-existent-key-123")
     assert result is None
 
 
-def test_idempotency_key_store_and_retrieve():
+def test_idempotency_key_store_and_retrieve(idempotency_db):
     """Test storing and retrieving idempotency key."""
+    from app.idempotency import store_idempotency_key, check_idempotency_key, compute_response_hash
+
     key = "test-key-456"
     response_data = {"accepted": True, "rejected_count": 2}
 
@@ -67,15 +63,17 @@ def test_idempotency_key_store_and_retrieve():
     assert cached["response_hash"] == expected_hash
 
 
-def test_idempotency_key_ttl():
+def test_idempotency_key_ttl(idempotency_db):
     """Test TTL expiration of idempotency keys."""
+    from app.idempotency import check_idempotency_key, compute_response_hash
+    from app.config import get_settings
+    from app.db import get_connection
+
+    db_path, _ = idempotency_db
     key = "test-key-ttl-789"
     response_data = {"accepted": True, "rejected_count": 0}
 
     # Manually insert with old timestamp (2 hours ago)
-    from app.config import get_settings
-    from app.db import get_connection
-
     settings = get_settings()
     conn = get_connection(settings.db_path)
     cursor = conn.cursor()
@@ -90,16 +88,32 @@ def test_idempotency_key_ttl():
     conn.commit()
     conn.close()
 
-    # Should not find expired key (TTL is 1 hour)
-    cached = check_idempotency_key(key)
+    # Should not find expired key (TTL is 24 hours by default in test_env)
+    # But if TTL is 1 hour, this should be expired
+    # Let's test with a very old key (25 hours ago)
+    key_old = "test-key-very-old"
+    conn = get_connection(settings.db_path)
+    cursor = conn.cursor()
+    very_old_timestamp = int(time.time()) - (25 * 3600)
+    cursor.execute(
+        "INSERT INTO idempotency_keys (key, submitted_at, response_hash) VALUES (?, ?, ?)",
+        (key_old, very_old_timestamp, response_hash),
+    )
+    conn.commit()
+    conn.close()
+
+    # This should be expired
+    cached = check_idempotency_key(key_old)
     assert cached is None
 
 
-def test_cleanup_expired_keys():
+def test_cleanup_expired_keys(idempotency_db):
     """Test cleanup of expired idempotency keys."""
+    from app.idempotency import cleanup_expired_keys, check_idempotency_key
     from app.config import get_settings
     from app.db import get_connection
 
+    db_path, _ = idempotency_db
     settings = get_settings()
 
     # Clean all existing keys first
@@ -114,7 +128,7 @@ def test_cleanup_expired_keys():
     cursor = conn.cursor()
 
     now = int(time.time())
-    old_timestamp = now - (2 * 3600)  # 2 hours ago
+    old_timestamp = now - (25 * 3600)  # 25 hours ago (past 24h TTL)
 
     cursor.execute(
         "INSERT INTO idempotency_keys (key, submitted_at, response_hash) VALUES (?, ?, ?)",
@@ -142,8 +156,10 @@ def test_cleanup_expired_keys():
     assert cached is not None
 
 
-def test_idempotency_key_replace():
+def test_idempotency_key_replace(idempotency_db):
     """Test replacing existing idempotency key updates timestamp."""
+    from app.idempotency import store_idempotency_key, check_idempotency_key
+
     key = "replace-key-123"
     response1 = {"accepted": True, "rejected_count": 1}
     response2 = {"accepted": True, "rejected_count": 2}

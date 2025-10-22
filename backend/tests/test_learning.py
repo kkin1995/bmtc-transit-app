@@ -1,7 +1,14 @@
-"""Unit tests for learning algorithms."""
+"""Unit tests for learning algorithms.
+
+These are pure unit tests that test mathematical functions without
+database or API dependencies. They use pytest markers for organization.
+"""
 
 import pytest
 import time
+
+# Mark all tests in this module as unit tests
+pytestmark = pytest.mark.unit
 from app.learning import (
     update_welford,
     update_ema,

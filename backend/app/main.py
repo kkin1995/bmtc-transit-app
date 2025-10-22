@@ -12,6 +12,7 @@ from app.config import get_settings
 from app.db import init_db
 from app import routes
 from app import state
+from app.rate_limit import RateLimitMiddleware
 
 
 @asynccontextmanager
@@ -40,6 +41,9 @@ app = FastAPI(
 # Add rate limiter state
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Add rate limiting middleware (before routes)
+app.add_middleware(RateLimitMiddleware)
 
 # Include routers
 app.include_router(routes.router, prefix="/v1")

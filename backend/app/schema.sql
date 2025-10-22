@@ -241,6 +241,16 @@ CREATE INDEX IF NOT EXISTS idx_rejection_segment_bin ON rejection_log(segment_id
 CREATE INDEX IF NOT EXISTS idx_rejection_reason ON rejection_log(reason, submitted_at);
 CREATE INDEX IF NOT EXISTS idx_rejection_submitted ON rejection_log(submitted_at);
 
+-- Rate limit buckets: Token bucket for per-device rate limiting
+-- Uses atomic check-and-spend operations for concurrency safety
+CREATE TABLE IF NOT EXISTS rate_limit_buckets (
+    bucket_id TEXT PRIMARY KEY,              -- Device bucket hash or "ip:<addr>"
+    tokens INTEGER NOT NULL,                 -- Current token count (-1..500, -1 = exhausted)
+    last_refill TEXT NOT NULL,               -- ISO-8601 UTC timestamp
+    CHECK(tokens >= -1 AND tokens <= 500),   -- Allow -1 to detect exhaustion
+    CHECK(length(last_refill) >= 19)         -- Ensure ISO-8601 format
+) STRICT;
+
 -- ============================================================================
 -- VIEWS FOR COMMON QUERIES
 -- ============================================================================

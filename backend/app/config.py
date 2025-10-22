@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     rejection_log_retention_days: int = 30
     outlier_sigma: float = 3.0
 
+    # Rate limiting settings
+    rate_limit_enabled: bool = False  # Feature flag for safe rollout
+    rate_limit_per_hour: int = 500  # Requests per hour per device_bucket
+
     # Optional HMAC signing
     hmac_secret_key: Optional[str] = None
 
@@ -36,5 +40,13 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    """Cached settings singleton."""
+    """Cached settings singleton.
+
+    NOTE: This cache is cleared in tests via get_settings.cache_clear()
+    to ensure test isolation. See tests/conftest.py for the autouse fixture
+    that handles this automatically.
+
+    The cache improves performance in production by avoiding repeated
+    environment variable reads and validation.
+    """
     return Settings()
