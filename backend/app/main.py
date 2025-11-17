@@ -1,12 +1,14 @@
 """FastAPI application entry point."""
 
+import logging
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import get_settings
 from app.db import init_db
@@ -14,11 +16,31 @@ from app import routes
 from app import state
 from app.rate_limit import RateLimitMiddleware
 
+logger = logging.getLogger(__name__)
+
+
+class APIVersionMiddleware(BaseHTTPMiddleware):
+    """Middleware to add X-API-Version header to all responses."""
+
+    async def dispatch(self, request: Request, call_next):
+        """Add X-API-Version header to response."""
+        response = await call_next(request)
+        response.headers["X-API-Version"] = "1"
+        return response
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown hooks."""
     settings = get_settings()
+
+    # Security check: Warn if rate limiting is disabled (H2 fix)
+    if not settings.rate_limit_enabled:
+        logger.warning(
+            "SECURITY WARNING: Rate limiting is DISABLED. "
+            "This exposes the API to abuse and DoS attacks. "
+            "Set BMTC_RATE_LIMIT_ENABLED=true for production deployment."
+        )
 
     # Initialize database on startup
     init_db(settings.db_path)
@@ -41,6 +63,9 @@ app = FastAPI(
 # Add rate limiter state
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Add API version header middleware (all responses)
+app.add_middleware(APIVersionMiddleware)
 
 # Add rate limiting middleware (before routes)
 app.add_middleware(RateLimitMiddleware)
