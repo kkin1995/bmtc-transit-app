@@ -4,6 +4,49 @@
 **Stack:** FastAPI, SQLite WAL, uv package manager
 **Working Dir:** `/home/karan-kinariwala/Dropbox/KARAN/1-Projects/bmtc-transit-app`
 
+---
+
+## 🚨 Global Workflow Rules (MANDATORY)
+
+**These rules override all other guidance and must be followed strictly:**
+
+### 1. Spec-First Development
+- `docs/api.md` is the **canonical API specification**
+- **ANY** endpoint or behavior change MUST update the spec FIRST
+- Spec must clearly define:
+  - Endpoint path + HTTP method
+  - Request parameters (path, query, body, headers)
+  - Response JSON schema (fields, types, nullability)
+  - Error responses with status codes
+  - At least one concrete success example and one failure example
+
+### 2. Strict TDD Workflow
+**Order is non-negotiable:**
+1. **Update spec** in `docs/api.md` (or new spec doc if justified)
+2. **Write/modify tests** to encode required behavior and edge cases
+3. **Change implementation** only after tests compile and fail for expected reasons
+
+Implementation changes must not exceed what is necessary to make tests pass while conforming to the spec.
+
+### 3. Keep Changes Small and Additive
+- Do not refactor unrelated code unless explicitly requested
+- Avoid renaming/moving files except when requested
+- Focus on one feature/endpoint/script per session
+- Prefer additive changes over breaking changes
+
+### 4. Maintain Sync: Docs → Tests → Code
+- For any behavior change: **Spec → Tests → Code** (always in this order)
+- If existing behavior lacks tests/spec, point it out before fixing
+- Then apply the spec → tests → code cycle
+
+**Exception Handling:**
+If you cannot follow this workflow, you MUST:
+1. Explicitly explain why the workflow is blocked
+2. Propose a TDD-compatible alternative
+3. Get approval before editing files
+
+---
+
 ## Agent Workflow
 
 This repo uses a **lean multi-agent flow** (A1–A8) to ship safe, small increments. Each “agent” is a role with explicit inputs/outputs. Claude should **select the minimal next agent**, perform its steps, and produce the required artifacts with a small, reviewable diff.
