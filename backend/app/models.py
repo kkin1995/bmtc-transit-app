@@ -143,12 +143,14 @@ class ConfigResponse(BaseModel):
     n0: int
     time_bin_minutes: int
     half_life_days: int
-    gtfs_version: str
-    server_version: str
-    # Global aggregation settings
+    ema_alpha: float
+    outlier_sigma: float
     mapmatch_min_conf: float
     max_segments_per_ride: int
+    rate_limit_per_hour: int
     idempotency_ttl_hours: int
+    gtfs_version: str
+    server_version: str
 
 
 class HealthResponse(BaseModel):

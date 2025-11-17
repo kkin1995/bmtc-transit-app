@@ -54,9 +54,29 @@ async def ride_summary(
 
     # Check idempotency key (optional but recommended)
     if idempotency_key:
-        cached_response = check_idempotency_key(idempotency_key)
+        # Convert request body to dict for hash verification
+        request_body = ride.model_dump()
+
+        cached_response = check_idempotency_key(idempotency_key, request_body)
         if cached_response:
-            # Return cached response (409 Conflict with cached result)
+            # Check body hash match (H1 security fix - prevent tampering)
+            body_hash_match = cached_response.get("body_hash_match")
+
+            if body_hash_match is False:
+                # Body hash mismatch - tampered request
+                logger.warning(f"Idempotency key reused with different body: {idempotency_key}")
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "error": "conflict",
+                        "message": "Idempotency key already used with different request body",
+                        "details": {
+                            "idempotency_key": idempotency_key
+                        }
+                    }
+                )
+
+            # Body hash matches or not verified (backward compat) - return cached response
             logger.info(f"Idempotent replay detected: {idempotency_key}")
             # For now, return success with zero rejected count (client should cache response)
             response = RideSummaryResponse(
@@ -176,9 +196,10 @@ async def ride_summary(
         "rejected_by_reason": rejected_by_reason,
     }
 
-    # Store idempotency key (if provided)
+    # Store idempotency key with body hash (if provided) - H1 security fix
     if idempotency_key:
-        store_idempotency_key(idempotency_key, response_data)
+        request_body = ride.model_dump()
+        store_idempotency_key(idempotency_key, request_body, response_data)
 
     response = RideSummaryResponse(**response_data)
 
@@ -198,9 +219,12 @@ async def get_eta(
     direction_id: int = Query(...),
     from_stop_id: str = Query(...),
     to_stop_id: str = Query(...),
-    timestamp_utc: Optional[int] = Query(None),
+    when: Optional[str] = Query(None),  # ISO-8601 UTC timestamp string (v1 spec)
+    timestamp_utc: Optional[int] = Query(None),  # DEPRECATED: use 'when' instead
 ):
     """Query learned ETA for a segment."""
+    from datetime import datetime, timezone as dt_timezone
+
     settings = get_settings()
     conn = get_connection(settings.db_path)
     cursor = conn.cursor()
@@ -220,10 +244,29 @@ async def get_eta(
 
     segment_id = row[0]
 
-    # Determine bin
-    if timestamp_utc is None:
-        timestamp_utc = int(time.time())
-    bin_id = compute_bin_id(timestamp_utc)
+    # Determine timestamp epoch (Priority: when > timestamp_utc > now)
+    timestamp_epoch = None
+    if when is not None:
+        # Parse ISO-8601 timestamp string
+        try:
+            dt = datetime.fromisoformat(when.replace("Z", "+00:00"))
+            timestamp_epoch = int(dt.timestamp())
+        except (ValueError, AttributeError) as e:
+            conn.close()
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid 'when' parameter: must be ISO-8601 UTC timestamp (e.g., '2025-10-22T10:41:00Z'): {e}"
+            )
+    elif timestamp_utc is not None:
+        # Backward compatibility: use deprecated timestamp_utc
+        logger.warning(f"timestamp_utc parameter is deprecated, use 'when' instead (route={route_id})")
+        timestamp_epoch = timestamp_utc
+    else:
+        # Default to server "now"
+        timestamp_epoch = int(time.time())
+
+    # Compute time bin
+    bin_id = compute_bin_id(timestamp_epoch)
 
     # Fetch stats
     cursor.execute(
@@ -299,12 +342,14 @@ async def get_config():
         n0=settings.n0,
         time_bin_minutes=15,
         half_life_days=settings.half_life_days,
-        gtfs_version=gtfs_version,
-        server_version=settings.server_version,
-        # Global aggregation settings
+        ema_alpha=settings.ema_alpha,
+        outlier_sigma=settings.outlier_sigma,
         mapmatch_min_conf=settings.mapmatch_min_conf,
         max_segments_per_ride=settings.max_segments_per_ride,
+        rate_limit_per_hour=settings.rate_limit_per_hour,
         idempotency_ttl_hours=settings.idempotency_ttl_hours,
+        gtfs_version=gtfs_version,
+        server_version=settings.server_version,
     )
 
 
