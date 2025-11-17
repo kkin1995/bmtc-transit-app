@@ -206,10 +206,12 @@ CREATE INDEX IF NOT EXISTS idx_ride_segments_device_bucket ON ride_segments(devi
 CREATE TABLE IF NOT EXISTS idempotency_keys (
     key TEXT PRIMARY KEY,                -- UUID provided by client
     submitted_at INTEGER NOT NULL,       -- Unix timestamp
-    response_hash TEXT NOT NULL          -- SHA256 of response for verification
+    response_hash TEXT NOT NULL,         -- SHA256 of response for verification
+    body_hash TEXT                       -- SHA256 of request body (H1 security fix)
 );
 
 CREATE INDEX IF NOT EXISTS idx_idempotency_submitted ON idempotency_keys(submitted_at);
+CREATE INDEX IF NOT EXISTS idx_idempotency_body_hash ON idempotency_keys(body_hash);
 
 -- Device buckets: Privacy-preserving device tracking for abuse prevention
 -- Buckets rotate daily via client-side salt rotation
