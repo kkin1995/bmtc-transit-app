@@ -17,13 +17,18 @@ logger = logging.getLogger(__name__)
 
 
 async def extract_bucket_id(request: Request) -> str:
-    """Extract bucket_id from request body or fallback to IP.
+    """Extract bucket_id from request body (REQUIRED).
+
+    Security: H3 fix - Eliminates IP address fallback to prevent privacy violations.
 
     Args:
         request: FastAPI request object
 
     Returns:
-        bucket_id string (device_bucket hash or "ip:<remote_addr>")
+        bucket_id string (device_bucket hash from request body)
+
+    Raises:
+        HTTPException: 400 if device_bucket not provided
     """
     try:
         # Read and cache body for downstream processing
@@ -46,9 +51,20 @@ async def extract_bucket_id(request: Request) -> str:
     except Exception as e:
         logger.warning(f"Failed to extract device_bucket from body: {e}")
 
-    # Priority 3: Fallback to IP address
-    client_ip = request.client.host if request.client else "unknown"
-    return f"ip:{client_ip}"
+    # H3 SECURITY FIX: NO IP FALLBACK (privacy violation)
+    # Reject requests without device_bucket to prevent raw IP persistence
+    from fastapi import HTTPException
+    raise HTTPException(
+        status_code=400,
+        detail={
+            "error": "invalid_request",
+            "message": "device_bucket field is required for rate limiting. See /v1/config for requirements.",
+            "details": {
+                "field": "device_bucket",
+                "requirement": "top-level string field with client-generated stable hash"
+            }
+        }
+    )
 
 
 def check_and_spend_token(
@@ -232,7 +248,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Check idempotency cache first (don't double-charge)
         idempotency_key = request.headers.get("idempotency-key")
         if idempotency_key:
-            # Check if this is a cached response
+            # Check if this is a cached response (no body verification here, just existence check)
             from app.idempotency import check_idempotency_key
 
             cached_response = check_idempotency_key(idempotency_key)
@@ -275,10 +291,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         if not allowed:
             # Rate limit exceeded - return 429
-            bucket_type = "device" if not bucket_id.startswith("ip:") else "ip"
-
+            # H3 SECURITY FIX: Do NOT log bucket_id (privacy violation)
             logger.warning(
-                f"Rate limit exceeded for {bucket_type} bucket (id: {bucket_id[:8]}...)"
+                f"Rate limit exceeded for device bucket (limit: {settings.rate_limit_per_hour}/hour)"
             )
 
             return JSONResponse(
@@ -289,7 +304,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     "details": {
                         "limit": settings.rate_limit_per_hour,
                         "reset": reset_time,
-                        "bucket_id_type": bucket_type,
+                        "retry_after_sec": 3600,
                     },
                 },
                 headers={

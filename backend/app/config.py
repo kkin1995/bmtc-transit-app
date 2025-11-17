@@ -26,8 +26,8 @@ class Settings(BaseSettings):
     rejection_log_retention_days: int = 30
     outlier_sigma: float = 3.0
 
-    # Rate limiting settings
-    rate_limit_enabled: bool = False  # Feature flag for safe rollout
+    # Rate limiting settings (H2 security fix - enabled by default)
+    rate_limit_enabled: bool = True  # CHANGED from False (security best practice)
     rate_limit_per_hour: int = 500  # Requests per hour per device_bucket
 
     # Optional HMAC signing
