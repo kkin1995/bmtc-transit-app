@@ -342,7 +342,8 @@ Return blended ETA at a given time (defaults to server "now"), including learned
 * `direction_id` — required; `0` or `1` (integer)
 * `from_stop_id` — required (string)
 * `to_stop_id` — required (string)
-* `when` — optional ISO-8601 timestamp; defaults to now
+* `when` — optional ISO-8601 UTC timestamp string (e.g., `2025-10-22T10:41:00Z`); defaults to server "now"
+* `timestamp_utc` — **DEPRECATED** (use `when` instead); optional Unix epoch timestamp (integer); maintained for backward compatibility
 
 **Response — 200 OK**
 
@@ -391,10 +392,17 @@ Return blended ETA at a given time (defaults to server "now"), including learned
 curl "http://localhost:8000/v1/eta?route_id=335E&direction_id=0&from_stop_id=20558&to_stop_id=29374"
 ```
 
-**cURL example (with specific time)**
+**cURL example (with specific time using `when`)**
 
 ```bash
 curl "http://localhost:8000/v1/eta?route_id=335E&direction_id=0&from_stop_id=20558&to_stop_id=29374&when=2025-10-22T10:41:00Z"
+```
+
+**cURL example (backward compatibility with `timestamp_utc` - deprecated)**
+
+```bash
+# Deprecated: Use 'when' parameter instead
+curl "http://localhost:8000/v1/eta?route_id=335E&direction_id=0&from_stop_id=20558&to_stop_id=29374&timestamp_utc=1729593660"
 ```
 
 **Error examples**
@@ -436,9 +444,8 @@ Returns public configuration and tuning parameters.
   "mapmatch_min_conf": 0.7,
   "max_segments_per_ride": 50,
   "rate_limit_per_hour": 500,
+  "idempotency_ttl_hours": 24,
   "gtfs_version": "2025-09-02",
-  "gtfs_valid_from": "2025-09-02",
-  "gtfs_valid_to": "2026-09-02",
   "server_version": "0.2.0"
 }
 ```
@@ -453,9 +460,8 @@ Returns public configuration and tuning parameters.
 * `mapmatch_min_conf`: Minimum map-matching confidence to accept observations
 * `max_segments_per_ride`: Maximum segments per ride submission
 * `rate_limit_per_hour`: Rate limit for POST requests per device bucket
+* `idempotency_ttl_hours`: Idempotency key expiration time (hours)
 * `gtfs_version`: GTFS feed version/date
-* `gtfs_valid_from`: GTFS feed start date
-* `gtfs_valid_to`: GTFS feed end date
 * `server_version`: API server version
 
 **Status codes**
@@ -481,22 +487,21 @@ Liveness/readiness with DB check.
 {
   "status": "ok",
   "db_ok": true,
-  "uptime_sec": 86400,
-  "ingest_queue_ok": true
+  "uptime_sec": 86400
 }
 ```
 
 **Field descriptions**
 
 * `status`: Overall health status (`"ok"` or `"degraded"`)
-* `db_ok`: Database connectivity check
-* `uptime_sec`: Server uptime in seconds
-* `ingest_queue_ok`: Ingest processing queue status
+* `db_ok`: Database connectivity check (boolean)
+* `uptime_sec`: Server uptime in seconds since startup
 
 **Status codes**
 
-* `200` — Healthy
-* `503` — Degraded (`error="server_error"`)
+* `200` — Always returns 200, even when degraded (check `status` field for health state)
+  * `status="ok"`: All systems operational
+  * `status="degraded"`: Partial failure (e.g., DB connectivity issues)
 
 **cURL example (localhost)**
 
@@ -546,6 +551,13 @@ curl "http://localhost:8000/v1/eta?route_id=335E&direction_id=0&from_stop_id=205
 
 ```bash
 curl "http://localhost:8000/v1/eta?route_id=335E&direction_id=0&from_stop_id=20558&to_stop_id=29374&when=2025-10-22T14:30:00Z"
+```
+
+### ETA lookup with deprecated timestamp_utc parameter
+
+```bash
+# Deprecated: Use 'when' parameter with ISO-8601 format instead
+curl "http://localhost:8000/v1/eta?route_id=335E&direction_id=0&from_stop_id=20558&to_stop_id=29374&timestamp_utc=1729600200"
 ```
 
 ### Idempotent ride submission (single segment)
@@ -631,7 +643,8 @@ curl http://localhost:8000/v1/config | jq .
 
 See [`CHANGELOG.md`](./CHANGELOG.md) for detailed version history.
 
-**Latest (v1 — 2025-10-22):**
+**Latest (v1 — 2025-11-17):**
+* **Breaking change (Phase 0 alignment):** GET `/v1/eta` now uses `when` parameter (ISO-8601 string) instead of `timestamp_utc` (epoch int). Backward compatibility maintained: `timestamp_utc` still accepted but deprecated.
 * Established v1 baseline specification
 * Defined authentication model (GETs unauthenticated, POSTs require Bearer token)
 * Required `Idempotency-Key` header for POST `/v1/ride_summary`
