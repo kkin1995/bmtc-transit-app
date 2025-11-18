@@ -1,48 +1,59 @@
 import { StyleSheet, FlatList, ActivityIndicator, Pressable } from 'react-native';
-import { useRouter } from 'expo-router';
 
 import { Text, View } from '@/components/Themed';
-import { useStops } from '@/src/hooks';
-import type { Stop } from '@/src/api/types';
+import { useRoutes } from '@/src/hooks';
+import type { Route } from '@/src/api/types';
 
-export default function HomeScreen() {
-  const router = useRouter();
-  const { stops, loading, error, reload } = useStops({ limit: 20 });
+export default function RoutesScreen() {
+  const { routes, loading, error, reload } = useRoutes({ limit: 50 });
 
-  // Render individual stop item
-  const renderStopItem = ({ item }: { item: Stop }) => (
+  // Render individual route item
+  const renderRouteItem = ({ item }: { item: Route }) => (
     <Pressable
       style={({ pressed }) => [
-        styles.stopItem,
-        pressed && styles.stopItemPressed
+        styles.routeItem,
+        pressed && styles.routeItemPressed
       ]}
       onPress={() => {
-        router.push({
-          pathname: '/stop/[stopId]',
-          params: {
-            stopId: item.stop_id,
-            stopName: item.stop_name,
-          },
-        });
+        // TODO: Navigate to route detail screen showing stops on this route
+        console.log('Route pressed:', item.route_id);
       }}
     >
-      <Text style={styles.stopName}>{item.stop_name}</Text>
-      <Text style={styles.stopId}>ID: {item.stop_id}</Text>
-      <Text style={styles.stopCoords}>
-        {item.stop_lat.toFixed(5)}, {item.stop_lon.toFixed(5)}
-      </Text>
+      <View style={styles.routeHeader}>
+        {item.route_short_name && (
+          <View style={styles.routeBadge}>
+            <Text style={styles.routeBadgeText}>{item.route_short_name}</Text>
+          </View>
+        )}
+        <View style={styles.routeTypeBadge}>
+          <Text style={styles.routeTypeBadgeText}>
+            {item.route_type === 3 ? 'Bus' : `Type ${item.route_type}`}
+          </Text>
+        </View>
+      </View>
+
+      {item.route_long_name && (
+        <Text style={styles.routeLongName} numberOfLines={2}>
+          {item.route_long_name}
+        </Text>
+      )}
+
+      <Text style={styles.routeId}>ID: {item.route_id}</Text>
+      {item.agency_id && (
+        <Text style={styles.routeAgency}>Agency: {item.agency_id}</Text>
+      )}
     </Pressable>
   );
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>BMTC Transit</Text>
+      <Text style={styles.title}>Routes</Text>
       <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.1)" />
 
       {loading && (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" />
-          <Text style={styles.loadingText}>Loading stops...</Text>
+          <Text style={styles.loadingText}>Loading routes...</Text>
         </View>
       )}
 
@@ -55,19 +66,19 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {!loading && !error && stops.length === 0 && (
+      {!loading && !error && routes.length === 0 && (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No stops found</Text>
+          <Text style={styles.emptyText}>No routes found</Text>
         </View>
       )}
 
-      {!loading && !error && stops.length > 0 && (
+      {!loading && !error && routes.length > 0 && (
         <View style={styles.listContainer}>
-          <Text style={styles.subtitle}>Nearby Stops</Text>
+          <Text style={styles.subtitle}>All Routes</Text>
           <FlatList
-            data={stops}
-            renderItem={renderStopItem}
-            keyExtractor={(item) => item.stop_id}
+            data={routes}
+            renderItem={renderRouteItem}
+            keyExtractor={(item) => item.route_id}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={true}
           />
@@ -149,30 +160,58 @@ const styles = StyleSheet.create({
   listContent: {
     paddingBottom: 20,
   },
-  stopItem: {
+  routeItem: {
     padding: 14,
     marginBottom: 10,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#ddd',
     backgroundColor: '#fff',
+    gap: 8,
   },
-  stopItemPressed: {
+  routeItemPressed: {
     backgroundColor: '#f0f0f0',
     borderColor: '#007AFF',
   },
-  stopName: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-    color: '#000',
+  routeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
   },
-  stopId: {
-    fontSize: 12,
+  routeBadge: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  routeBadgeText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  routeTypeBadge: {
+    backgroundColor: '#e0e0e0',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  routeTypeBadgeText: {
     color: '#666',
-    marginBottom: 2,
+    fontSize: 11,
+    fontWeight: '600',
   },
-  stopCoords: {
+  routeLongName: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#000',
+    lineHeight: 20,
+  },
+  routeId: {
+    fontSize: 11,
+    color: '#666',
+  },
+  routeAgency: {
     fontSize: 11,
     color: '#999',
   },
