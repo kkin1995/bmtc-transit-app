@@ -10,7 +10,7 @@ module.exports = {
   transformIgnorePatterns: [
     'node_modules/(?!(react-native|@react-native|@react-navigation|expo|@expo|@unimodules|react-native-reanimated|react-native-screens)/)',
   ],
-  testPathIgnorePatterns: ['/node_modules/', '/android/', '/ios/', '/components/'],
+  testPathIgnorePatterns: ['/node_modules/', '/android/', '/ios/', '<rootDir>/components/'],
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',
     'app/**/*.{ts,tsx}',

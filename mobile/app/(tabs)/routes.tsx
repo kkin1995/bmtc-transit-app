@@ -1,6 +1,7 @@
 import { StyleSheet, FlatList, ActivityIndicator, Pressable } from 'react-native';
 
 import { Text, View } from '@/components/Themed';
+import { HomeLayout } from '@/src/components/layout';
 import { useRoutes } from '@/src/hooks';
 import type { Route } from '@/src/api/types';
 
@@ -46,9 +47,10 @@ export default function RoutesScreen() {
   );
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Routes</Text>
-      <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.1)" />
+    <HomeLayout>
+      <View style={styles.container}>
+        <Text style={styles.title}>Routes</Text>
+        <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.1)" />
 
       {loading && (
         <View style={styles.loadingContainer}>
@@ -84,7 +86,8 @@ export default function RoutesScreen() {
           />
         </View>
       )}
-    </View>
+      </View>
+    </HomeLayout>
   );
 }
 
