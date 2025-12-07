@@ -9,6 +9,16 @@ React Native mobile application for the BMTC Transit API. Built with Expo and Ty
 - **Schedule Lookup**: View scheduled departures for any stop
 - **ETA Predictions**: Get ML-powered travel time estimates
 - **Error Handling**: Comprehensive error handling with user-friendly messages
+- **Trip Planning Flow**: Map-first UX with destination selection sheet
+
+### Home Screen Flow
+
+1. **Idle state**: User sees map with "Where to?" button
+2. **Destination selection**: Tap "Where to?" → Bottom sheet with nearby stops appears → Select destination
+3. **Journey selection** (coming soon): View suggested routes and journeys
+4. **Active trip** (coming soon): Real-time trip tracking and ride submission
+
+**Key hooks**: `useHomePlanningState` (trip planning state machine), `useTripSession` (active trip tracking), `useUserLocation` (location permissions)
 
 ## Tech Stack
 
