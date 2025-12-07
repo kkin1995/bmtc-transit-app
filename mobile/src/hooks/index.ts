@@ -1,5 +1,5 @@
 /**
- * Barrel export for all data fetching hooks
+ * Barrel export for all hooks
  *
  * This module re-exports all hooks for convenient importing.
  */
@@ -8,7 +8,7 @@
 export { useAsyncData } from './useAsyncData';
 export type { AsyncDataResult, ErrorLike } from './useAsyncData';
 
-// Domain-specific hooks
+// API data fetching hooks
 export { useStops } from './useStops';
 export type { UseStopsResult } from './useStops';
 
@@ -20,3 +20,22 @@ export type { UseStopScheduleResult } from './useStopSchedule';
 
 export { useEta } from './useEta';
 export type { UseEtaResult } from './useEta';
+
+// Domain logic / state management hooks
+export { useHomePlanningState } from './useHomePlanningState';
+export type {
+  UseHomePlanningStateReturn,
+  HomePlanningState,
+  PlanningStage,
+} from './useHomePlanningState';
+
+export { useTripSession } from './useTripSession';
+export type { UseTripSessionReturn } from './useTripSession';
+
+// Location and device hooks
+export { useUserLocation } from './useUserLocation';
+export type {
+  UseUserLocationReturn,
+  LocationPermissionStatus,
+  UserLocation,
+} from './useUserLocation';

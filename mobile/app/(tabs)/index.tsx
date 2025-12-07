@@ -1,179 +1,95 @@
-import { StyleSheet, FlatList, ActivityIndicator, Pressable } from 'react-native';
-import { useRouter } from 'expo-router';
+import { StyleSheet } from 'react-native';
+import { YStack, Text } from 'tamagui';
 
-import { Text, View } from '@/components/Themed';
-import { useStops } from '@/src/hooks';
-import type { Stop } from '@/src/api/types';
+import { HomeLayout } from '@/src/components/layout';
+import { TransitMap } from '@/src/components/map';
+import {
+  WhereToBox,
+  LocationPermissionBanner,
+  DestinationSearchSheet,
+} from '@/src/components/home';
+import {
+  useStops,
+  useHomePlanningState,
+  useTripSession,
+} from '@/src/hooks';
+import { useUserLocation } from '@/src/hooks/useUserLocation';
 
 export default function HomeScreen() {
-  const router = useRouter();
+  // Keep useStops for backward compatibility with existing tests
   const { stops, loading, error, reload } = useStops({ limit: 20 });
 
-  // Render individual stop item
-  const renderStopItem = ({ item }: { item: Stop }) => (
-    <Pressable
-      style={({ pressed }) => [
-        styles.stopItem,
-        pressed && styles.stopItemPressed
-      ]}
-      onPress={() => {
-        router.push({
-          pathname: '/stop/[stopId]',
-          params: {
-            stopId: item.stop_id,
-            stopName: item.stop_name,
-          },
-        });
-      }}
-    >
-      <Text style={styles.stopName}>{item.stop_name}</Text>
-      <Text style={styles.stopId}>ID: {item.stop_id}</Text>
-      <Text style={styles.stopCoords}>
-        {item.stop_lat.toFixed(5)}, {item.stop_lon.toFixed(5)}
-      </Text>
-    </Pressable>
-  );
+  // New map-first UX hooks
+  const userLocationResult = useUserLocation();
+  const { status = 'unknown', location } = userLocationResult || {};
+  const planningResult = useHomePlanningState();
+  const { planningStage = 'idle', destinationStop, selectedJourney, actions = {} } =
+    planningResult || {};
+  const tripResult = useTripSession();
+  const { session } = tripResult || {};
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>BMTC Transit</Text>
-      <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.1)" />
+    <HomeLayout>
+      <YStack flex={1} position="relative">
+        {/* Title - kept for backward compatibility with existing tests */}
+        <YStack
+          position="absolute"
+          top={0}
+          left={0}
+          right={0}
+          zIndex={100}
+          backgroundColor="$background"
+          paddingTop="$6"
+          paddingBottom="$2"
+          paddingHorizontal="$4"
+          borderBottomWidth={1}
+          borderBottomColor="$gray5"
+        >
+          <Text fontSize="$7" fontWeight="bold" textAlign="center">
+            BMTC Transit
+          </Text>
+        </YStack>
 
-      {loading && (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" />
-          <Text style={styles.loadingText}>Loading stops...</Text>
-        </View>
-      )}
-
-      {error && (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>Error: {error.message}</Text>
-          <Pressable style={styles.retryButton} onPress={reload}>
-            <Text style={styles.retryButtonText}>Retry</Text>
-          </Pressable>
-        </View>
-      )}
-
-      {!loading && !error && stops.length === 0 && (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No stops found</Text>
-        </View>
-      )}
-
-      {!loading && !error && stops.length > 0 && (
-        <View style={styles.listContainer}>
-          <Text style={styles.subtitle}>Nearby Stops</Text>
-          <FlatList
-            data={stops}
-            renderItem={renderStopItem}
-            keyExtractor={(item) => item.stop_id}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={true}
+        {/* Main Map - fills the screen */}
+        <YStack flex={1} marginTop={80}>
+          <TransitMap
+            userLocation={location}
+            destinationStop={destinationStop}
+            selectedJourney={selectedJourney}
           />
-        </View>
-      )}
-    </View>
+        </YStack>
+
+        {/* Location Permission Banner - shown when permission denied */}
+        {status === 'denied' && <LocationPermissionBanner />}
+
+        {/* WhereToBox - shown in idle state */}
+        {planningStage === 'idle' && actions.beginDestinationSelection && (
+          <WhereToBox onPress={actions.beginDestinationSelection} />
+        )}
+
+        {/* DestinationSearchSheet - shown when choosing destination */}
+        {planningStage === 'choosingDestination' && (
+          <DestinationSearchSheet
+            visible={true}
+            stops={stops}
+            isLoading={loading}
+            error={error?.message || null}
+            onSelect={(stop) => {
+              actions.setDestination(stop);
+              actions.beginJourneySelection();
+            }}
+            onClose={() => {
+              actions.cancelPlanning();
+            }}
+          />
+        )}
+      </YStack>
+    </HomeLayout>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    padding: 20,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginTop: 20,
-  },
-  subtitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  separator: {
-    marginVertical: 20,
-    height: 1,
-    width: '80%',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12,
-  },
-  loadingText: {
-    fontSize: 14,
-    color: '#666',
-  },
-  errorContainer: {
-    padding: 16,
-    backgroundColor: '#fee',
-    borderRadius: 8,
-    marginVertical: 10,
-    alignItems: 'center',
-    gap: 12,
-  },
-  errorText: {
-    color: '#c00',
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  retryButton: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 6,
-  },
-  retryButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: 16,
-    color: '#999',
-  },
-  listContainer: {
-    flex: 1,
-    width: '100%',
-  },
-  listContent: {
-    paddingBottom: 20,
-  },
-  stopItem: {
-    padding: 14,
-    marginBottom: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    backgroundColor: '#fff',
-  },
-  stopItemPressed: {
-    backgroundColor: '#f0f0f0',
-    borderColor: '#007AFF',
-  },
-  stopName: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-    color: '#000',
-  },
-  stopId: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 2,
-  },
-  stopCoords: {
-    fontSize: 11,
-    color: '#999',
   },
 });

@@ -18,12 +18,21 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react-nativ
 import { useRouter } from 'expo-router';
 import HomeScreen from '../index';
 import * as hooks from '@/src/hooks';
+import type { Stop } from '@/src/api/types';
 
 // Mock hooks
 jest.mock('@/src/hooks');
 jest.mock('expo-router');
 
+// Mock useUserLocation specifically
+const mockUseUserLocation = jest.fn();
+jest.mock('@/src/hooks/useUserLocation', () => ({
+  useUserLocation: () => mockUseUserLocation(),
+}));
+
 const mockUseStops = hooks.useStops as jest.MockedFunction<typeof hooks.useStops>;
+const mockUseHomePlanningState = hooks.useHomePlanningState as jest.MockedFunction<typeof hooks.useHomePlanningState>;
+const mockUseTripSession = hooks.useTripSession as jest.MockedFunction<typeof hooks.useTripSession>;
 const mockUseRouter = useRouter as jest.MockedFunction<typeof useRouter>;
 
 describe('HomeScreen', () => {
@@ -74,7 +83,9 @@ describe('HomeScreen', () => {
     expect(mockUseStops).toHaveBeenCalledWith({ limit: 20 });
   });
 
-  it('should show loading state', () => {
+  it.skip('should show loading state', () => {
+    // TODO: Re-enable when destination sheet is implemented in later phase
+    // This test was for the old stops list UI which is now replaced by map-first UX
     mockUseStops.mockReturnValue({
       stops: [],
       total: 0,
@@ -93,7 +104,9 @@ describe('HomeScreen', () => {
     // ActivityIndicator is rendered (we can't easily test its presence without testID)
   });
 
-  it('should show error state with retry button', () => {
+  it.skip('should show error state with retry button', () => {
+    // TODO: Re-enable when destination sheet is implemented in later phase
+    // This test was for the old stops list UI which is now replaced by map-first UX
     const mockReload = jest.fn();
 
     mockUseStops.mockReturnValue({
@@ -119,7 +132,9 @@ describe('HomeScreen', () => {
     expect(mockReload).toHaveBeenCalledTimes(1);
   });
 
-  it('should show empty state when no stops', () => {
+  it.skip('should show empty state when no stops', () => {
+    // TODO: Re-enable when destination sheet is implemented in later phase
+    // This test was for the old stops list UI which is now replaced by map-first UX
     mockUseStops.mockReturnValue({
       stops: [],
       total: 0,
@@ -137,7 +152,9 @@ describe('HomeScreen', () => {
     expect(screen.getByText('No stops found')).toBeTruthy();
   });
 
-  it('should render list of stops', () => {
+  it.skip('should render list of stops', () => {
+    // TODO: Re-enable when destination sheet is implemented in later phase
+    // This test was for the old stops list UI which is now replaced by map-first UX
     const mockStops = [
       {
         stop_id: '1',
@@ -185,7 +202,9 @@ describe('HomeScreen', () => {
     expect(screen.getByText('12.98540, 77.60810')).toBeTruthy();
   });
 
-  it('should navigate to stop detail when stop is pressed', () => {
+  it.skip('should navigate to stop detail when stop is pressed', () => {
+    // TODO: Re-enable when destination sheet is implemented in later phase
+    // This test was for the old stops list UI which is now replaced by map-first UX
     const mockStops = [
       {
         stop_id: '20558',
@@ -224,7 +243,9 @@ describe('HomeScreen', () => {
     });
   });
 
-  it('should handle multiple stops and navigate correctly', () => {
+  it.skip('should handle multiple stops and navigate correctly', () => {
+    // TODO: Re-enable when destination sheet is implemented in later phase
+    // This test was for the old stops list UI which is now replaced by map-first UX
     const mockStops = [
       {
         stop_id: '1',
@@ -277,5 +298,360 @@ describe('HomeScreen', () => {
     });
 
     expect(mockRouter.push).toHaveBeenCalledTimes(2);
+  });
+
+  describe('Map-First UX (New Tests)', () => {
+    beforeEach(() => {
+      // Default mocks for map-first tests
+      mockUseStops.mockReturnValue({
+        stops: [],
+        total: 0,
+        limit: 20,
+        offset: 0,
+        data: undefined,
+        loading: false,
+        error: undefined,
+        reload: jest.fn(),
+        isRefreshing: false,
+      });
+    });
+
+    it('should render TransitMap and WhereToBox in idle state', () => {
+      // Mock user location granted
+      mockUseUserLocation.mockReturnValue({
+        status: 'granted',
+        location: { lat: 12.97, lon: 77.59 },
+        requestPermission: jest.fn(),
+      });
+
+      // Mock planning state as idle
+      mockUseHomePlanningState.mockReturnValue({
+        planningStage: 'idle',
+        destinationStop: undefined,
+        selectedJourney: undefined,
+        actions: {
+          beginDestinationSelection: jest.fn(),
+          setDestination: jest.fn(),
+          beginJourneySelection: jest.fn(),
+          setSelectedJourney: jest.fn(),
+          cancelPlanning: jest.fn(),
+          reset: jest.fn(),
+        },
+      });
+
+      // Mock no active trip
+      mockUseTripSession.mockReturnValue({
+        session: null,
+        startTrip: jest.fn(),
+        endTrip: jest.fn(),
+      });
+
+      render(<HomeScreen />);
+
+      // Assert TransitMap is rendered
+      expect(screen.getByTestId('transit-map')).toBeTruthy();
+
+      // Assert "Where to?" text is visible
+      expect(screen.getByText('Where to?')).toBeTruthy();
+    });
+
+    it('should show LocationPermissionBanner when location permission denied', () => {
+      // Mock user location denied
+      mockUseUserLocation.mockReturnValue({
+        status: 'denied',
+        location: undefined,
+        requestPermission: jest.fn(),
+      });
+
+      // Mock planning state as idle
+      mockUseHomePlanningState.mockReturnValue({
+        planningStage: 'idle',
+        destinationStop: undefined,
+        selectedJourney: undefined,
+        actions: {
+          beginDestinationSelection: jest.fn(),
+          setDestination: jest.fn(),
+          beginJourneySelection: jest.fn(),
+          setSelectedJourney: jest.fn(),
+          cancelPlanning: jest.fn(),
+          reset: jest.fn(),
+        },
+      });
+
+      // Mock no active trip
+      mockUseTripSession.mockReturnValue({
+        session: null,
+        startTrip: jest.fn(),
+        endTrip: jest.fn(),
+      });
+
+      render(<HomeScreen />);
+
+      // Assert permission banner message is visible
+      expect(screen.getByText('Turn on location to see nearby stops')).toBeTruthy();
+    });
+
+    it('should call beginDestinationSelection when WhereToBox is pressed', () => {
+      const mockBeginDestinationSelection = jest.fn();
+
+      // Mock user location granted
+      mockUseUserLocation.mockReturnValue({
+        status: 'granted',
+        location: { lat: 12.97, lon: 77.59 },
+        requestPermission: jest.fn(),
+      });
+
+      // Mock planning state with our test function
+      mockUseHomePlanningState.mockReturnValue({
+        planningStage: 'idle',
+        destinationStop: undefined,
+        selectedJourney: undefined,
+        actions: {
+          beginDestinationSelection: mockBeginDestinationSelection,
+          setDestination: jest.fn(),
+          beginJourneySelection: jest.fn(),
+          setSelectedJourney: jest.fn(),
+          cancelPlanning: jest.fn(),
+          reset: jest.fn(),
+        },
+      });
+
+      // Mock no active trip
+      mockUseTripSession.mockReturnValue({
+        session: null,
+        startTrip: jest.fn(),
+        endTrip: jest.fn(),
+      });
+
+      render(<HomeScreen />);
+
+      // Find and press the "Where to?" button
+      const whereToButton = screen.getByText('Where to?');
+      fireEvent.press(whereToButton);
+
+      // Assert beginDestinationSelection was called
+      expect(mockBeginDestinationSelection).toHaveBeenCalledTimes(1);
+    });
+
+    describe('Destination Selection Flow', () => {
+      it('should show DestinationSearchSheet when planningStage is choosingDestination', () => {
+        const mockStops: Stop[] = [
+          {
+            stop_id: '1',
+            stop_name: 'Majestic',
+            stop_lat: 12.9767,
+            stop_lon: 77.5713,
+            zone_id: null,
+          },
+          {
+            stop_id: '2',
+            stop_name: 'Shivajinagar',
+            stop_lat: 12.9854,
+            stop_lon: 77.6081,
+            zone_id: null,
+          },
+        ];
+
+        // Mock user location granted
+        mockUseUserLocation.mockReturnValue({
+          status: 'granted',
+          location: { lat: 12.97, lon: 77.59 },
+          requestPermission: jest.fn(),
+        });
+
+        // Mock planning state as choosingDestination
+        mockUseHomePlanningState.mockReturnValue({
+          planningStage: 'choosingDestination',
+          destinationStop: undefined,
+          selectedJourney: undefined,
+          actions: {
+            beginDestinationSelection: jest.fn(),
+            setDestination: jest.fn(),
+            beginJourneySelection: jest.fn(),
+            setSelectedJourney: jest.fn(),
+            cancelPlanning: jest.fn(),
+            reset: jest.fn(),
+          },
+        });
+
+        // Mock stops data for the sheet
+        mockUseStops.mockReturnValue({
+          stops: mockStops,
+          total: 2,
+          limit: 20,
+          offset: 0,
+          data: { stops: mockStops, total: 2, limit: 20, offset: 0 },
+          loading: false,
+          error: undefined,
+          reload: jest.fn(),
+          isRefreshing: false,
+        });
+
+        // Mock no active trip
+        mockUseTripSession.mockReturnValue({
+          session: null,
+          startTrip: jest.fn(),
+          endTrip: jest.fn(),
+        });
+
+        render(<HomeScreen />);
+
+        // Assert sheet title is visible
+        expect(screen.getByText('Where to?')).toBeTruthy();
+
+        // Assert at least one stop name is visible (indicating sheet content rendered)
+        const majesticVisible = screen.queryByText('Majestic');
+        const shivajinagarVisible = screen.queryByText('Shivajinagar');
+        expect(majesticVisible || shivajinagarVisible).toBeTruthy();
+      });
+
+      it('should call setDestination and beginJourneySelection when stop is selected', () => {
+        const mockSetDestination = jest.fn();
+        const mockBeginJourneySelection = jest.fn();
+
+        const mockStops: Stop[] = [
+          {
+            stop_id: '1',
+            stop_name: 'Majestic',
+            stop_lat: 12.9767,
+            stop_lon: 77.5713,
+            zone_id: null,
+          },
+          {
+            stop_id: '2',
+            stop_name: 'Shivajinagar',
+            stop_lat: 12.9854,
+            stop_lon: 77.6081,
+            zone_id: null,
+          },
+        ];
+
+        // Mock user location granted
+        mockUseUserLocation.mockReturnValue({
+          status: 'granted',
+          location: { lat: 12.97, lon: 77.59 },
+          requestPermission: jest.fn(),
+        });
+
+        // Mock planning state with our test functions
+        mockUseHomePlanningState.mockReturnValue({
+          planningStage: 'choosingDestination',
+          destinationStop: undefined,
+          selectedJourney: undefined,
+          actions: {
+            beginDestinationSelection: jest.fn(),
+            setDestination: mockSetDestination,
+            beginJourneySelection: mockBeginJourneySelection,
+            setSelectedJourney: jest.fn(),
+            cancelPlanning: jest.fn(),
+            reset: jest.fn(),
+          },
+        });
+
+        // Mock stops data
+        mockUseStops.mockReturnValue({
+          stops: mockStops,
+          total: 2,
+          limit: 20,
+          offset: 0,
+          data: { stops: mockStops, total: 2, limit: 20, offset: 0 },
+          loading: false,
+          error: undefined,
+          reload: jest.fn(),
+          isRefreshing: false,
+        });
+
+        // Mock no active trip
+        mockUseTripSession.mockReturnValue({
+          session: null,
+          startTrip: jest.fn(),
+          endTrip: jest.fn(),
+        });
+
+        render(<HomeScreen />);
+
+        // Find and press the Majestic stop
+        const majesticStop = screen.getByText('Majestic');
+        fireEvent.press(majesticStop);
+
+        // Assert setDestination was called with the correct stop object
+        expect(mockSetDestination).toHaveBeenCalledTimes(1);
+        expect(mockSetDestination).toHaveBeenCalledWith({
+          stop_id: '1',
+          stop_name: 'Majestic',
+          stop_lat: 12.9767,
+          stop_lon: 77.5713,
+          zone_id: null,
+        });
+
+        // Assert beginJourneySelection was called
+        expect(mockBeginJourneySelection).toHaveBeenCalledTimes(1);
+      });
+
+      it('should call cancelPlanning when sheet is closed', () => {
+        const mockCancelPlanning = jest.fn();
+
+        const mockStops: Stop[] = [
+          {
+            stop_id: '1',
+            stop_name: 'Majestic',
+            stop_lat: 12.9767,
+            stop_lon: 77.5713,
+            zone_id: null,
+          },
+        ];
+
+        // Mock user location granted
+        mockUseUserLocation.mockReturnValue({
+          status: 'granted',
+          location: { lat: 12.97, lon: 77.59 },
+          requestPermission: jest.fn(),
+        });
+
+        // Mock planning state with our test function
+        mockUseHomePlanningState.mockReturnValue({
+          planningStage: 'choosingDestination',
+          destinationStop: undefined,
+          selectedJourney: undefined,
+          actions: {
+            beginDestinationSelection: jest.fn(),
+            setDestination: jest.fn(),
+            beginJourneySelection: jest.fn(),
+            setSelectedJourney: jest.fn(),
+            cancelPlanning: mockCancelPlanning,
+            reset: jest.fn(),
+          },
+        });
+
+        // Mock stops data
+        mockUseStops.mockReturnValue({
+          stops: mockStops,
+          total: 1,
+          limit: 20,
+          offset: 0,
+          data: { stops: mockStops, total: 1, limit: 20, offset: 0 },
+          loading: false,
+          error: undefined,
+          reload: jest.fn(),
+          isRefreshing: false,
+        });
+
+        // Mock no active trip
+        mockUseTripSession.mockReturnValue({
+          session: null,
+          startTrip: jest.fn(),
+          endTrip: jest.fn(),
+        });
+
+        render(<HomeScreen />);
+
+        // Find and press the Close button
+        const closeButton = screen.getByText('Close');
+        fireEvent.press(closeButton);
+
+        // Assert cancelPlanning was called
+        expect(mockCancelPlanning).toHaveBeenCalledTimes(1);
+      });
+    });
   });
 });
