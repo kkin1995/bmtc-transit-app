@@ -10,6 +10,7 @@ React Native mobile application for the BMTC Transit API. Built with Expo and Ty
 - **ETA Predictions**: Get ML-powered travel time estimates
 - **Error Handling**: Comprehensive error handling with user-friendly messages
 - **Trip Planning Flow**: Map-first UX with destination selection sheet
+- **GPS Stop Detection**: Automatic stop visit detection using 50m geofencing
 - **Ride Submission**: Automatic ride data submission to backend for ML learning
 
 ### Home Screen Flow
@@ -19,7 +20,7 @@ React Native mobile application for the BMTC Transit API. Built with Expo and Ty
 3. **Journey selection** (coming soon): View suggested routes and journeys
 4. **Active trip**: Real-time trip tracking with automatic ride data submission to backend
 
-**Key hooks**: `useHomePlanningState` (trip planning state machine), `useTripSession` (active trip tracking with ride submission), `useUserLocation` (location permissions)
+**Key hooks**: `useHomePlanningState` (trip planning state machine), `useTripSession` (active trip tracking with ride submission), `useStopDetection` (GPS-based stop visit detection), `useUserLocation` (location permissions)
 
 ## Tech Stack
 
@@ -49,9 +50,12 @@ mobile/
 │   │   ├── api.ts           # API configuration
 │   │   └── ride.ts          # Ride tracking configuration (API keys, device bucket)
 │   ├── domain/
-│   │   └── segments.ts      # GPS event to ride segment conversion
+│   │   ├── segments.ts      # GPS event to ride segment conversion
+│   │   └── geo.ts           # Geospatial utilities (haversine, proximity detection)
 │   ├── hooks/
-│   │   └── useTripSession.ts # Trip session management with ride submission
+│   │   ├── useTripSession.ts    # Trip session management with ride submission
+│   │   ├── useStopDetection.ts  # GPS-based stop visit detection
+│   │   └── useUserLocation.ts   # Location permissions and tracking
 │   ├── types/
 │   │   └── tripSession.ts   # TripSession type definitions
 │   ├── components/          # Shared components
@@ -341,7 +345,110 @@ const response = await postRideSummary(
 console.log(`Accepted: ${response.accepted_segments}, Rejected: ${response.rejected_segments}`);
 ```
 
+## GPS Stop Detection
+
+The app includes automatic stop visit detection using GPS geofencing (50m radius).
+
+### Geospatial Utilities
+
+Pure functions for distance calculation and proximity detection:
+
+```typescript
+import {
+  haversineDistanceMeters,
+  findNearestStop,
+  updateStopProximityState
+} from '@/src/domain/geo';
+import type { LatLon, StopWithCoords, ProximityState } from '@/src/domain/geo';
+
+// Calculate distance between two coordinates
+const distance = haversineDistanceMeters(
+  { lat: 12.9716, lon: 77.5946 },  // Position A
+  { lat: 12.9756, lon: 77.6064 }   // Position B
+);
+// Returns: 3769 meters
+
+// Find nearest stop from current position
+const nearest = findNearestStop(
+  { lat: 12.9720, lon: 77.5950 },  // Current position
+  stops  // Array of StopWithCoords
+);
+// Returns: { stopId: '20558', distanceMeters: 33.4 }
+
+// Track proximity state for geofencing
+const newState = updateStopProximityState(
+  { kind: 'outside' },           // Previous state
+  '20558',                       // Nearest stop ID
+  45,                            // Distance in meters
+  50                             // Radius threshold
+);
+// Returns: { kind: 'inside', stopId: '20558' } (entered stop)
+```
+
+### useStopDetection Hook
+
+Automatically detects and records stop visits during an active trip:
+
+```typescript
+import { useStopDetection } from '@/src/hooks';
+
+function TripScreen() {
+  const { session, recordStopVisit } = useTripSession();
+  const routeStops = useRouteStops(session?.route_id, session?.direction_id);
+
+  // Automatically detect and record stop visits
+  const { isRunning, lastStopId, error } = useStopDetection({
+    active: !!session,                    // Only active during trip
+    routeId: session?.route_id || '',
+    directionId: session?.direction_id || 0,
+    stops: routeStops.map(s => ({
+      stopId: s.stop_id,
+      coords: { lat: s.stop_lat, lon: s.stop_lon }
+    })),
+    recordStopVisit,                      // Callback from useTripSession
+    radiusMeters: 50,                     // Optional, default 50m
+  });
+
+  return (
+    <View>
+      {isRunning && <Text>GPS Tracking: Active</Text>}
+      {lastStopId && <Text>Last Stop: {lastStopId}</Text>}
+      {error && <Text>Error: {error.message}</Text>}
+    </View>
+  );
+}
+```
+
+**Features:**
+- 50m proximity radius (configurable)
+- Automatic enter/exit detection
+- Handles stop switching without leaving radius
+- Graceful permission error handling
+- Battery-efficient (only active during trips)
+
 ## Development
+
+### Run Tests
+
+```bash
+# Run all tests
+npm test
+
+# Run specific test file
+npm test -- src/domain/geo.test.ts
+
+# Run tests with coverage
+npm test -- --coverage
+
+# Watch mode
+npm run test:watch
+```
+
+**Test Coverage:**
+- Domain utilities: `geo.test.ts` (41 tests), `segments.test.ts`
+- React hooks: `useStopDetection.test.ts` (38 tests), `useTripSession.test.ts`
+- API client: `client.test.ts`
+- Components: Various component tests
 
 ### Run TypeScript Checks
 
