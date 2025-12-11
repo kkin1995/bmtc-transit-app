@@ -32,6 +32,12 @@ export type {
 export { useTripSession } from './useTripSession';
 export type { UseTripSessionReturn } from './useTripSession';
 
+export { useStopDetection } from './useStopDetection';
+export type {
+  UseStopDetectionParams,
+  UseStopDetectionReturn,
+} from './useStopDetection';
+
 // Location and device hooks
 export { useUserLocation } from './useUserLocation';
 export type {
