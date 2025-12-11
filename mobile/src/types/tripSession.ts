@@ -9,6 +9,8 @@
  * to the BMTC Transit API for learning.
  */
 
+import type { StopEvent } from '../domain/segments';
+
 /**
  * TripSession represents an active trip in progress
  */
@@ -44,4 +46,10 @@ export interface TripSession {
    * Links the session back to the planning data
    */
   journeyId?: string;
+
+  /**
+   * Ordered list of stop events (enter/leave timestamps)
+   * Collected during the trip for ride submission
+   */
+  stopEvents: StopEvent[];
 }

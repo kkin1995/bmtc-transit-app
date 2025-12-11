@@ -40,6 +40,24 @@ bmtc-transit-app/
 │   ├── .python-version     # Python 3.12
 │   └── README.md           # Backend-specific docs
 │
+├── mobile/                  # React Native mobile app
+│   ├── app/                # Expo Router app directory
+│   │   ├── (tabs)/         # Tab-based navigation
+│   │   └── _layout.tsx     # Root layout
+│   ├── src/
+│   │   ├── api/            # API client (HTTP, types, errors)
+│   │   ├── config/         # Configuration (API, ride tracking)
+│   │   ├── domain/         # Business logic (segment builder)
+│   │   ├── hooks/          # React hooks (trip session)
+│   │   ├── types/          # TypeScript type definitions
+│   │   ├── components/     # Shared components
+│   │   └── utils/          # Utility functions
+│   ├── __mocks__/          # Jest mocks for testing
+│   ├── package.json        # npm dependencies
+│   ├── tsconfig.json       # TypeScript configuration
+│   ├── jest.config.js      # Test configuration
+│   └── README.md           # Mobile-specific docs
+│
 ├── docs/                    # Shared documentation
 │   ├── PLAN.md             # Execution plan & ADR
 │   ├── gtfs-analysis.md    # BMTC GTFS data summary
@@ -60,7 +78,8 @@ bmtc-transit-app/
 
 ### Monorepo Structure
 - **backend/** is self-contained and can be deployed independently
-- **docs/** are shared across components (future: mobile app, web dashboard)
+- **mobile/** React Native app for user-facing trip planning and ride submission
+- **docs/** are shared across components (backend, mobile, future: web dashboard)
 - **gtfs/** is shared to avoid duplication if other components need GTFS
 
 ### Backend Organization
@@ -68,6 +87,14 @@ bmtc-transit-app/
 - **tests/** colocated with code for easy discovery
 - **scripts/** for operational tasks (not part of runtime)
 - **deploy/** for production systemd units
+
+### Mobile Organization
+- **app/** Expo Router file-based navigation structure
+- **src/api/** API client with full type safety and error handling
+- **src/domain/** Pure business logic (segment builder from GPS events)
+- **src/hooks/** React hooks for trip session management
+- **src/config/** Configuration for API keys and device identification
+- **__mocks__/** Jest mocks for expo modules
 
 ### Configuration Approach
 - Environment variables via `.env` (dev) or `/etc/bmtc-api/env` (prod)
@@ -83,11 +110,13 @@ bmtc-transit-app/
 | Component | Files | LOC (approx) |
 |-----------|-------|--------------|
 | Backend app code | 10 | 1,200 |
-| Backend tests | 2 | 200 |
+| Backend tests | 4 | 400 |
+| Mobile app code | 12 | 800 |
+| Mobile tests | 6 | 600 |
 | Scripts | 3 | 150 |
 | Deployment configs | 5 | 100 |
 | Documentation | 6 | 2,500 |
-| **Total** | **26** | **4,150** |
+| **Total** | **46** | **5,750** |
 
 ## Dependencies
 
@@ -133,18 +162,6 @@ bmtc-transit-app/
 
 ## Adding New Components
 
-### Mobile App (Future)
-```
-bmtc-transit-app/
-├── backend/        # Existing API
-├── mobile/         # New: Flutter/React Native app
-│   ├── lib/       # Dart source (Flutter)
-│   ├── test/      # Mobile tests
-│   └── README.md
-├── docs/          # Shared docs
-└── gtfs/          # Shared GTFS data
-```
-
 ### Web Dashboard (Future)
 ```
 bmtc-transit-app/
@@ -166,6 +183,16 @@ uv sync                         # Install deps
 uv run python -m app.bootstrap  # Bootstrap DB
 uv run uvicorn app.main:app     # Run server
 uv run pytest                   # Run tests
+```
+
+### Mobile
+```bash
+cd mobile
+npm install                     # Install deps
+npm start                       # Start Expo dev server
+npm test                        # Run tests
+npm run ios                     # Run on iOS simulator
+npm run android                 # Run on Android emulator
 ```
 
 ### Documentation

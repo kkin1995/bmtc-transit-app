@@ -10,15 +10,16 @@ React Native mobile application for the BMTC Transit API. Built with Expo and Ty
 - **ETA Predictions**: Get ML-powered travel time estimates
 - **Error Handling**: Comprehensive error handling with user-friendly messages
 - **Trip Planning Flow**: Map-first UX with destination selection sheet
+- **Ride Submission**: Automatic ride data submission to backend for ML learning
 
 ### Home Screen Flow
 
 1. **Idle state**: User sees map with "Where to?" button
 2. **Destination selection**: Tap "Where to?" → Bottom sheet with nearby stops appears → Select destination
 3. **Journey selection** (coming soon): View suggested routes and journeys
-4. **Active trip** (coming soon): Real-time trip tracking and ride submission
+4. **Active trip**: Real-time trip tracking with automatic ride data submission to backend
 
-**Key hooks**: `useHomePlanningState` (trip planning state machine), `useTripSession` (active trip tracking), `useUserLocation` (location permissions)
+**Key hooks**: `useHomePlanningState` (trip planning state machine), `useTripSession` (active trip tracking with ride submission), `useUserLocation` (location permissions)
 
 ## Tech Stack
 
@@ -40,12 +41,19 @@ mobile/
 │   └── +html.tsx            # HTML template
 ├── src/
 │   ├── api/
-│   │   ├── client.ts        # API client functions
+│   │   ├── client.ts        # API client functions (includes ride submission)
 │   │   ├── types.ts         # TypeScript type definitions
 │   │   ├── errors.ts        # Error classes and utilities
 │   │   └── index.ts         # Public exports
 │   ├── config/
-│   │   └── api.ts           # API configuration
+│   │   ├── api.ts           # API configuration
+│   │   └── ride.ts          # Ride tracking configuration (API keys, device bucket)
+│   ├── domain/
+│   │   └── segments.ts      # GPS event to ride segment conversion
+│   ├── hooks/
+│   │   └── useTripSession.ts # Trip session management with ride submission
+│   ├── types/
+│   │   └── tripSession.ts   # TripSession type definitions
 │   ├── components/          # Shared components
 │   └── utils/               # Utility functions
 ├── assets/                  # Images, fonts, etc.
@@ -111,14 +119,18 @@ Copy the example environment file:
 cp .env.example .env
 ```
 
-Edit `.env` and set your API base URL:
+Edit `.env` and set your API base URL and API key:
 
 ```bash
 # Development (local backend)
 EXPO_PUBLIC_API_BASE_URL=http://localhost:8000
 
+# API key for ride submission (required for POST /v1/ride_summary)
+EXPO_PUBLIC_BMTC_API_KEY=dev-api-key-placeholder
+
 # Production
 # EXPO_PUBLIC_API_BASE_URL=https://api.bmtc-transit.example.com
+# EXPO_PUBLIC_BMTC_API_KEY=your-production-api-key
 ```
 
 **Note:** Expo requires environment variables to be prefixed with `EXPO_PUBLIC_` to be accessible in client-side code.
@@ -295,6 +307,39 @@ Query ETA with ML predictions.
 - `when?: string` - ISO-8601 UTC timestamp (optional)
 
 **Returns:** `Promise<ETAResponseV11>`
+
+### `postRideSummary(request, apiKey, idempotencyKey)`
+Submit ride data for ML learning (requires authentication).
+
+**Parameters:**
+- `request: PostRideSummaryRequest` - Ride data with segments
+- `apiKey: string` - Backend API key
+- `idempotencyKey: string` - UUIDv4 for idempotency
+
+**Returns:** `Promise<PostRideSummaryResponse>`
+
+**Example:**
+```typescript
+import { postRideSummary, buildSegmentsFromStopEvents } from '@/src/api';
+import { getApiKey, getDeviceBucket, generateIdempotencyKey, DEFAULT_MAPMATCH_CONFIDENCE } from '@/src/config/ride';
+
+// Build segments from GPS stop events
+const segments = buildSegmentsFromStopEvents(stopEvents, DEFAULT_MAPMATCH_CONFIDENCE);
+
+// Submit to backend
+const response = await postRideSummary(
+  {
+    route_id: '335E',
+    direction_id: 0,
+    device_bucket: await getDeviceBucket(),
+    segments: segments,
+  },
+  getApiKey(),
+  generateIdempotencyKey()
+);
+
+console.log(`Accepted: ${response.accepted_segments}, Rejected: ${response.rejected_segments}`);
+```
 
 ## Development
 
