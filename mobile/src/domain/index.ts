@@ -8,3 +8,10 @@
 
 export { buildSegmentsFromStopEvents } from './segments';
 export type { StopEvent } from './segments';
+
+export {
+  haversineDistanceMeters,
+  findNearestStop,
+  updateStopProximityState,
+} from './geo';
+export type { LatLon, StopWithCoords, ProximityState } from './geo';
