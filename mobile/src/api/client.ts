@@ -21,6 +21,8 @@ import {
   FetchRoutesParams,
   FetchScheduleParams,
   FetchEtaParams,
+  PostRideSummaryRequest,
+  PostRideSummaryResponse,
 } from './types';
 import { parseErrorResponse, NetworkError, TimeoutError } from './errors';
 
@@ -212,6 +214,78 @@ export async function fetchEta(params: FetchEtaParams): Promise<ETAResponseV11> 
 }
 
 /**
+ * POST /v1/ride_summary - Submit ride for learning
+ *
+ * Ingest a single ride consisting of ordered segments. The server updates
+ * per-segment×time-bin statistics (Welford mean/variance, EMA) and logs
+ * rejections (outliers, low confidence, etc.).
+ *
+ * **Authentication:** Requires Bearer token
+ * **Idempotency:** Requires Idempotency-Key header
+ *
+ * @param request - Ride summary request body
+ * @param apiKey - API key for Bearer token authentication
+ * @param idempotencyKey - UUIDv4 idempotency key for request deduplication
+ * @returns Ride summary response with acceptance/rejection counts
+ *
+ * @throws {BMTCApiError} For API errors (400, 401, 409, 422, 429, 500)
+ * @throws {NetworkError} For network failures
+ * @throws {TimeoutError} For request timeouts
+ *
+ * @example
+ * ```typescript
+ * // Submit a single-segment ride
+ * const response = await postRideSummary(
+ *   {
+ *     route_id: '335E',
+ *     direction_id: 0,
+ *     device_bucket: '7a1f2b5c2d6e4a8b9c0d1e2f3a4b5c6d',
+ *     segments: [
+ *       {
+ *         from_stop_id: '20558',
+ *         to_stop_id: '29374',
+ *         duration_sec: 320.5,
+ *         dwell_sec: 25.0,
+ *         mapmatch_conf: 0.86,
+ *         observed_at_utc: '2025-10-22T10:33:00Z',
+ *       },
+ *     ],
+ *   },
+ *   'your-api-key',
+ *   '550e8400-e29b-41d4-a716-446655440000'
+ * );
+ *
+ * console.log(`Accepted: ${response.accepted_segments}, Rejected: ${response.rejected_segments}`);
+ * ```
+ */
+export async function postRideSummary(
+  request: PostRideSummaryRequest,
+  apiKey: string,
+  idempotencyKey: string
+): Promise<PostRideSummaryResponse> {
+  const url = getApiUrl('v1/ride_summary');
+
+  const response = await fetchWithTimeout(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+      'Idempotency-Key': idempotencyKey,
+    },
+    body: JSON.stringify(request),
+  });
+
+  // Handle non-2xx responses
+  if (!response.ok) {
+    throw await parseErrorResponse(response);
+  }
+
+  // Parse JSON response
+  const data = await response.json();
+  return data as PostRideSummaryResponse;
+}
+
+/**
  * Export a default client object with all functions
  */
 export const bmtcApi = {
@@ -219,6 +293,7 @@ export const bmtcApi = {
   fetchRoutes,
   fetchStopSchedule,
   fetchEta,
+  postRideSummary,
 };
 
 export default bmtcApi;

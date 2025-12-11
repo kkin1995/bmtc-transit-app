@@ -10,6 +10,7 @@ export {
   fetchRoutes,
   fetchStopSchedule,
   fetchEta,
+  postRideSummary,
   bmtcApi,
   default as apiClient,
 } from './client';
@@ -38,6 +39,11 @@ export type {
   FetchRoutesParams,
   FetchScheduleParams,
   FetchEtaParams,
+  // Ride summary types
+  RideSegment,
+  PostRideSummaryRequest,
+  PostRideSummaryResponse,
+  RejectionReasons,
 } from './types';
 
 // Error classes and utilities

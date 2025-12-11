@@ -273,3 +273,67 @@ export interface FetchEtaParams {
   /** DEPRECATED: Unix epoch timestamp (use 'when' instead) */
   timestamp_utc?: number;
 }
+
+// ============================================================================
+// Ride Summary Types (POST /v1/ride_summary)
+// ============================================================================
+
+/**
+ * Individual segment in a ride
+ */
+export interface RideSegment {
+  /** Origin stop ID (required) */
+  from_stop_id: string;
+  /** Destination stop ID (required) */
+  to_stop_id: string;
+  /** Observed duration in seconds (required, > 0 and ≤ 7200) */
+  duration_sec: number;
+  /** Dwell time at origin stop in seconds (optional, ≥ 0) */
+  dwell_sec?: number;
+  /** Map-matching confidence score (required, 0.0 to 1.0) */
+  mapmatch_conf: number;
+  /** ISO-8601 UTC timestamp when segment was observed (required, within past 7 days, not future) */
+  observed_at_utc: string;
+}
+
+/**
+ * Request body for POST /v1/ride_summary
+ */
+export interface PostRideSummaryRequest {
+  /** GTFS route identifier (required) */
+  route_id: string;
+  /** Direction ID: 0 or 1 (required) */
+  direction_id: number;
+  /** Privacy-preserving device identifier (required, client-generated stable hash) */
+  device_bucket: string;
+  /** List of segments (required, 1-50 segments) */
+  segments: RideSegment[];
+}
+
+/**
+ * Rejection reasons breakdown
+ */
+export interface RejectionReasons {
+  /** Rejected as statistical outlier */
+  outlier: number;
+  /** Rejected due to low map-matching confidence */
+  low_confidence: number;
+  /** Rejected due to invalid segment (not in GTFS) */
+  invalid_segment: number;
+  /** Rejected due to too many segments in ride */
+  too_many_segments: number;
+  /** Rejected due to stale timestamp (> 7 days or future) */
+  stale_timestamp: number;
+}
+
+/**
+ * Response for POST /v1/ride_summary
+ */
+export interface PostRideSummaryResponse {
+  /** Number of segments accepted for learning */
+  accepted_segments: number;
+  /** Number of segments rejected */
+  rejected_segments: number;
+  /** Breakdown of rejection reasons */
+  rejected_by_reason: RejectionReasons;
+}
