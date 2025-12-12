@@ -9,26 +9,36 @@
  * - Shows "No routes found" when routes array is empty
  * - Renders FlatList of routes when data is available
  * - Each route shows: route_short_name badge, route_long_name, route_id, route_type, agency_id
- * - Tapping a route logs to console (TODO navigation)
+ * - Tapping a route navigates to /trip/[routeId] with correct params
  * - Pressing retry button calls reload() function
  */
 
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react-native';
+import { useRouter } from 'expo-router';
 import RoutesScreen from '../routes';
 import * as hooks from '@/src/hooks';
 
 // Mock hooks
 jest.mock('@/src/hooks');
+jest.mock('expo-router');
 
 const mockUseRoutes = hooks.useRoutes as jest.MockedFunction<typeof hooks.useRoutes>;
+const mockUseRouter = useRouter as jest.MockedFunction<typeof useRouter>;
 
-// Spy on console.log
+// Spy on console.log (for backward compatibility with old tests)
 const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
 
 describe('RoutesScreen', () => {
+  const mockRouter = {
+    push: jest.fn(),
+    replace: jest.fn(),
+    back: jest.fn(),
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseRouter.mockReturnValue(mockRouter as any);
   });
 
   afterAll(() => {
@@ -311,5 +321,177 @@ describe('RoutesScreen', () => {
     expect(screen.getByText('Kengeri to Electronic City')).toBeTruthy();
 
     // Agency text should not be rendered (conditional rendering)
+  });
+
+  describe('Navigation to Trip Tracking Screen', () => {
+    it('should navigate to trip screen when route is pressed with all params', () => {
+      const mockRoutes = [
+        {
+          route_id: '335E',
+          route_short_name: '335E',
+          route_long_name: 'Kengeri to Electronic City',
+          route_type: 3,
+          agency_id: 'BMTC',
+        },
+      ];
+
+      mockUseRoutes.mockReturnValue({
+        routes: mockRoutes,
+        total: 1,
+        limit: 50,
+        offset: 0,
+        data: { routes: mockRoutes, total: 1, limit: 50, offset: 0 },
+        loading: false,
+        error: undefined,
+        reload: jest.fn(),
+        isRefreshing: false,
+      });
+
+      render(<RoutesScreen />);
+
+      // Find and press the route item
+      const routeItem = screen.getByText('Kengeri to Electronic City');
+      fireEvent.press(routeItem);
+
+      // Verify router.push was called with correct params
+      expect(mockRouter.push).toHaveBeenCalledTimes(1);
+      expect(mockRouter.push).toHaveBeenCalledWith({
+        pathname: '/trip/[routeId]',
+        params: {
+          route_id: '335E',
+          route_short_name: '335E',
+          route_long_name: 'Kengeri to Electronic City',
+          direction_id: '0', // Default direction
+        },
+      });
+    });
+
+    it('should navigate with minimal params when optional fields are missing', () => {
+      const mockRoutes = [
+        {
+          route_id: 'R123',
+          route_short_name: 'R123',
+          route_long_name: null,
+          route_type: 3,
+          agency_id: null,
+        },
+      ];
+
+      mockUseRoutes.mockReturnValue({
+        routes: mockRoutes,
+        total: 1,
+        limit: 50,
+        offset: 0,
+        data: { routes: mockRoutes, total: 1, limit: 50, offset: 0 },
+        loading: false,
+        error: undefined,
+        reload: jest.fn(),
+        isRefreshing: false,
+      });
+
+      render(<RoutesScreen />);
+
+      // Find and press the route badge (since no long name)
+      const routeBadge = screen.getByText('R123');
+      fireEvent.press(routeBadge);
+
+      // Verify navigation with only required params
+      expect(mockRouter.push).toHaveBeenCalledWith({
+        pathname: '/trip/[routeId]',
+        params: {
+          route_id: 'R123',
+          route_short_name: 'R123',
+          direction_id: '0',
+        },
+      });
+    });
+
+    it('should navigate with correct params for multiple routes', () => {
+      const mockRoutes = [
+        {
+          route_id: '335E',
+          route_short_name: '335E',
+          route_long_name: 'Kengeri to Electronic City',
+          route_type: 3,
+          agency_id: 'BMTC',
+        },
+        {
+          route_id: '340',
+          route_short_name: '340',
+          route_long_name: 'Jayanagar to Whitefield',
+          route_type: 3,
+          agency_id: 'BMTC',
+        },
+      ];
+
+      mockUseRoutes.mockReturnValue({
+        routes: mockRoutes,
+        total: 2,
+        limit: 50,
+        offset: 0,
+        data: { routes: mockRoutes, total: 2, limit: 50, offset: 0 },
+        loading: false,
+        error: undefined,
+        reload: jest.fn(),
+        isRefreshing: false,
+      });
+
+      render(<RoutesScreen />);
+
+      // Press first route
+      fireEvent.press(screen.getByText('Kengeri to Electronic City'));
+
+      expect(mockRouter.push).toHaveBeenCalledWith({
+        pathname: '/trip/[routeId]',
+        params: expect.objectContaining({
+          route_id: '335E',
+        }),
+      });
+
+      // Press second route
+      fireEvent.press(screen.getByText('Jayanagar to Whitefield'));
+
+      expect(mockRouter.push).toHaveBeenCalledWith({
+        pathname: '/trip/[routeId]',
+        params: expect.objectContaining({
+          route_id: '340',
+        }),
+      });
+
+      expect(mockRouter.push).toHaveBeenCalledTimes(2);
+    });
+
+    it('should pass direction_id as string "0" in navigation params', () => {
+      const mockRoutes = [
+        {
+          route_id: '335E',
+          route_short_name: '335E',
+          route_long_name: 'Test Route',
+          route_type: 3,
+          agency_id: 'BMTC',
+        },
+      ];
+
+      mockUseRoutes.mockReturnValue({
+        routes: mockRoutes,
+        total: 1,
+        limit: 50,
+        offset: 0,
+        data: { routes: mockRoutes, total: 1, limit: 50, offset: 0 },
+        loading: false,
+        error: undefined,
+        reload: jest.fn(),
+        isRefreshing: false,
+      });
+
+      render(<RoutesScreen />);
+
+      fireEvent.press(screen.getByText('Test Route'));
+
+      // Verify direction_id is passed as string
+      const callArgs = mockRouter.push.mock.calls[0][0];
+      expect(callArgs.params.direction_id).toBe('0');
+      expect(typeof callArgs.params.direction_id).toBe('string');
+    });
   });
 });
