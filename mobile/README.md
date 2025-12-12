@@ -12,6 +12,7 @@ React Native mobile application for the BMTC Transit API. Built with Expo and Ty
 - **Trip Planning Flow**: Map-first UX with destination selection sheet
 - **GPS Stop Detection**: Automatic stop visit detection using 50m geofencing
 - **Ride Submission**: Automatic ride data submission to backend for ML learning
+- **Trip Debug Screen** (dev-only): Developer tool for inspecting trip sessions, stop events, and API submissions
 
 ### Home Screen Flow
 
@@ -35,9 +36,10 @@ React Native mobile application for the BMTC Transit API. Built with Expo and Ty
 mobile/
 ├── app/                      # Expo Router app directory
 │   ├── (tabs)/              # Tab-based navigation
-│   │   ├── index.tsx        # Home screen (stops example)
+│   │   ├── index.tsx        # Home screen (map-first UX with debug button)
 │   │   ├── two.tsx          # Routes screen (placeholder)
 │   │   └── _layout.tsx      # Tab layout configuration
+│   ├── trip-debug.tsx       # Trip debug screen (dev-only)
 │   ├── _layout.tsx          # Root layout
 │   └── +html.tsx            # HTML template
 ├── src/
@@ -53,13 +55,18 @@ mobile/
 │   │   ├── segments.ts      # GPS event to ride segment conversion
 │   │   └── geo.ts           # Geospatial utilities (haversine, proximity detection)
 │   ├── hooks/
-│   │   ├── useTripSession.ts    # Trip session management with ride submission
+│   │   ├── useTripSession.ts    # Trip session management with debug state
 │   │   ├── useStopDetection.ts  # GPS-based stop visit detection
 │   │   └── useUserLocation.ts   # Location permissions and tracking
+│   ├── screens/
+│   │   └── TripDebugScreen.tsx  # Developer debug UI (dev-only)
 │   ├── types/
 │   │   └── tripSession.ts   # TripSession type definitions
 │   ├── components/          # Shared components
 │   └── utils/               # Utility functions
+├── __mocks__/               # Jest mocks
+│   ├── expo-crypto.js       # Crypto mock for tests
+│   └── fileMock.js          # Asset mock for tests
 ├── assets/                  # Images, fonts, etc.
 ├── .env.example             # Environment variables template
 ├── .gitignore
@@ -426,6 +433,32 @@ function TripScreen() {
 - Graceful permission error handling
 - Battery-efficient (only active during trips)
 
+## Developer Tools
+
+### Trip Debug Screen (Dev-only)
+
+Developer-focused screen for inspecting trip session data and API submissions. Only visible in `__DEV__` mode.
+
+**Access:** Tap the red bug button (bottom-right) on the Home screen.
+
+**Features:**
+- View current/last trip session (route_id, direction_id)
+- Inspect recorded stop events with timestamps
+- See segments sent in ride summary requests
+- View API response (accepted/rejected counts)
+- Raw JSON view for detailed inspection
+
+**Hook Integration:**
+```typescript
+import { useTripSession } from '@/src/hooks';
+
+const { lastRequest, lastResponse } = useTripSession();
+// lastRequest: PostRideSummaryRequest | undefined
+// lastResponse: PostRideSummaryResponse | undefined
+```
+
+Debug state persists after trip ends and clears when a new trip starts.
+
 ## Development
 
 ### Run Tests
@@ -446,9 +479,11 @@ npm run test:watch
 
 **Test Coverage:**
 - Domain utilities: `geo.test.ts` (41 tests), `segments.test.ts`
-- React hooks: `useStopDetection.test.ts` (38 tests), `useTripSession.test.ts`
+- React hooks: `useStopDetection.test.ts` (38 tests), `useTripSession.test.ts` (36 tests)
+- Screens: `TripDebugScreen.test.tsx` (16 tests)
 - API client: `client.test.ts`
 - Components: Various component tests
+- **Total:** 285 tests (279 passed, 6 skipped)
 
 ### Run TypeScript Checks
 
