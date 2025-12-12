@@ -17,6 +17,13 @@ venv/
 gtfs_temp/
 backups/
 
+# Documentation and conversation exports
+/*.txt
+docs.zip
+
+# Database backups
+*.backup_*
+
 # Test artifacts
 .pytest_cache/
 .coverage
