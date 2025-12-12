@@ -159,3 +159,133 @@ class HealthResponse(BaseModel):
     status: str  # "ok" or "degraded"
     db_ok: bool
     uptime_sec: int
+
+
+# GTFS-aligned API models (Phase 0)
+
+class StopResponse(BaseModel):
+    """Single stop from GTFS."""
+    stop_id: str
+    stop_name: str
+    stop_lat: float
+    stop_lon: float
+    zone_id: Optional[str] = None
+
+
+class StopsListResponse(BaseModel):
+    """GET /v1/stops response."""
+    stops: List[StopResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class RouteResponse(BaseModel):
+    """Single route from GTFS."""
+    route_id: str
+    route_short_name: Optional[str] = None
+    route_long_name: Optional[str] = None
+    route_type: int
+    agency_id: Optional[str] = None
+
+
+class RoutesListResponse(BaseModel):
+    """GET /v1/routes response."""
+    routes: List[RouteResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class StopInfo(BaseModel):
+    """Stop information for schedule response."""
+    stop_id: str
+    stop_name: str
+    stop_lat: float
+    stop_lon: float
+
+
+class TripInfo(BaseModel):
+    """Trip information for schedule response."""
+    trip_id: str
+    route_id: str
+    service_id: str
+    trip_headsign: Optional[str] = None
+    direction_id: Optional[int] = None
+
+
+class StopTimeInfo(BaseModel):
+    """Stop time information for schedule response."""
+    arrival_time: str
+    departure_time: str
+    stop_sequence: int
+    pickup_type: Optional[int] = None
+    drop_off_type: Optional[int] = None
+
+
+class DepartureInfo(BaseModel):
+    """Single departure from a stop."""
+    trip: TripInfo
+    stop_time: StopTimeInfo
+
+
+class ScheduleResponse(BaseModel):
+    """GET /v1/stops/{stop_id}/schedule response."""
+    stop: StopInfo
+    departures: List[DepartureInfo]
+    query_time: str
+
+
+class SegmentInfo(BaseModel):
+    """Segment information for ETA response (v1.1)."""
+    route_id: str
+    direction_id: int
+    from_stop_id: str
+    to_stop_id: str
+
+
+class ScheduledInfo(BaseModel):
+    """Scheduled duration information for ETA response (v1.1)."""
+    duration_sec: float
+    service_id: Optional[str] = None
+    source: str = "gtfs"
+
+
+class PredictionInfo(BaseModel):
+    """Prediction information for ETA response (v1.1)."""
+    predicted_duration_sec: float
+    p50_sec: float
+    p90_sec: float
+    confidence: str
+    blend_weight: float
+    samples_used: int
+    bin_id: int
+    last_updated: str
+    model_version: str
+
+    class Config:
+        protected_namespaces = ()  # Allow "model_" prefix
+
+
+class ETAResponseV11(BaseModel):
+    """GET /v1/eta response (v1.1 - GTFS-aligned with backward compatibility).
+
+    This response includes both the new v1.1 structured format (segment, scheduled, prediction)
+    and the old flat format fields (eta_sec, n, schedule_sec, etc.) for backward compatibility.
+    """
+    # New v1.1 structured format
+    segment: SegmentInfo
+    query_time: str
+    scheduled: ScheduledInfo
+    prediction: PredictionInfo
+
+    # Deprecated fields (backward compatibility) - duplicates of data in nested objects
+    eta_sec: float  # = prediction.predicted_duration_sec
+    p50_sec: float  # = prediction.p50_sec
+    p90_sec: float  # = prediction.p90_sec
+    n: int  # = prediction.samples_used
+    blend_weight: float  # = prediction.blend_weight
+    schedule_sec: float  # = scheduled.duration_sec
+    low_confidence: bool  # = (prediction.confidence != "high")
+    bin_id: int  # = prediction.bin_id
+    last_updated: str  # = prediction.last_updated
