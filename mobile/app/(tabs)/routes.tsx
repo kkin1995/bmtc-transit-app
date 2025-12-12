@@ -1,4 +1,5 @@
 import { StyleSheet, FlatList, ActivityIndicator, Pressable } from 'react-native';
+import { useRouter } from 'expo-router';
 
 import { Text, View } from '@/components/Themed';
 import { HomeLayout } from '@/src/components/layout';
@@ -6,6 +7,7 @@ import { useRoutes } from '@/src/hooks';
 import type { Route } from '@/src/api/types';
 
 export default function RoutesScreen() {
+  const router = useRouter();
   const { routes, loading, error, reload } = useRoutes({ limit: 50 });
 
   // Render individual route item
@@ -16,8 +18,17 @@ export default function RoutesScreen() {
         pressed && styles.routeItemPressed
       ]}
       onPress={() => {
-        // TODO: Navigate to route detail screen showing stops on this route
+        // Navigate to trip tracking screen
         console.log('Route pressed:', item.route_id);
+        router.push({
+          pathname: '/trip/[routeId]',
+          params: {
+            route_id: item.route_id,
+            route_short_name: item.route_short_name || item.route_id,
+            route_long_name: item.route_long_name || undefined,
+            direction_id: '0', // Default direction
+          },
+        });
       }}
     >
       <View style={styles.routeHeader}>
