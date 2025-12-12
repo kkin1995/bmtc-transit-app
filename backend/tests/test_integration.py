@@ -79,7 +79,7 @@ def test_config_endpoint(client):
 def test_auth_required(client):
     """Test that POST /v1/ride_summary requires authentication."""
     response = client.post("/v1/ride_summary", json={})
-    assert response.status_code == 403  # No auth header
+    assert response.status_code == 401  # No auth header (standardized error format)
 
 
 def test_ride_submission_and_eta(client, auth_headers):
