@@ -10,6 +10,7 @@ React Native mobile application for the BMTC Transit API. Built with Expo and Ty
 - **ETA Predictions**: Get ML-powered travel time estimates
 - **Error Handling**: Comprehensive error handling with user-friendly messages
 - **Trip Planning Flow**: Map-first UX with destination selection sheet
+- **Trip Tracking Screen**: Manual trip start/end interface for testing and QA
 - **GPS Stop Detection**: Automatic stop visit detection using 50m geofencing
 - **Ride Submission**: Automatic ride data submission to backend for ML learning
 - **Trip Debug Screen** (dev-only): Developer tool for inspecting trip sessions, stop events, and API submissions
@@ -22,6 +23,37 @@ React Native mobile application for the BMTC Transit API. Built with Expo and Ty
 4. **Active trip**: Real-time trip tracking with automatic ride data submission to backend
 
 **Key hooks**: `useHomePlanningState` (trip planning state machine), `useTripSession` (active trip tracking with ride submission), `useStopDetection` (GPS-based stop visit detection), `useUserLocation` (location permissions)
+
+### Trip Tracking Flow
+
+User-facing screen for manually starting and ending trips, useful for testing and QA.
+
+1. **Navigate to Trip Tracking**: Routes tab → Tap any route → Trip Tracking screen opens
+2. **Start Trip**: Tap "Start Trip" button to begin session (creates TripSession with selected route)
+3. **Active Trip**: View trip details (route, direction, started time, stop events count)
+4. **End Trip**: Tap "End Trip" to submit ride data to backend
+5. **Result**: Success message or error with retry option
+6. **Debug**: Tap bug button on Home screen → Trip Debug shows last submission
+
+**Navigation:**
+- Route: `/trip/[routeId]`
+- Params: `route_id`, `route_short_name`, `direction_id` (required), `route_long_name`, `headsign` (optional)
+- Entry point: Routes tab item press handler
+
+**States:**
+- **Initial**: No session, "Ready to start trip", Start button enabled
+- **Active**: Session exists, "Trip in progress", End button enabled
+- **Post-submission**: Success message (2s) or error banner with retry
+
+**Integration:**
+- Uses `useTripSession()` for trip lifecycle management
+- Trip data automatically flows to `TripDebugScreen` via `lastRequest`/`lastResponse`
+- GPS stop detection can run during active trip (via `useStopDetection`)
+
+**Implementation:**
+- Component: `app/trip/[routeId].tsx`
+- Tests: `app/trip/__tests__/TripTrackingScreen.test.tsx` (38 tests)
+- Related: `app/(tabs)/routes.tsx` (navigation entry point)
 
 ## Tech Stack
 
@@ -37,8 +69,11 @@ mobile/
 ├── app/                      # Expo Router app directory
 │   ├── (tabs)/              # Tab-based navigation
 │   │   ├── index.tsx        # Home screen (map-first UX with debug button)
-│   │   ├── two.tsx          # Routes screen (placeholder)
+│   │   ├── routes.tsx       # Routes screen (list of GTFS routes)
 │   │   └── _layout.tsx      # Tab layout configuration
+│   ├── trip/                # Trip tracking feature
+│   │   ├── [routeId].tsx    # Trip tracking screen (start/end trips)
+│   │   └── __tests__/       # Trip tracking tests (38 tests)
 │   ├── trip-debug.tsx       # Trip debug screen (dev-only)
 │   ├── _layout.tsx          # Root layout
 │   └── +html.tsx            # HTML template
@@ -480,10 +515,11 @@ npm run test:watch
 **Test Coverage:**
 - Domain utilities: `geo.test.ts` (41 tests), `segments.test.ts`
 - React hooks: `useStopDetection.test.ts` (38 tests), `useTripSession.test.ts` (36 tests)
-- Screens: `TripDebugScreen.test.tsx` (16 tests)
+- Screens: `TripTrackingScreen.test.tsx` (38 tests), `TripDebugScreen.test.tsx` (16 tests), `HomeScreen.test.tsx`
+- Navigation: `RoutesScreen.test.tsx` (14 tests, including 5 Trip Tracking navigation tests)
 - API client: `client.test.ts`
 - Components: Various component tests
-- **Total:** 285 tests (279 passed, 6 skipped)
+- **Total:** 337 tests (331 passed, 6 skipped)
 
 ### Run TypeScript Checks
 
