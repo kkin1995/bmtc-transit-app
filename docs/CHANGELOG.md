@@ -133,6 +133,91 @@ This release establishes the v1 API specification baseline for the BMTC Transit 
 
 ---
 
+## [1.1.0] - 2025-11-18
+
+### GTFS Alignment & Standardized Errors
+
+This release adds GTFS-compliant discovery endpoints and implements standardized error responses across the entire API.
+
+#### Added
+
+**GTFS Discovery Endpoints (Read-Only):**
+- `GET /v1/stops` - Discover GTFS stops with filtering and pagination
+  - Filter by bounding box: `?bbox=min_lat,min_lon,max_lat,max_lon`
+  - Filter by route: `?route_id=335E`
+  - Pagination: `?limit=100&offset=0`
+- `GET /v1/routes` - Discover GTFS routes with filtering and pagination
+  - Filter by stop: `?stop_id=20558`
+  - Filter by route type: `?route_type=3` (3=bus per GTFS spec)
+  - Pagination: `?limit=100&offset=0`
+- `GET /v1/stops/{stop_id}/schedule` - Get scheduled departures from GTFS
+  - Query time window: `?when=2025-11-18T14:30:00Z&time_window_minutes=60`
+  - Filter by route: `?route_id=335E`
+- All field names match GTFS Schedule Reference specification exactly
+- Schedule times in HH:MM:SS format per GTFS spec
+- All endpoints return GTFS-compliant data structures
+
+**Standardized Error Response Format:**
+- Consistent error structure across all endpoints:
+  ```json
+  {
+    "error": "<error_code>",
+    "message": "<human-readable description>",
+    "details": <context-specific fields>
+  }
+  ```
+- Context-specific `details` object for all error scenarios:
+  - Parameter validation errors include field names and constraints
+  - GTFS lookup errors include route_id, stop_id, or segment identifiers
+  - Idempotency conflicts include the idempotency_key
+  - Rate limiting errors include limit, window, and retry_after_sec
+- Auth errors now return 401 (previously 403) with structured error format
+- New helper module `backend/app/errors.py` for creating standardized errors
+
+**GET /v1/eta Enhanced to v1.1:**
+- Response structure separates GTFS schedule data from ML predictions:
+  - `segment` object: route/direction/stop identifiers
+  - `query_time`: ISO-8601 timestamp of query
+  - `scheduled` object: GTFS scheduled duration, service_id, source
+  - `prediction` object: ML-predicted duration, confidence, samples, model version
+- Added `confidence` field to predictions: `"high"` (n≥8), `"medium"` (3≤n<8), `"low"` (n<3)
+- Renamed `n` → `samples_used` for clarity (in new structure)
+- Added `model_version` field to predictions (currently `"welford-ema-v1"`)
+- **Backward compatible:** Old flat response format still supported (deprecated)
+  - Deprecated fields: `eta_sec`, `p50_sec`, `p90_sec`, `n`, `blend_weight`, `schedule_sec`, `low_confidence`, `bin_id`, `last_updated`
+  - These duplicate the data in the new nested structure
+
+**Comprehensive Test Coverage:**
+- `test_api_errors_alignment.py`: Tests for standardized error format across all endpoints
+- `test_api_gtfs_alignment.py`: Tests for new GTFS endpoints and v1.1 ETA format
+- All tests validate error response structure and content
+
+#### Changed
+
+**Documentation Updates:**
+- `docs/api.md`: Complete rewrite with GTFS compliance section
+  - Error Model section with canonical error codes and examples
+  - GTFS Compliance section explaining two-layer architecture
+  - Complete specs for all new endpoints with curl examples
+  - GTFS field mappings for all endpoints
+  - Comprehensive error examples for every scenario
+- Added GTFS Layer vs ML Prediction Layer distinction
+- Listed all supported GTFS fields from BMTC feed
+
+**Security Documentation:**
+- Added STRIDE security review for v0.2.0 in `docs/SECURITY_REVIEW/`
+- Privacy impact assessment for device_bucket anonymization
+- Security controls evaluation (auth, idempotency, rate limiting)
+
+#### Notes
+
+- This release maintains full backward compatibility with v1.0.0
+- Old ETA response format is deprecated but will be maintained for minimum 90 days
+- All GTFS endpoints are read-only and unauthenticated (public access)
+- GTFS data sourced from official BMTC GTFS feed via github.com/Vonter/bmtc-gtfs
+
+---
+
 ## [Unreleased]
 
 Future enhancements under consideration:
@@ -149,6 +234,7 @@ Future enhancements under consideration:
 
 | Version | Date | Description |
 |---------|------|-------------|
+| 1.1.0 | 2025-11-18 | GTFS discovery endpoints + standardized errors |
 | 1.0.0 | 2025-10-22 | Initial v1 baseline specification |
 
 ---

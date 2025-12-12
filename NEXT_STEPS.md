@@ -23,6 +23,16 @@
 - [x] GTFS metadata tracking (version, dates)
 - [x] Documentation: gtfs-database.md (complete schema reference)
 
+### Phase 3: GTFS Discovery Endpoints (v1.1)
+- [x] GET /v1/stops - Discover stops with bbox/route filtering and pagination
+- [x] GET /v1/routes - Discover routes with stop_id/route_type filtering and pagination
+- [x] GET /v1/stops/{stop_id}/schedule - Get scheduled departures from GTFS
+- [x] Standardized error response format across all endpoints
+- [x] Enhanced GET /v1/eta to v1.1 with separate schedule/prediction objects
+- [x] Comprehensive test coverage (test_api_gtfs_alignment.py, test_api_errors_alignment.py)
+- [x] Updated API documentation with GTFS compliance section
+- [x] STRIDE security review documentation
+
 ---
 
 ## 🚀 Ready to Run
@@ -90,39 +100,22 @@ curl http://127.0.0.1:8000/v1/config
 
 ## 📋 Next Phase: Optional Enhancements
 
-### Phase 3: GTFS Discovery Endpoints (Optional)
+### Phase 4: Enhanced GTFS Queries (Optional)
 
-Add read-only GTFS query endpoints for richer client features.
+Extend existing GTFS endpoints with additional features.
 
-**Tasks:**
-1. Create `app/gtfs_queries.py` with helper functions:
-   ```python
-   def get_route(route_id: str) -> dict
-   def search_routes(query: str) -> List[dict]
-   def get_stop(stop_id: str) -> dict
-   def get_stops_near(lat: float, lon: float, radius_m: int) -> List[dict]
-   def get_stop_schedule(stop_id: str, time: str) -> List[dict]
-   ```
+**Potential additions:**
+- `GET /v1/routes/{route_id}` - Single route details
+- `GET /v1/stops/{stop_id}` - Single stop details
+- `GET /v1/trips/{trip_id}` - Trip details with full stop sequence
+- Geospatial queries: `GET /v1/stops?lat=12.97&lon=77.57&radius_m=500`
+- Route search: `GET /v1/routes?search=Majestic`
 
-2. Add endpoints to `app/routes.py`:
-   ```python
-   GET /v1/routes                      # List all routes
-   GET /v1/routes/{route_id}           # Route details
-   GET /v1/stops                       # List stops (with ?lat=&lon=&radius= filter)
-   GET /v1/stops/{stop_id}             # Stop details
-   GET /v1/stops/{stop_id}/schedule    # Next departures
-   GET /v1/trips/{trip_id}             # Trip details with stop sequence
-   ```
-
-3. Update `docs/api.md` with new endpoints
-
-**Benefit:** Enables client to discover routes/stops without bundling GTFS
-
-**Estimated effort:** 4-6 hours
+**Estimated effort:** 2-4 hours
 
 ---
 
-### Phase 4: Update Existing API to Use GTFS Tables (Minor)
+### Phase 5: Update Existing API to Use GTFS Tables (Minor)
 
 Current API validates segments by checking `segments` table. With GTFS loaded, we can:
 
@@ -139,7 +132,7 @@ Current API validates segments by checking `segments` table. With GTFS loaded, w
 
 ---
 
-### Phase 5: GTFS Update Workflow
+### Phase 6: GTFS Update Workflow
 
 Handle GTFS data refreshes without losing learning data.
 
@@ -157,7 +150,7 @@ Handle GTFS data refreshes without losing learning data.
 
 ---
 
-### Phase 6: Analytics Dashboard (Optional)
+### Phase 7: Analytics Dashboard (Optional)
 
 Simple web UI to visualize learning progress.
 
@@ -173,7 +166,7 @@ Simple web UI to visualize learning progress.
 
 ---
 
-### Phase 7: Client SDK (Future)
+### Phase 8: Client SDK (Future)
 
 Create TypeScript/Python SDK for easy integration.
 

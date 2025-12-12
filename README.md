@@ -113,8 +113,11 @@ uv run pytest -v
 
 | Method | Path | Description |
 |--------|------|-------------|
+| GET | `/v1/stops` | Discover GTFS stops (with bbox/route filtering) |
+| GET | `/v1/routes` | Discover GTFS routes (with stop/type filtering) |
+| GET | `/v1/stops/{stop_id}/schedule` | Get scheduled departures from GTFS |
 | POST | `/v1/ride_summary` | Upload ride segments for learning |
-| GET | `/v1/eta` | Query learned ETA for a segment |
+| GET | `/v1/eta` | Query learned ETA with predictions |
 | GET | `/v1/config` | Server configuration |
 | GET | `/v1/health` | Health check |
 
