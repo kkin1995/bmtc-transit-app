@@ -26,6 +26,9 @@ import {
 } from './types';
 import { parseErrorResponse, NetworkError, TimeoutError } from './errors';
 
+// Re-export types for convenience
+export type { PostRideSummaryRequest, PostRideSummaryResponse };
+
 /**
  * Build query string from parameters object
  */

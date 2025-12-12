@@ -22,6 +22,7 @@
 
 import { useState, useCallback } from 'react';
 import type { Journey, TripSession } from '../types';
+import type { PostRideSummaryRequest, PostRideSummaryResponse } from '../api/client';
 import { buildSegmentsFromStopEvents } from '../domain/segments';
 import { postRideSummary } from '../api/client';
 import {
@@ -67,6 +68,18 @@ export interface UseTripSessionReturn {
    * Undefined if no error or no submission attempted yet
    */
   submissionError?: Error;
+
+  /**
+   * Debug: Last ride summary request sent to API
+   * Undefined if no submission has occurred yet in this session
+   */
+  lastRequest?: PostRideSummaryRequest;
+
+  /**
+   * Debug: Last successful response from API
+   * Undefined if no successful submission yet or last submission failed
+   */
+  lastResponse?: PostRideSummaryResponse;
 }
 
 /**
@@ -102,6 +115,10 @@ export function useTripSession(): UseTripSessionReturn {
   const [session, setSession] = useState<TripSession | null>(null);
   const [submissionError, setSubmissionError] = useState<Error | undefined>(undefined);
 
+  // Debug state: store last request/response for developer inspection
+  const [lastRequest, setLastRequest] = useState<PostRideSummaryRequest | undefined>(undefined);
+  const [lastResponse, setLastResponse] = useState<PostRideSummaryResponse | undefined>(undefined);
+
   /**
    * Start a new trip from a journey
    * Creates TripSession with route, direction, stops, and timestamp
@@ -119,6 +136,10 @@ export function useTripSession(): UseTripSessionReturn {
 
     setSession(newSession);
     setSubmissionError(undefined); // Clear any previous errors
+
+    // Clear debug state when starting new trip
+    setLastRequest(undefined);
+    setLastResponse(undefined);
   }, []);
 
   /**
@@ -153,8 +174,9 @@ export function useTripSession(): UseTripSessionReturn {
    * 1. Builds segments from stop events
    * 2. Constructs ride summary request
    * 3. Posts to backend API
-   * 4. Clears session (success or failure)
-   * 5. Sets error state if submission fails
+   * 4. Stores request/response for debug purposes
+   * 5. Clears session (success or failure)
+   * 6. Sets error state if submission fails
    */
   const endTrip = useCallback(async () => {
     if (!session) {
@@ -188,17 +210,26 @@ export function useTripSession(): UseTripSessionReturn {
       const apiKey = getApiKey();
       const idempotencyKey = generateIdempotencyKey();
 
+      // Construct request
+      const request: PostRideSummaryRequest = {
+        route_id: session.route_id,
+        direction_id: session.direction_id,
+        device_bucket: deviceBucket,
+        segments: segments,
+      };
+
+      // Store request for debug purposes (before submission)
+      setLastRequest(request);
+
       // Submit ride summary to backend
       const response = await postRideSummary(
-        {
-          route_id: session.route_id,
-          direction_id: session.direction_id,
-          device_bucket: deviceBucket,
-          segments: segments,
-        },
+        request,
         apiKey,
         idempotencyKey
       );
+
+      // Store response for debug purposes
+      setLastResponse(response);
 
       // Log success
       console.log('Ride submitted successfully:', {
@@ -216,6 +247,9 @@ export function useTripSession(): UseTripSessionReturn {
       const submissionErr = error instanceof Error ? error : new Error(String(error));
       setSubmissionError(submissionErr);
 
+      // Note: lastRequest is already set (we attempted to send it)
+      // lastResponse is NOT set (request failed)
+
       // Still clear the session even on error (don't leave in limbo)
       setSession(null);
     }
@@ -227,5 +261,7 @@ export function useTripSession(): UseTripSessionReturn {
     recordStopVisit,
     endTrip,
     submissionError,
+    lastRequest,
+    lastResponse,
   };
 }
