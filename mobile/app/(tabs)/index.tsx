@@ -1,5 +1,7 @@
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Pressable } from 'react-native';
 import { YStack, Text } from 'tamagui';
+import { Link } from 'expo-router';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 
 import { HomeLayout } from '@/src/components/layout';
 import { TransitMap } from '@/src/components/map';
@@ -83,6 +85,15 @@ export default function HomeScreen() {
             }}
           />
         )}
+
+        {/* Dev-only Trip Debug Button */}
+        {__DEV__ && (
+          <Link href="/trip-debug" asChild>
+            <Pressable style={styles.debugButton}>
+              <FontAwesome name="bug" size={24} color="white" />
+            </Pressable>
+          </Link>
+        )}
       </YStack>
     </HomeLayout>
   );
@@ -91,5 +102,21 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  debugButton: {
+    position: 'absolute',
+    bottom: 100,
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#FF6B6B',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
   },
 });
