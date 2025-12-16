@@ -6,6 +6,7 @@ React Native mobile application for the BMTC Transit API. Built with Expo and Ty
 
 - **Typed API Client**: Fully typed HTTP client for all backend endpoints
 - **GTFS Discovery**: Browse stops and routes from GTFS data
+- **Routes Search**: Client-side search to filter routes by number or name
 - **Schedule Lookup**: View scheduled departures for any stop
 - **ETA Predictions**: Get ML-powered travel time estimates
 - **Error Handling**: Comprehensive error handling with user-friendly messages
@@ -54,6 +55,35 @@ User-facing screen for manually starting and ending trips, useful for testing an
 - Component: `app/trip/[routeId].tsx`
 - Tests: `app/trip/__tests__/TripTrackingScreen.test.tsx` (38 tests)
 - Related: `app/(tabs)/routes.tsx` (navigation entry point)
+
+### Routes Search
+
+Client-side search feature on the Routes tab for quick route lookup during field testing.
+
+**Features:**
+- Search box at top of Routes list
+- Real-time filtering as you type
+- Case-insensitive partial matching
+- Searches both route number (e.g., "335E") and name (e.g., "Electronic City")
+- Shows count of filtered results
+- Displays "No routes found" with helpful message when no matches
+
+**Usage:**
+1. Navigate to Routes tab
+2. Type in search box (e.g., "335" or "electronic")
+3. List filters instantly to matching routes
+4. Tap any route to navigate to Trip Tracking
+5. Clear search to see all routes again
+
+**Performance:**
+- Pure client-side filtering (no backend requests)
+- useMemo optimization prevents unnecessary re-filtering
+- Instant results for 50-100 routes
+
+**Implementation:**
+- Component: `app/(tabs)/routes.tsx` (useState for query, useMemo for filtering)
+- Tests: `app/(tabs)/__tests__/RoutesScreen.test.tsx` (27 tests, including 13 search tests)
+- Algorithm: Case-insensitive `.includes()` on both route_short_name and route_long_name
 
 ## Tech Stack
 
@@ -514,12 +544,12 @@ npm run test:watch
 
 **Test Coverage:**
 - Domain utilities: `geo.test.ts` (41 tests), `segments.test.ts`
-- React hooks: `useStopDetection.test.ts` (38 tests), `useTripSession.test.ts` (36 tests)
+- React hooks: `useStopDetection.test.ts` (38 tests), `useTripSession.test.ts` (47 tests, including debug state)
 - Screens: `TripTrackingScreen.test.tsx` (38 tests), `TripDebugScreen.test.tsx` (16 tests), `HomeScreen.test.tsx`
-- Navigation: `RoutesScreen.test.tsx` (14 tests, including 5 Trip Tracking navigation tests)
+- Navigation: `RoutesScreen.test.tsx` (27 tests, including 13 search tests and 5 Trip Tracking navigation tests)
 - API client: `client.test.ts`
 - Components: Various component tests
-- **Total:** 337 tests (331 passed, 6 skipped)
+- **Total:** 393 tests (384 passed, 6 skipped, 3 pre-existing failures)
 
 ### Run TypeScript Checks
 
