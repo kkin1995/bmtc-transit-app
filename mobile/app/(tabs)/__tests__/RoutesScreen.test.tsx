@@ -3,7 +3,7 @@
  *
  * Expected behavior:
  * - Renders "Routes" title
- * - Uses useRoutes hook with limit: 50
+ * - Uses useRoutes hook with limit: 1000
  * - Shows loading indicator with "Loading routes..." when loading
  * - Shows error message with "Retry" button when error occurs
  * - Shows "No routes found" when routes array is empty
@@ -49,7 +49,7 @@ describe('RoutesScreen', () => {
     mockUseRoutes.mockReturnValue({
       routes: [],
       total: 0,
-      limit: 50,
+      limit: 1000,
       offset: 0,
       data: undefined,
       loading: false,
@@ -63,11 +63,11 @@ describe('RoutesScreen', () => {
     expect(screen.getByText('Routes')).toBeTruthy();
   });
 
-  it('should call useRoutes with limit: 50', () => {
+  it('should call useRoutes with limit: 1000', () => {
     mockUseRoutes.mockReturnValue({
       routes: [],
       total: 0,
-      limit: 50,
+      limit: 1000,
       offset: 0,
       data: undefined,
       loading: false,
@@ -78,14 +78,14 @@ describe('RoutesScreen', () => {
 
     render(<RoutesScreen />);
 
-    expect(mockUseRoutes).toHaveBeenCalledWith({ limit: 50 });
+    expect(mockUseRoutes).toHaveBeenCalledWith({ limit: 1000 });
   });
 
   it('should show loading state', () => {
     mockUseRoutes.mockReturnValue({
       routes: [],
       total: 0,
-      limit: 50,
+      limit: 1000,
       offset: 0,
       data: undefined,
       loading: true,
@@ -105,7 +105,7 @@ describe('RoutesScreen', () => {
     mockUseRoutes.mockReturnValue({
       routes: [],
       total: 0,
-      limit: 50,
+      limit: 1000,
       offset: 0,
       data: undefined,
       loading: false,
@@ -129,7 +129,7 @@ describe('RoutesScreen', () => {
     mockUseRoutes.mockReturnValue({
       routes: [],
       total: 0,
-      limit: 50,
+      limit: 1000,
       offset: 0,
       data: undefined,
       loading: false,
@@ -164,9 +164,9 @@ describe('RoutesScreen', () => {
     mockUseRoutes.mockReturnValue({
       routes: mockRoutes,
       total: 2,
-      limit: 50,
+      limit: 1000,
       offset: 0,
-      data: { routes: mockRoutes, total: 2, limit: 50, offset: 0 },
+      data: { routes: mockRoutes, total: 2, limit: 1000, offset: 0 },
       loading: false,
       error: undefined,
       reload: jest.fn(),
@@ -211,9 +211,9 @@ describe('RoutesScreen', () => {
     mockUseRoutes.mockReturnValue({
       routes: mockRoutes,
       total: 1,
-      limit: 50,
+      limit: 1000,
       offset: 0,
-      data: { routes: mockRoutes, total: 1, limit: 50, offset: 0 },
+      data: { routes: mockRoutes, total: 1, limit: 1000, offset: 0 },
       loading: false,
       error: undefined,
       reload: jest.fn(),
@@ -244,9 +244,9 @@ describe('RoutesScreen', () => {
     mockUseRoutes.mockReturnValue({
       routes: mockRoutes,
       total: 1,
-      limit: 50,
+      limit: 1000,
       offset: 0,
-      data: { routes: mockRoutes, total: 1, limit: 50, offset: 0 },
+      data: { routes: mockRoutes, total: 1, limit: 1000, offset: 0 },
       loading: false,
       error: undefined,
       reload: jest.fn(),
@@ -273,9 +273,9 @@ describe('RoutesScreen', () => {
     mockUseRoutes.mockReturnValue({
       routes: mockRoutes,
       total: 1,
-      limit: 50,
+      limit: 1000,
       offset: 0,
-      data: { routes: mockRoutes, total: 1, limit: 50, offset: 0 },
+      data: { routes: mockRoutes, total: 1, limit: 1000, offset: 0 },
       loading: false,
       error: undefined,
       reload: jest.fn(),
@@ -306,9 +306,9 @@ describe('RoutesScreen', () => {
     mockUseRoutes.mockReturnValue({
       routes: mockRoutes,
       total: 1,
-      limit: 50,
+      limit: 1000,
       offset: 0,
-      data: { routes: mockRoutes, total: 1, limit: 50, offset: 0 },
+      data: { routes: mockRoutes, total: 1, limit: 1000, offset: 0 },
       loading: false,
       error: undefined,
       reload: jest.fn(),
@@ -338,9 +338,9 @@ describe('RoutesScreen', () => {
       mockUseRoutes.mockReturnValue({
         routes: mockRoutes,
         total: 1,
-        limit: 50,
+        limit: 1000,
         offset: 0,
-        data: { routes: mockRoutes, total: 1, limit: 50, offset: 0 },
+        data: { routes: mockRoutes, total: 1, limit: 1000, offset: 0 },
         loading: false,
         error: undefined,
         reload: jest.fn(),
@@ -380,9 +380,9 @@ describe('RoutesScreen', () => {
       mockUseRoutes.mockReturnValue({
         routes: mockRoutes,
         total: 1,
-        limit: 50,
+        limit: 1000,
         offset: 0,
-        data: { routes: mockRoutes, total: 1, limit: 50, offset: 0 },
+        data: { routes: mockRoutes, total: 1, limit: 1000, offset: 0 },
         loading: false,
         error: undefined,
         reload: jest.fn(),
@@ -427,9 +427,9 @@ describe('RoutesScreen', () => {
       mockUseRoutes.mockReturnValue({
         routes: mockRoutes,
         total: 2,
-        limit: 50,
+        limit: 1000,
         offset: 0,
-        data: { routes: mockRoutes, total: 2, limit: 50, offset: 0 },
+        data: { routes: mockRoutes, total: 2, limit: 1000, offset: 0 },
         loading: false,
         error: undefined,
         reload: jest.fn(),
@@ -475,9 +475,9 @@ describe('RoutesScreen', () => {
       mockUseRoutes.mockReturnValue({
         routes: mockRoutes,
         total: 1,
-        limit: 50,
+        limit: 1000,
         offset: 0,
-        data: { routes: mockRoutes, total: 1, limit: 50, offset: 0 },
+        data: { routes: mockRoutes, total: 1, limit: 1000, offset: 0 },
         loading: false,
         error: undefined,
         reload: jest.fn(),
@@ -555,9 +555,9 @@ describe('RoutesScreen', () => {
       mockUseRoutes.mockReturnValue({
         routes: mockSearchRoutes,
         total: 5,
-        limit: 50,
+        limit: 1000,
         offset: 0,
-        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        data: { routes: mockSearchRoutes, total: 5, limit: 1000, offset: 0 },
         loading: false,
         error: undefined,
         reload: jest.fn(),
@@ -575,9 +575,9 @@ describe('RoutesScreen', () => {
       mockUseRoutes.mockReturnValue({
         routes: mockSearchRoutes,
         total: 5,
-        limit: 50,
+        limit: 1000,
         offset: 0,
-        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        data: { routes: mockSearchRoutes, total: 5, limit: 1000, offset: 0 },
         loading: false,
         error: undefined,
         reload: jest.fn(),
@@ -598,9 +598,9 @@ describe('RoutesScreen', () => {
       mockUseRoutes.mockReturnValue({
         routes: mockSearchRoutes,
         total: 5,
-        limit: 50,
+        limit: 1000,
         offset: 0,
-        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        data: { routes: mockSearchRoutes, total: 5, limit: 1000, offset: 0 },
         loading: false,
         error: undefined,
         reload: jest.fn(),
@@ -627,9 +627,9 @@ describe('RoutesScreen', () => {
       mockUseRoutes.mockReturnValue({
         routes: mockSearchRoutes,
         total: 5,
-        limit: 50,
+        limit: 1000,
         offset: 0,
-        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        data: { routes: mockSearchRoutes, total: 5, limit: 1000, offset: 0 },
         loading: false,
         error: undefined,
         reload: jest.fn(),
@@ -656,9 +656,9 @@ describe('RoutesScreen', () => {
       mockUseRoutes.mockReturnValue({
         routes: mockSearchRoutes,
         total: 5,
-        limit: 50,
+        limit: 1000,
         offset: 0,
-        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        data: { routes: mockSearchRoutes, total: 5, limit: 1000, offset: 0 },
         loading: false,
         error: undefined,
         reload: jest.fn(),
@@ -685,9 +685,9 @@ describe('RoutesScreen', () => {
       mockUseRoutes.mockReturnValue({
         routes: mockSearchRoutes,
         total: 5,
-        limit: 50,
+        limit: 1000,
         offset: 0,
-        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        data: { routes: mockSearchRoutes, total: 5, limit: 1000, offset: 0 },
         loading: false,
         error: undefined,
         reload: jest.fn(),
@@ -718,9 +718,9 @@ describe('RoutesScreen', () => {
       mockUseRoutes.mockReturnValue({
         routes: mockSearchRoutes,
         total: 5,
-        limit: 50,
+        limit: 1000,
         offset: 0,
-        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        data: { routes: mockSearchRoutes, total: 5, limit: 1000, offset: 0 },
         loading: false,
         error: undefined,
         reload: jest.fn(),
@@ -746,9 +746,9 @@ describe('RoutesScreen', () => {
       mockUseRoutes.mockReturnValue({
         routes: mockSearchRoutes,
         total: 5,
-        limit: 50,
+        limit: 1000,
         offset: 0,
-        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        data: { routes: mockSearchRoutes, total: 5, limit: 1000, offset: 0 },
         loading: false,
         error: undefined,
         reload: jest.fn(),
@@ -774,9 +774,9 @@ describe('RoutesScreen', () => {
       mockUseRoutes.mockReturnValue({
         routes: mockSearchRoutes,
         total: 5,
-        limit: 50,
+        limit: 1000,
         offset: 0,
-        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        data: { routes: mockSearchRoutes, total: 5, limit: 1000, offset: 0 },
         loading: false,
         error: undefined,
         reload: jest.fn(),
@@ -810,9 +810,9 @@ describe('RoutesScreen', () => {
       mockUseRoutes.mockReturnValue({
         routes: mockSearchRoutes,
         total: 5,
-        limit: 50,
+        limit: 1000,
         offset: 0,
-        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        data: { routes: mockSearchRoutes, total: 5, limit: 1000, offset: 0 },
         loading: false,
         error: undefined,
         reload: jest.fn(),
@@ -841,9 +841,9 @@ describe('RoutesScreen', () => {
       mockUseRoutes.mockReturnValue({
         routes: mockSearchRoutes,
         total: 5,
-        limit: 50,
+        limit: 1000,
         offset: 0,
-        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        data: { routes: mockSearchRoutes, total: 5, limit: 1000, offset: 0 },
         loading: false,
         error: undefined,
         reload: jest.fn(),
@@ -861,9 +861,9 @@ describe('RoutesScreen', () => {
       mockUseRoutes.mockReturnValue({
         routes: mockSearchRoutes,
         total: 5,
-        limit: 50,
+        limit: 1000,
         offset: 0,
-        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        data: { routes: mockSearchRoutes, total: 5, limit: 1000, offset: 0 },
         loading: true, // Now loading
         error: undefined,
         reload: jest.fn(),
@@ -883,9 +883,9 @@ describe('RoutesScreen', () => {
       mockUseRoutes.mockReturnValue({
         routes: mockSearchRoutes,
         total: 5,
-        limit: 50,
+        limit: 1000,
         offset: 0,
-        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        data: { routes: mockSearchRoutes, total: 5, limit: 1000, offset: 0 },
         loading: false,
         error: undefined,
         reload: jest.fn(),
@@ -912,9 +912,9 @@ describe('RoutesScreen', () => {
       mockUseRoutes.mockReturnValue({
         routes: mockSearchRoutes,
         total: 5,
-        limit: 50,
+        limit: 1000,
         offset: 0,
-        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        data: { routes: mockSearchRoutes, total: 5, limit: 1000, offset: 0 },
         loading: false,
         error: undefined,
         reload: jest.fn(),

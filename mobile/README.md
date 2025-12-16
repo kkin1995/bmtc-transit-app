@@ -78,7 +78,8 @@ Client-side search feature on the Routes tab for quick route lookup during field
 **Performance:**
 - Pure client-side filtering (no backend requests)
 - useMemo optimization prevents unnecessary re-filtering
-- Instant results for 50-100 routes
+- Instant results for up to 1000 routes
+- Configurable limit via `apiConfig.routesListLimit` (default: 1000)
 
 **Implementation:**
 - Component: `app/(tabs)/routes.tsx` (useState for query, useMemo for filtering)
@@ -356,7 +357,7 @@ Query GTFS routes with filtering and pagination.
 **Parameters:**
 - `stop_id?: string` - Filter routes serving this stop
 - `route_type?: number` - Filter by GTFS route type (3 = bus)
-- `limit?: number` - Max results per page (default 100, max 1000)
+- `limit?: number` - Max results per page (default 1000 for Routes tab, max 1000)
 - `offset?: number` - Pagination offset (default 0)
 
 **Returns:** `Promise<RoutesListResponse>`

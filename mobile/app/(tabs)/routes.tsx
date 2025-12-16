@@ -6,10 +6,11 @@ import { Text, View } from '@/components/Themed';
 import { HomeLayout } from '@/src/components/layout';
 import { useRoutes } from '@/src/hooks';
 import type { Route } from '@/src/api/types';
+import { apiConfig } from '@/src/config/api';
 
 export default function RoutesScreen() {
   const router = useRouter();
-  const { routes, loading, error, reload } = useRoutes({ limit: 50 });
+  const { routes, loading, error, reload } = useRoutes({ limit: apiConfig.routesListLimit });
   const [searchQuery, setSearchQuery] = useState('');
 
   // Filter routes based on search query

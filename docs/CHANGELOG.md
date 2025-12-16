@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Mobile App
+
+#### Changed
+- Increased routes limit in Routes tab from 50 to 1000 to improve route availability for client-side search
+- Added `routesListLimit` configuration constant to `apiConfig` (default: 1000)
+- Updated routes search documentation to reflect support for up to 1000 routes
+
+---
+
 ## [1.0.0] - 2025-10-22
 
 ### API v1 Baseline Release

@@ -36,13 +36,13 @@ describe('useRoutes', () => {
         },
       ],
       total: 1,
-      limit: 50,
+      limit: 1000,
       offset: 0,
     };
 
     mockFetchRoutes.mockResolvedValue(mockResponse);
 
-    const { result } = renderHook(() => useRoutes({ limit: 50 }));
+    const { result } = renderHook(() => useRoutes({ limit: 1000 }));
 
     // Initially loading
     expect(result.current.loading).toBe(true);
@@ -53,7 +53,7 @@ describe('useRoutes', () => {
 
     // Verify fetchRoutes was called
     expect(mockFetchRoutes).toHaveBeenCalledTimes(1);
-    expect(mockFetchRoutes).toHaveBeenCalledWith({ limit: 50 });
+    expect(mockFetchRoutes).toHaveBeenCalledWith({ limit: 1000 });
   });
 
   it('should return routes data on success', async () => {
@@ -77,20 +77,20 @@ describe('useRoutes', () => {
     const mockResponse = {
       routes: mockRoutes,
       total: 2,
-      limit: 50,
+      limit: 1000,
       offset: 0,
     };
 
     mockFetchRoutes.mockResolvedValue(mockResponse);
 
-    const { result } = renderHook(() => useRoutes({ limit: 50 }));
+    const { result } = renderHook(() => useRoutes({ limit: 1000 }));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     // Verify success state
     expect(result.current.routes).toEqual(mockRoutes);
     expect(result.current.total).toBe(2);
-    expect(result.current.limit).toBe(50);
+    expect(result.current.limit).toBe(1000);
     expect(result.current.offset).toBe(0);
     expect(result.current.data).toEqual(mockResponse);
     expect(result.current.error).toBeUndefined();
@@ -123,13 +123,13 @@ describe('useRoutes', () => {
         },
       ],
       total: 1,
-      limit: 50,
+      limit: 1000,
       offset: 0,
     };
 
     mockFetchRoutes.mockResolvedValue(mockResponse);
 
-    const { result } = renderHook(() => useRoutes({ limit: 50 }));
+    const { result } = renderHook(() => useRoutes({ limit: 1000 }));
 
     // Wait for initial load
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -178,7 +178,7 @@ describe('useRoutes', () => {
     const mockResponse = {
       routes: [],
       total: 0,
-      limit: 50,
+      limit: 1000,
       offset: 0,
     };
 
@@ -186,7 +186,7 @@ describe('useRoutes', () => {
 
     const params = {
       route_type: 3, // Bus
-      limit: 50,
+      limit: 1000,
     };
 
     renderHook(() => useRoutes(params));
@@ -201,7 +201,7 @@ describe('useRoutes', () => {
     const mockResponse = {
       routes: [],
       total: 0,
-      limit: 50,
+      limit: 1000,
       offset: 0,
     };
 

@@ -16,6 +16,7 @@ export const apiConfig = {
   baseUrl: API_BASE_URL,
   version: 'v1',
   timeout: 30000, // 30 seconds
+  routesListLimit: 1000, // Maximum number of routes to fetch
 };
 
 /**
