@@ -597,6 +597,494 @@ describe('useTripSession', () => {
     });
   });
 
+  describe('Three-Outcome Trip Submission Model', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+
+      mockBuildSegmentsFromStopEvents.mockReturnValue([
+        {
+          from_stop_id: '20558',
+          to_stop_id: '29374',
+          duration_sec: 390,
+          dwell_sec: 90,
+          observed_at_utc: '2025-12-11T10:06:30.000Z',
+          mapmatch_conf: 0.9,
+        },
+      ]);
+
+      mockPostRideSummary.mockResolvedValue({
+        accepted_segments: 1,
+        rejected_segments: 0,
+        rejected_by_reason: {
+          outlier: 0,
+          low_confidence: 0,
+          invalid_segment: 0,
+          too_many_segments: 0,
+          stale_timestamp: 0,
+        },
+      });
+    });
+
+    describe('Outcome 1: Successful submission', () => {
+      it('should return { submitted: true, error: undefined } when API submission succeeds', async () => {
+        const { result } = renderHook(() => useTripSession());
+
+        // Start trip and record stop visits
+        act(() => {
+          result.current.startTrip(mockJourney);
+        });
+
+        act(() => {
+          result.current.recordStopVisit(
+            '20558',
+            new Date('2025-12-11T10:00:00Z'),
+            new Date('2025-12-11T10:01:30Z')
+          );
+        });
+
+        act(() => {
+          result.current.recordStopVisit(
+            '29374',
+            new Date('2025-12-11T10:06:30Z'),
+            new Date('2025-12-11T10:08:00Z')
+          );
+        });
+
+        // End trip
+        let endTripResult: any;
+        await act(async () => {
+          endTripResult = await result.current.endTrip();
+        });
+
+        // Verify result structure
+        expect(endTripResult).toBeDefined();
+        expect(endTripResult).toEqual({
+          submitted: true,
+          error: undefined,
+        });
+
+        // Verify API was called
+        expect(mockPostRideSummary).toHaveBeenCalledTimes(1);
+
+        // Verify session is cleared
+        await waitFor(() => {
+          expect(result.current.session).toBeNull();
+        });
+
+        // Verify no error
+        expect(result.current.submissionError).toBeUndefined();
+      });
+
+      it('should return submitted: true when multiple segments are submitted', async () => {
+        // Mock multiple segments
+        mockBuildSegmentsFromStopEvents.mockReturnValue([
+          {
+            from_stop_id: '20558',
+            to_stop_id: '21234',
+            duration_sec: 300,
+            dwell_sec: 60,
+            observed_at_utc: '2025-12-11T10:04:00.000Z',
+            mapmatch_conf: 0.9,
+          },
+          {
+            from_stop_id: '21234',
+            to_stop_id: '29374',
+            duration_sec: 240,
+            dwell_sec: 45,
+            observed_at_utc: '2025-12-11T10:09:00.000Z',
+            mapmatch_conf: 0.85,
+          },
+        ]);
+
+        const { result } = renderHook(() => useTripSession());
+
+        act(() => {
+          result.current.startTrip(mockJourney);
+        });
+
+        act(() => {
+          result.current.recordStopVisit(
+            '20558',
+            new Date('2025-12-11T10:00:00Z'),
+            new Date('2025-12-11T10:01:00Z')
+          );
+        });
+
+        act(() => {
+          result.current.recordStopVisit(
+            '21234',
+            new Date('2025-12-11T10:04:00Z'),
+            new Date('2025-12-11T10:05:00Z')
+          );
+        });
+
+        act(() => {
+          result.current.recordStopVisit(
+            '29374',
+            new Date('2025-12-11T10:09:00Z'),
+            new Date('2025-12-11T10:10:00Z')
+          );
+        });
+
+        let endTripResult: any;
+        await act(async () => {
+          endTripResult = await result.current.endTrip();
+        });
+
+        expect(endTripResult).toEqual({
+          submitted: true,
+          error: undefined,
+        });
+
+        expect(mockPostRideSummary).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('Outcome 2: Submission failed (network/API error)', () => {
+      it('should return { submitted: false, error: Error } when API submission fails', async () => {
+        const networkError = new Error('Network error: Failed to fetch');
+        mockPostRideSummary.mockRejectedValue(networkError);
+
+        const { result } = renderHook(() => useTripSession());
+
+        act(() => {
+          result.current.startTrip(mockJourney);
+        });
+
+        act(() => {
+          result.current.recordStopVisit(
+            '20558',
+            new Date('2025-12-11T10:00:00Z'),
+            new Date('2025-12-11T10:01:30Z')
+          );
+        });
+
+        act(() => {
+          result.current.recordStopVisit(
+            '29374',
+            new Date('2025-12-11T10:06:30Z'),
+            new Date('2025-12-11T10:08:00Z')
+          );
+        });
+
+        let endTripResult: any;
+        await act(async () => {
+          endTripResult = await result.current.endTrip();
+        });
+
+        // Verify result structure
+        expect(endTripResult).toBeDefined();
+        expect(endTripResult).toEqual({
+          submitted: false,
+          error: networkError,
+        });
+
+        // Verify API was called (but failed)
+        expect(mockPostRideSummary).toHaveBeenCalledTimes(1);
+
+        // Verify error is set in hook state
+        await waitFor(() => {
+          expect(result.current.submissionError).toBeDefined();
+          expect(result.current.submissionError?.message).toBe('Network error: Failed to fetch');
+        });
+
+        // Session should still be cleared even on error
+        expect(result.current.session).toBeNull();
+      });
+
+      it('should return submitted: false with error for different API error types', async () => {
+        const apiError = new Error('API Error: 500 Internal Server Error');
+        mockPostRideSummary.mockRejectedValue(apiError);
+
+        const { result } = renderHook(() => useTripSession());
+
+        act(() => {
+          result.current.startTrip(mockJourney);
+        });
+
+        act(() => {
+          result.current.recordStopVisit(
+            '20558',
+            new Date('2025-12-11T10:00:00Z'),
+            new Date('2025-12-11T10:01:30Z')
+          );
+        });
+
+        act(() => {
+          result.current.recordStopVisit(
+            '29374',
+            new Date('2025-12-11T10:06:30Z'),
+            new Date('2025-12-11T10:08:00Z')
+          );
+        });
+
+        let endTripResult: any;
+        await act(async () => {
+          endTripResult = await result.current.endTrip();
+        });
+
+        expect(endTripResult.submitted).toBe(false);
+        expect(endTripResult.error).toBe(apiError);
+        expect(endTripResult.error.message).toBe('API Error: 500 Internal Server Error');
+      });
+
+      it('should return submitted: false with error for timeout errors', async () => {
+        const timeoutError = new Error('Request timeout after 30s');
+        mockPostRideSummary.mockRejectedValue(timeoutError);
+
+        const { result } = renderHook(() => useTripSession());
+
+        act(() => {
+          result.current.startTrip(mockJourney);
+        });
+
+        act(() => {
+          result.current.recordStopVisit(
+            '20558',
+            new Date('2025-12-11T10:00:00Z'),
+            new Date('2025-12-11T10:01:30Z')
+          );
+        });
+
+        act(() => {
+          result.current.recordStopVisit(
+            '29374',
+            new Date('2025-12-11T10:06:30Z'),
+            new Date('2025-12-11T10:08:00Z')
+          );
+        });
+
+        let endTripResult: any;
+        await act(async () => {
+          endTripResult = await result.current.endTrip();
+        });
+
+        expect(endTripResult.submitted).toBe(false);
+        expect(endTripResult.error.message).toBe('Request timeout after 30s');
+      });
+    });
+
+    describe('Outcome 3: Not submitted (no data collected)', () => {
+      it('should return { submitted: false, error: undefined } when no stop events recorded', async () => {
+        const { result } = renderHook(() => useTripSession());
+
+        act(() => {
+          result.current.startTrip(mockJourney);
+        });
+
+        // Don't record any stop visits
+
+        let endTripResult: any;
+        await act(async () => {
+          endTripResult = await result.current.endTrip();
+        });
+
+        // Verify result structure
+        expect(endTripResult).toBeDefined();
+        expect(endTripResult).toEqual({
+          submitted: false,
+          error: undefined,
+        });
+
+        // Verify API was NOT called
+        expect(mockPostRideSummary).not.toHaveBeenCalled();
+
+        // Session should be cleared
+        expect(result.current.session).toBeNull();
+
+        // No error should be set
+        expect(result.current.submissionError).toBeUndefined();
+      });
+
+      it('should return { submitted: false, error: undefined } when insufficient stops (< 2)', async () => {
+        // Mock buildSegmentsFromStopEvents to return empty array (< 2 stops)
+        mockBuildSegmentsFromStopEvents.mockReturnValue([]);
+
+        const { result } = renderHook(() => useTripSession());
+
+        act(() => {
+          result.current.startTrip(mockJourney);
+        });
+
+        // Record only 1 stop visit
+        act(() => {
+          result.current.recordStopVisit(
+            '20558',
+            new Date('2025-12-11T10:00:00Z'),
+            new Date('2025-12-11T10:01:30Z')
+          );
+        });
+
+        let endTripResult: any;
+        await act(async () => {
+          endTripResult = await result.current.endTrip();
+        });
+
+        // Verify result structure
+        expect(endTripResult).toEqual({
+          submitted: false,
+          error: undefined,
+        });
+
+        // buildSegmentsFromStopEvents should be called but return []
+        expect(mockBuildSegmentsFromStopEvents).toHaveBeenCalled();
+
+        // API should NOT be called (no segments)
+        expect(mockPostRideSummary).not.toHaveBeenCalled();
+
+        // Session cleared, no error
+        expect(result.current.session).toBeNull();
+        expect(result.current.submissionError).toBeUndefined();
+      });
+
+      it('should return { submitted: false, error: undefined } when stopEvents array is empty', async () => {
+        const { result } = renderHook(() => useTripSession());
+
+        act(() => {
+          result.current.startTrip(mockJourney);
+        });
+
+        // Start trip but don't record any stops
+
+        let endTripResult: any;
+        await act(async () => {
+          endTripResult = await result.current.endTrip();
+        });
+
+        expect(endTripResult).toEqual({
+          submitted: false,
+          error: undefined,
+        });
+
+        // buildSegmentsFromStopEvents should NOT be called
+        expect(mockBuildSegmentsFromStopEvents).not.toHaveBeenCalled();
+        expect(mockPostRideSummary).not.toHaveBeenCalled();
+      });
+
+      it('should handle case where trip is ended immediately after start', async () => {
+        const { result } = renderHook(() => useTripSession());
+
+        act(() => {
+          result.current.startTrip(mockJourney);
+        });
+
+        // Immediately end trip without recording any stops
+        let endTripResult: any;
+        await act(async () => {
+          endTripResult = await result.current.endTrip();
+        });
+
+        expect(endTripResult).toEqual({
+          submitted: false,
+          error: undefined,
+        });
+
+        expect(mockPostRideSummary).not.toHaveBeenCalled();
+        expect(result.current.session).toBeNull();
+      });
+    });
+
+    describe('Edge cases for three-outcome model', () => {
+      it('should return { submitted: false, error: undefined } when endTrip called with no active session', async () => {
+        const { result } = renderHook(() => useTripSession());
+
+        // Don't start a trip
+        expect(result.current.session).toBeNull();
+
+        let endTripResult: any;
+        await act(async () => {
+          endTripResult = await result.current.endTrip();
+        });
+
+        // Should return not-submitted outcome
+        expect(endTripResult).toEqual({
+          submitted: false,
+          error: undefined,
+        });
+
+        expect(mockPostRideSummary).not.toHaveBeenCalled();
+      });
+
+      it('should maintain result structure consistency across all outcomes', async () => {
+        const { result: result1 } = renderHook(() => useTripSession());
+        const { result: result2 } = renderHook(() => useTripSession());
+        const { result: result3 } = renderHook(() => useTripSession());
+
+        // Outcome 1: Success
+        act(() => {
+          result1.current.startTrip(mockJourney);
+        });
+        act(() => {
+          result1.current.recordStopVisit(
+            '20558',
+            new Date('2025-12-11T10:00:00Z'),
+            new Date('2025-12-11T10:01:30Z')
+          );
+        });
+        act(() => {
+          result1.current.recordStopVisit(
+            '29374',
+            new Date('2025-12-11T10:06:30Z'),
+            new Date('2025-12-11T10:08:00Z')
+          );
+        });
+        let outcome1: any;
+        await act(async () => {
+          outcome1 = await result1.current.endTrip();
+        });
+
+        // Outcome 2: Error
+        mockPostRideSummary.mockRejectedValue(new Error('API Error'));
+        act(() => {
+          result2.current.startTrip(mockJourney);
+        });
+        act(() => {
+          result2.current.recordStopVisit(
+            '20558',
+            new Date('2025-12-11T10:00:00Z'),
+            new Date('2025-12-11T10:01:30Z')
+          );
+        });
+        act(() => {
+          result2.current.recordStopVisit(
+            '29374',
+            new Date('2025-12-11T10:06:30Z'),
+            new Date('2025-12-11T10:08:00Z')
+          );
+        });
+        let outcome2: any;
+        await act(async () => {
+          outcome2 = await result2.current.endTrip();
+        });
+
+        // Outcome 3: No data
+        act(() => {
+          result3.current.startTrip(mockJourney);
+        });
+        let outcome3: any;
+        await act(async () => {
+          outcome3 = await result3.current.endTrip();
+        });
+
+        // All outcomes should have same structure
+        expect(outcome1).toHaveProperty('submitted');
+        expect(outcome1).toHaveProperty('error');
+        expect(outcome2).toHaveProperty('submitted');
+        expect(outcome2).toHaveProperty('error');
+        expect(outcome3).toHaveProperty('submitted');
+        expect(outcome3).toHaveProperty('error');
+
+        // Verify values
+        expect(outcome1.submitted).toBe(true);
+        expect(outcome1.error).toBeUndefined();
+        expect(outcome2.submitted).toBe(false);
+        expect(outcome2.error).toBeDefined();
+        expect(outcome3.submitted).toBe(false);
+        expect(outcome3.error).toBeUndefined();
+      });
+    });
+  });
+
   describe('Error handling', () => {
     beforeEach(() => {
       jest.clearAllMocks();

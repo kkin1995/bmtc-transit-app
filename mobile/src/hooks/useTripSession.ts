@@ -59,9 +59,16 @@ export interface UseTripSessionReturn {
    * End the current trip session
    *
    * Builds segments from recorded stop events and submits to backend.
-   * Returns a promise that resolves when submission completes.
+   * Returns a result object indicating submission outcome.
+   *
+   * Three possible outcomes:
+   * 1. { submitted: true, error: undefined } - Successfully submitted to backend
+   * 2. { submitted: false, error: Error } - Submission failed (network/API error)
+   * 3. { submitted: false, error: undefined } - Not submitted (no data collected)
+   *
+   * @returns Promise resolving to submission result
    */
-  endTrip: () => Promise<void>;
+  endTrip: () => Promise<{ submitted: boolean; error?: Error }>;
 
   /**
    * Error from ride submission (if any)
@@ -170,25 +177,28 @@ export function useTripSession(): UseTripSessionReturn {
   /**
    * End the current trip
    *
-   * Submits ride data to backend if there are recorded stop events:
-   * 1. Builds segments from stop events
-   * 2. Constructs ride summary request
-   * 3. Posts to backend API
-   * 4. Stores request/response for debug purposes
-   * 5. Clears session (success or failure)
-   * 6. Sets error state if submission fails
+   * Submits ride data to backend if there are recorded stop events.
+   * Returns a result object indicating submission outcome.
+   *
+   * Three possible outcomes:
+   * 1. { submitted: true, error: undefined } - Successfully submitted to backend
+   * 2. { submitted: false, error: Error } - Submission failed (network/API error)
+   * 3. { submitted: false, error: undefined } - Not submitted (no data collected)
+   *
+   * @returns Promise resolving to submission result
    */
-  const endTrip = useCallback(async () => {
+  const endTrip = useCallback(async (): Promise<{ submitted: boolean; error?: Error }> => {
     if (!session) {
-      // No active session, nothing to do
-      return;
+      // Outcome 3: No active session, nothing to submit
+      return { submitted: false, error: undefined };
     }
 
     // If no stop events, just clear the session without submitting
     if (!session.stopEvents || session.stopEvents.length === 0) {
       console.log('No ride data to submit (no stop events recorded)');
       setSession(null);
-      return;
+      // Outcome 3: No data collected
+      return { submitted: false, error: undefined };
     }
 
     try {
@@ -202,7 +212,8 @@ export function useTripSession(): UseTripSessionReturn {
       if (segments.length === 0) {
         console.log('No segments generated from stop events (need at least 2 stops)');
         setSession(null);
-        return;
+        // Outcome 3: Insufficient data collected
+        return { submitted: false, error: undefined };
       }
 
       // Get device bucket and API key
@@ -240,6 +251,9 @@ export function useTripSession(): UseTripSessionReturn {
       // Clear session after successful submission
       setSession(null);
       setSubmissionError(undefined);
+
+      // Outcome 1: Successfully submitted
+      return { submitted: true, error: undefined };
     } catch (error) {
       // Log error but still clear the session
       console.error('Failed to submit ride:', error);
@@ -252,6 +266,9 @@ export function useTripSession(): UseTripSessionReturn {
 
       // Still clear the session even on error (don't leave in limbo)
       setSession(null);
+
+      // Outcome 2: Submission failed with error
+      return { submitted: false, error: submissionErr };
     }
   }, [session]);
 
