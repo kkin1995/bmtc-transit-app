@@ -17,13 +17,14 @@
  * - headsign (optional): Trip headsign
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { StyleSheet, Pressable, ActivityIndicator, ScrollView } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
 
 import { Text, View } from '@/components/Themed';
-import { useTripSession } from '@/src/hooks';
+import { useTripSession, useStops, useStopDetection } from '@/src/hooks';
 import type { Journey } from '@/src/types';
+import type { StopWithCoords } from '@/src/domain/geo';
 
 /**
  * Route parameters type
@@ -38,11 +39,15 @@ interface TripTrackingParams {
 
 export default function TripTrackingScreen() {
   const params = useLocalSearchParams<TripTrackingParams>();
-  const { session, startTrip, endTrip, submissionError } = useTripSession();
+  const { session, startTrip, endTrip, submissionError, recordStopVisit } = useTripSession();
 
   // Local state
   const [isEnding, setIsEnding] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [submissionResult, setSubmissionResult] = useState<{
+    submitted: boolean;
+    error?: Error;
+  } | null>(null);
 
   // Extract and validate route params
   const {
@@ -88,6 +93,65 @@ export default function TripTrackingScreen() {
     validationError = directionIdError;
   }
 
+  /**
+   * Fetch stops for this route
+   *
+   * Integration Point 1: Stops Fetching
+   * - Fetches all stops for the route using useStops hook
+   * - Uses limit: 1000 to ensure we get all stops (most routes have < 100 stops)
+   * - Provides loading, error, and reload states for UI feedback
+   */
+  const {
+    stops: stopsData,
+    loading: stopsLoading,
+    error: stopsError,
+    reload: reloadStops,
+  } = useStops(
+    routeId ? { route_id: routeId } : undefined
+  );
+
+  /**
+   * Transform Stop[] to StopWithCoords[]
+   *
+   * Integration Point 2: Data Transformation
+   * - Transforms GTFS Stop objects to StopWithCoords format required by useStopDetection
+   * - Mapping: stop_id → stopId, stop_lat/stop_lon → coords.lat/lon
+   * - Uses useMemo to avoid re-transformation on every render
+   * - Handles empty stops array gracefully
+   */
+  const transformedStops: StopWithCoords[] = useMemo(() => {
+    if (!stopsData || stopsData.length === 0) {
+      return [];
+    }
+
+    return stopsData.map(stop => ({
+      stopId: stop.stop_id,
+      coords: {
+        lat: stop.stop_lat,
+        lon: stop.stop_lon,
+      },
+    }));
+  }, [stopsData]);
+
+  /**
+   * Integrate useStopDetection hook
+   *
+   * Integration Point 3: Stop Detection
+   * - Activates GPS tracking when trip session is active (session !== null)
+   * - Passes route_id and direction_id from params
+   * - Uses transformed stops array for proximity detection
+   * - Connects recordStopVisit callback from useTripSession
+   * - Uses 50m radius for stop detection (standard for urban bus stops)
+   */
+  const { isRunning: gpsTracking, lastStopId, error: gpsError } = useStopDetection({
+    active: session !== null,
+    routeId: routeId || '',
+    directionId: directionIdNumber ?? 0,
+    stops: transformedStops,
+    recordStopVisit: recordStopVisit,
+    radiusMeters: 50,
+  });
+
   // Handle successful submission
   useEffect(() => {
     // If we just ended a trip successfully (no session, no error, was ending)
@@ -105,12 +169,31 @@ export default function TripTrackingScreen() {
   }, [session, submissionError, isEnding]);
 
   /**
+   * Auto-dismiss success and info banners after 3 seconds
+   * Error banner stays visible until user takes action
+   */
+  useEffect(() => {
+    if (submissionResult && !submissionResult.error) {
+      // Success or info banner - auto-dismiss after 3 seconds
+      const timer = setTimeout(() => {
+        setSubmissionResult(null);
+      }, 3000);
+
+      return () => clearTimeout(timer);
+    }
+    // Error banner (submitted: false with error) stays until manually cleared
+  }, [submissionResult]);
+
+  /**
    * Handle Start Trip button press
    */
   const handleStartTrip = () => {
     if (!hasValidParams || !routeId || !routeShortName || directionIdNumber === null) {
       return;
     }
+
+    // Clear previous submission result when starting new trip
+    setSubmissionResult(null);
 
     // Construct Journey object with placeholder stops
     const journey: Journey = {
@@ -151,7 +234,8 @@ export default function TripTrackingScreen() {
 
     setIsEnding(true);
     try {
-      await endTrip();
+      const result = await endTrip();
+      setSubmissionResult(result);
     } catch (error) {
       // Error is already captured in submissionError from hook
       console.error('Error ending trip:', error);
@@ -168,9 +252,12 @@ export default function TripTrackingScreen() {
    * may store enough state (like lastRequest) to retry submission.
    */
   const handleRetry = async () => {
+    // Clear previous result before retrying
+    setSubmissionResult(null);
     setIsEnding(true);
     try {
-      await endTrip();
+      const result = await endTrip();
+      setSubmissionResult(result);
     } catch (error) {
       console.error('Error retrying trip submission:', error);
     } finally {
@@ -260,30 +347,78 @@ export default function TripTrackingScreen() {
                   {session.stopEvents.length} {session.stopEvents.length === 1 ? 'stop' : 'stops'}
                 </Text>
               </View>
+
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>GPS Tracking:</Text>
+                <Text style={[styles.detailValue, gpsTracking && styles.statusActive]}>
+                  {gpsTracking ? 'Active' : 'Inactive'}
+                </Text>
+              </View>
+
+              {lastStopId && (
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Current Stop:</Text>
+                  <Text style={styles.detailValue}>
+                    {lastStopId}
+                  </Text>
+                </View>
+              )}
             </View>
           )}
 
-          {/* Success Message */}
-          {showSuccess && (
+          {/* Three-Outcome Banners */}
+          {/* Success Banner: submitted === true && !error */}
+          {submissionResult && submissionResult.submitted && !submissionResult.error && (
             <View style={styles.successBanner}>
               <Text style={styles.successText}>
-                Trip ended successfully! Data submitted.
+                Trip data submitted successfully! Thank you for contributing.
               </Text>
             </View>
           )}
 
-          {/* Error Banner */}
-          {submissionError && (
+          {/* Error Banner: submitted === false && error */}
+          {submissionResult && !submissionResult.submitted && submissionResult.error && (
             <View style={styles.errorBanner}>
-              <Text style={styles.errorBannerTitle}>Submission Error</Text>
+              <Text style={styles.errorBannerTitle}>Submission Failed</Text>
               <Text style={styles.errorBannerText}>
-                {submissionError.message}
+                {submissionResult.error.message}
               </Text>
               <Pressable style={styles.retryButton} onPress={handleRetry}>
                 <Text style={styles.retryButtonText}>Retry</Text>
               </Pressable>
             </View>
           )}
+
+          {/* Info Banner: submitted === false && !error */}
+          {submissionResult && !submissionResult.submitted && !submissionResult.error && (
+            <View style={styles.infoBanner}>
+              <Text style={styles.infoBannerText}>
+                Trip ended. No stop data was recorded during this trip.
+              </Text>
+            </View>
+          )}
+
+          {/* Stops Loading Indicator */}
+          {stopsLoading && (
+            <View style={styles.loadingCard}>
+              <ActivityIndicator size="small" color="#007AFF" />
+              <Text style={styles.loadingText}>Loading stops...</Text>
+            </View>
+          )}
+
+          {/* Stops Error Banner */}
+          {stopsError && (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorBannerTitle}>Stops Loading Error</Text>
+              <Text style={styles.errorBannerText}>
+                {stopsError.message || 'Failed to fetch stops'}
+              </Text>
+              <Pressable style={styles.retryButton} onPress={reloadStops}>
+                <Text style={styles.retryButtonText}>Try Again</Text>
+              </Pressable>
+            </View>
+          )}
+
 
           {/* Action Buttons */}
           <View style={styles.buttonContainer}>
@@ -292,16 +427,16 @@ export default function TripTrackingScreen() {
               style={({ pressed }) => [
                 styles.button,
                 styles.startButton,
-                (!hasValidParams || session) && styles.buttonDisabled,
+                (!hasValidParams || session || stopsLoading) && styles.buttonDisabled,
                 pressed && styles.buttonPressed,
               ]}
               onPress={handleStartTrip}
-              disabled={!hasValidParams || !!session}
+              disabled={!hasValidParams || !!session || stopsLoading}
             >
               <Text
                 style={[
                   styles.buttonText,
-                  (!hasValidParams || session) && styles.buttonTextDisabled,
+                  (!hasValidParams || session || stopsLoading) && styles.buttonTextDisabled,
                 ]}
               >
                 Start Trip
@@ -545,5 +680,37 @@ const styles = StyleSheet.create({
     color: '#721c24',
     fontSize: 14,
     lineHeight: 20,
+  },
+  loadingCard: {
+    padding: 16,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  statusActive: {
+    color: '#28a745',
+    fontWeight: 'bold',
+  },
+  infoBanner: {
+    padding: 16,
+    backgroundColor: '#fff3cd',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ffc107',
+  },
+  infoBannerText: {
+    color: '#856404',
+    fontSize: 15,
+    fontWeight: '600',
+    textAlign: 'center',
   },
 });
