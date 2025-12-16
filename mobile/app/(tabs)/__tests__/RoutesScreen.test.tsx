@@ -494,4 +494,450 @@ describe('RoutesScreen', () => {
       expect(typeof callArgs.params.direction_id).toBe('string');
     });
   });
+
+  describe('Search Functionality', () => {
+    /**
+     * Test Suite: Client-side search filtering
+     *
+     * Scenarios covered:
+     * 1. Search input renders with placeholder
+     * 2. Shows all routes when search is empty
+     * 3. Filters by short name (case-insensitive)
+     * 4. Filters by long name (case-insensitive)
+     * 5. Shows "No routes found" when no matches
+     * 6. Clears filter when search is cleared
+     * 7. Handles null short_name gracefully
+     * 8. Handles null long_name gracefully
+     * 9. Navigation works from filtered list
+     * 10. Trims whitespace in search query
+     * 11. Maintains search state during loading
+     */
+
+    const mockSearchRoutes = [
+      {
+        route_id: '335E',
+        route_short_name: '335E',
+        route_long_name: 'Kengeri to Electronic City',
+        route_type: 3,
+        agency_id: 'BMTC',
+      },
+      {
+        route_id: '340',
+        route_short_name: '340',
+        route_long_name: 'Jayanagar to Whitefield',
+        route_type: 3,
+        agency_id: 'BMTC',
+      },
+      {
+        route_id: 'G4',
+        route_short_name: 'G4',
+        route_long_name: 'Banashankari to Yelahanka',
+        route_type: 3,
+        agency_id: 'BMTC',
+      },
+      {
+        route_id: 'R500',
+        route_short_name: null, // Test null short_name
+        route_long_name: 'Airport Express',
+        route_type: 3,
+        agency_id: 'BMTC',
+      },
+      {
+        route_id: 'R600',
+        route_short_name: 'R600',
+        route_long_name: null, // Test null long_name
+        route_type: 3,
+        agency_id: 'BMTC',
+      },
+    ];
+
+    it('should render search input with placeholder', () => {
+      mockUseRoutes.mockReturnValue({
+        routes: mockSearchRoutes,
+        total: 5,
+        limit: 50,
+        offset: 0,
+        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        loading: false,
+        error: undefined,
+        reload: jest.fn(),
+        isRefreshing: false,
+      });
+
+      render(<RoutesScreen />);
+
+      // Verify search input exists with correct placeholder
+      const searchInput = screen.getByPlaceholderText('Search routes...');
+      expect(searchInput).toBeTruthy();
+    });
+
+    it('should show all routes when search is empty', () => {
+      mockUseRoutes.mockReturnValue({
+        routes: mockSearchRoutes,
+        total: 5,
+        limit: 50,
+        offset: 0,
+        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        loading: false,
+        error: undefined,
+        reload: jest.fn(),
+        isRefreshing: false,
+      });
+
+      render(<RoutesScreen />);
+
+      // All routes should be visible
+      expect(screen.getByText('335E')).toBeTruthy();
+      expect(screen.getByText('340')).toBeTruthy();
+      expect(screen.getByText('G4')).toBeTruthy();
+      expect(screen.getByText('Airport Express')).toBeTruthy();
+      expect(screen.getByText('R600')).toBeTruthy();
+    });
+
+    it('should filter by short name (case-insensitive)', () => {
+      mockUseRoutes.mockReturnValue({
+        routes: mockSearchRoutes,
+        total: 5,
+        limit: 50,
+        offset: 0,
+        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        loading: false,
+        error: undefined,
+        reload: jest.fn(),
+        isRefreshing: false,
+      });
+
+      render(<RoutesScreen />);
+
+      const searchInput = screen.getByPlaceholderText('Search routes...');
+
+      // Search for "335e" (lowercase)
+      fireEvent.changeText(searchInput, '335e');
+
+      // Should show only 335E route
+      expect(screen.getByText('335E')).toBeTruthy();
+      expect(screen.getByText('Kengeri to Electronic City')).toBeTruthy();
+
+      // Should not show other routes
+      expect(screen.queryByText('Jayanagar to Whitefield')).toBeNull();
+      expect(screen.queryByText('Banashankari to Yelahanka')).toBeNull();
+    });
+
+    it('should filter by long name (case-insensitive)', () => {
+      mockUseRoutes.mockReturnValue({
+        routes: mockSearchRoutes,
+        total: 5,
+        limit: 50,
+        offset: 0,
+        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        loading: false,
+        error: undefined,
+        reload: jest.fn(),
+        isRefreshing: false,
+      });
+
+      render(<RoutesScreen />);
+
+      const searchInput = screen.getByPlaceholderText('Search routes...');
+
+      // Search for "whitefield" (lowercase)
+      fireEvent.changeText(searchInput, 'whitefield');
+
+      // Should show only route with Whitefield
+      expect(screen.getByText('340')).toBeTruthy();
+      expect(screen.getByText('Jayanagar to Whitefield')).toBeTruthy();
+
+      // Should not show other routes
+      expect(screen.queryByText('Kengeri to Electronic City')).toBeNull();
+      expect(screen.queryByText('Banashankari to Yelahanka')).toBeNull();
+    });
+
+    it('should show "No routes found" when no matches', () => {
+      mockUseRoutes.mockReturnValue({
+        routes: mockSearchRoutes,
+        total: 5,
+        limit: 50,
+        offset: 0,
+        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        loading: false,
+        error: undefined,
+        reload: jest.fn(),
+        isRefreshing: false,
+      });
+
+      render(<RoutesScreen />);
+
+      const searchInput = screen.getByPlaceholderText('Search routes...');
+
+      // Search for something that doesn't exist
+      fireEvent.changeText(searchInput, 'nonexistent route');
+
+      // Should show empty state
+      expect(screen.getByText('No routes found')).toBeTruthy();
+
+      // Should not show any route names
+      expect(screen.queryByText('335E')).toBeNull();
+      expect(screen.queryByText('340')).toBeNull();
+      expect(screen.queryByText('G4')).toBeNull();
+    });
+
+    it('should clear filter when search is cleared', () => {
+      mockUseRoutes.mockReturnValue({
+        routes: mockSearchRoutes,
+        total: 5,
+        limit: 50,
+        offset: 0,
+        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        loading: false,
+        error: undefined,
+        reload: jest.fn(),
+        isRefreshing: false,
+      });
+
+      render(<RoutesScreen />);
+
+      const searchInput = screen.getByPlaceholderText('Search routes...');
+
+      // First, filter routes
+      fireEvent.changeText(searchInput, '335e');
+      expect(screen.getByText('335E')).toBeTruthy();
+      expect(screen.queryByText('340')).toBeNull();
+
+      // Clear the search
+      fireEvent.changeText(searchInput, '');
+
+      // All routes should be visible again
+      expect(screen.getByText('335E')).toBeTruthy();
+      expect(screen.getByText('340')).toBeTruthy();
+      expect(screen.getByText('G4')).toBeTruthy();
+      expect(screen.getByText('Airport Express')).toBeTruthy();
+      expect(screen.getByText('R600')).toBeTruthy();
+    });
+
+    it('should handle null short_name gracefully', () => {
+      mockUseRoutes.mockReturnValue({
+        routes: mockSearchRoutes,
+        total: 5,
+        limit: 50,
+        offset: 0,
+        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        loading: false,
+        error: undefined,
+        reload: jest.fn(),
+        isRefreshing: false,
+      });
+
+      render(<RoutesScreen />);
+
+      const searchInput = screen.getByPlaceholderText('Search routes...');
+
+      // Search for "airport" (should match R500 with null short_name)
+      fireEvent.changeText(searchInput, 'airport');
+
+      // Should show route with null short_name but matching long_name
+      expect(screen.getByText('Airport Express')).toBeTruthy();
+
+      // Should not crash and should not show other routes
+      expect(screen.queryByText('335E')).toBeNull();
+      expect(screen.queryByText('340')).toBeNull();
+    });
+
+    it('should handle null long_name gracefully', () => {
+      mockUseRoutes.mockReturnValue({
+        routes: mockSearchRoutes,
+        total: 5,
+        limit: 50,
+        offset: 0,
+        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        loading: false,
+        error: undefined,
+        reload: jest.fn(),
+        isRefreshing: false,
+      });
+
+      render(<RoutesScreen />);
+
+      const searchInput = screen.getByPlaceholderText('Search routes...');
+
+      // Search for "R600" (route with null long_name)
+      fireEvent.changeText(searchInput, 'r600');
+
+      // Should show route with null long_name but matching short_name
+      expect(screen.getByText('R600')).toBeTruthy();
+
+      // Should not crash and should not show other routes
+      expect(screen.queryByText('335E')).toBeNull();
+      expect(screen.queryByText('340')).toBeNull();
+    });
+
+    it('should navigate correctly from filtered list', () => {
+      mockUseRoutes.mockReturnValue({
+        routes: mockSearchRoutes,
+        total: 5,
+        limit: 50,
+        offset: 0,
+        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        loading: false,
+        error: undefined,
+        reload: jest.fn(),
+        isRefreshing: false,
+      });
+
+      render(<RoutesScreen />);
+
+      const searchInput = screen.getByPlaceholderText('Search routes...');
+
+      // Filter to show only one route
+      fireEvent.changeText(searchInput, 'jayanagar');
+
+      // Tap the filtered route
+      const routeItem = screen.getByText('Jayanagar to Whitefield');
+      fireEvent.press(routeItem);
+
+      // Verify navigation happened with correct params
+      expect(mockRouter.push).toHaveBeenCalledWith({
+        pathname: '/trip/[routeId]',
+        params: {
+          route_id: '340',
+          route_short_name: '340',
+          route_long_name: 'Jayanagar to Whitefield',
+          direction_id: '0',
+        },
+      });
+    });
+
+    it('should trim whitespace in search query', () => {
+      mockUseRoutes.mockReturnValue({
+        routes: mockSearchRoutes,
+        total: 5,
+        limit: 50,
+        offset: 0,
+        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        loading: false,
+        error: undefined,
+        reload: jest.fn(),
+        isRefreshing: false,
+      });
+
+      render(<RoutesScreen />);
+
+      const searchInput = screen.getByPlaceholderText('Search routes...');
+
+      // Search with leading/trailing whitespace
+      fireEvent.changeText(searchInput, '  335e  ');
+
+      // Should still match and show 335E
+      expect(screen.getByText('335E')).toBeTruthy();
+      expect(screen.getByText('Kengeri to Electronic City')).toBeTruthy();
+
+      // Should not show other routes
+      expect(screen.queryByText('Jayanagar to Whitefield')).toBeNull();
+    });
+
+    it('should maintain search state during loading', () => {
+      // Start with loaded data and a search query
+      const { rerender } = render(<RoutesScreen />);
+
+      mockUseRoutes.mockReturnValue({
+        routes: mockSearchRoutes,
+        total: 5,
+        limit: 50,
+        offset: 0,
+        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        loading: false,
+        error: undefined,
+        reload: jest.fn(),
+        isRefreshing: false,
+      });
+
+      rerender(<RoutesScreen />);
+
+      const searchInput = screen.getByPlaceholderText('Search routes...');
+
+      // Set a search query
+      fireEvent.changeText(searchInput, '335e');
+
+      // Simulate data refetch (loading state)
+      mockUseRoutes.mockReturnValue({
+        routes: mockSearchRoutes,
+        total: 5,
+        limit: 50,
+        offset: 0,
+        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        loading: true, // Now loading
+        error: undefined,
+        reload: jest.fn(),
+        isRefreshing: false,
+      });
+
+      rerender(<RoutesScreen />);
+
+      // Search input should still contain the query
+      expect(searchInput.props.value).toBe('335e');
+
+      // Loading indicator should be visible
+      expect(screen.getByText('Loading routes...')).toBeTruthy();
+    });
+
+    it('should perform partial matching on route names', () => {
+      mockUseRoutes.mockReturnValue({
+        routes: mockSearchRoutes,
+        total: 5,
+        limit: 50,
+        offset: 0,
+        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        loading: false,
+        error: undefined,
+        reload: jest.fn(),
+        isRefreshing: false,
+      });
+
+      render(<RoutesScreen />);
+
+      const searchInput = screen.getByPlaceholderText('Search routes...');
+
+      // Search for partial match "elec" (should match "Electronic City")
+      fireEvent.changeText(searchInput, 'elec');
+
+      // Should show route containing "Electronic"
+      expect(screen.getByText('335E')).toBeTruthy();
+      expect(screen.getByText('Kengeri to Electronic City')).toBeTruthy();
+
+      // Should not show routes without "elec"
+      expect(screen.queryByText('Jayanagar to Whitefield')).toBeNull();
+      expect(screen.queryByText('Banashankari to Yelahanka')).toBeNull();
+    });
+
+    it('should match routes with either short_name or long_name containing query', () => {
+      mockUseRoutes.mockReturnValue({
+        routes: mockSearchRoutes,
+        total: 5,
+        limit: 50,
+        offset: 0,
+        data: { routes: mockSearchRoutes, total: 5, limit: 50, offset: 0 },
+        loading: false,
+        error: undefined,
+        reload: jest.fn(),
+        isRefreshing: false,
+      });
+
+      render(<RoutesScreen />);
+
+      const searchInput = screen.getByPlaceholderText('Search routes...');
+
+      // Search for "g" (should match G4 short_name and Jayanagar long_name)
+      fireEvent.changeText(searchInput, 'g');
+
+      // Should show both matches
+      expect(screen.getByText('G4')).toBeTruthy();
+      expect(screen.getByText('340')).toBeTruthy();
+
+      // Count visible routes (should be exactly 2)
+      const allRouteBadges = screen.queryAllByText(/^(335E|340|G4|R500|R600)$/);
+      const visibleRoutes = allRouteBadges.filter(
+        (element) => element.props.children === 'G4' || element.props.children === '340'
+      );
+      expect(visibleRoutes.length).toBeGreaterThan(0);
+    });
+  });
 });

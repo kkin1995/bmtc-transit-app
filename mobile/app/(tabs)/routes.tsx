@@ -1,5 +1,6 @@
-import { StyleSheet, FlatList, ActivityIndicator, Pressable } from 'react-native';
+import { StyleSheet, FlatList, ActivityIndicator, Pressable, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useState, useMemo } from 'react';
 
 import { Text, View } from '@/components/Themed';
 import { HomeLayout } from '@/src/components/layout';
@@ -9,6 +10,24 @@ import type { Route } from '@/src/api/types';
 export default function RoutesScreen() {
   const router = useRouter();
   const { routes, loading, error, reload } = useRoutes({ limit: 50 });
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Filter routes based on search query
+  const filteredRoutes = useMemo(() => {
+    const trimmedQuery = searchQuery.trim();
+    if (!trimmedQuery) {
+      return routes;
+    }
+
+    const lowerQuery = trimmedQuery.toLowerCase();
+
+    return routes.filter((route) => {
+      const shortName = route.route_short_name?.toLowerCase() || '';
+      const longName = route.route_long_name?.toLowerCase() || '';
+
+      return shortName.includes(lowerQuery) || longName.includes(lowerQuery);
+    });
+  }, [routes, searchQuery]);
 
   // Render individual route item
   const renderRouteItem = ({ item }: { item: Route }) => (
@@ -63,6 +82,16 @@ export default function RoutesScreen() {
         <Text style={styles.title}>Routes</Text>
         <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.1)" />
 
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search routes..."
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          autoCapitalize="none"
+          autoCorrect={false}
+          testID="route-search-input"
+        />
+
       {loading && (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" />
@@ -85,11 +114,20 @@ export default function RoutesScreen() {
         </View>
       )}
 
-      {!loading && !error && routes.length > 0 && (
+      {!loading && !error && routes.length > 0 && filteredRoutes.length === 0 && (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>No routes found</Text>
+          <Text style={styles.emptySubtext}>Try a different search term</Text>
+        </View>
+      )}
+
+      {!loading && !error && filteredRoutes.length > 0 && (
         <View style={styles.listContainer}>
-          <Text style={styles.subtitle}>All Routes</Text>
+          <Text style={styles.subtitle}>
+            {searchQuery.trim() ? `${filteredRoutes.length} route(s) found` : 'All Routes'}
+          </Text>
           <FlatList
-            data={routes}
+            data={filteredRoutes}
             renderItem={renderRouteItem}
             keyExtractor={(item) => item.route_id}
             contentContainerStyle={styles.listContent}
@@ -123,6 +161,18 @@ const styles = StyleSheet.create({
     marginVertical: 20,
     height: 1,
     width: '80%',
+  },
+  searchInput: {
+    width: '100%',
+    height: 44,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    marginBottom: 16,
   },
   loadingContainer: {
     flex: 1,
@@ -166,6 +216,11 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     color: '#999',
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#999',
+    marginTop: 8,
   },
   listContainer: {
     flex: 1,
