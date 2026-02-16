@@ -63,7 +63,7 @@ describe('RoutesScreen', () => {
     expect(screen.getByText('Routes')).toBeTruthy();
   });
 
-  it('should call useRoutes with limit: 1000', () => {
+  it('should call useRoutes with limit: 1000 and empty searchQuery initially', () => {
     mockUseRoutes.mockReturnValue({
       routes: [],
       total: 0,
@@ -78,7 +78,8 @@ describe('RoutesScreen', () => {
 
     render(<RoutesScreen />);
 
-    expect(mockUseRoutes).toHaveBeenCalledWith({ limit: 1000 });
+    // Should call useRoutes with limit and empty searchQuery (uses fetchRoutes endpoint)
+    expect(mockUseRoutes).toHaveBeenCalledWith({ limit: 1000 }, '');
   });
 
   it('should show loading state', () => {
@@ -497,20 +498,22 @@ describe('RoutesScreen', () => {
 
   describe('Search Functionality', () => {
     /**
-     * Test Suite: Client-side search filtering
+     * Test Suite: Server-side search functionality
+     *
+     * Previously: Client-side filtering tests (deprecated with server-side search)
+     * Now: Tests for server-side search integration
      *
      * Scenarios covered:
      * 1. Search input renders with placeholder
-     * 2. Shows all routes when search is empty
-     * 3. Filters by short name (case-insensitive)
-     * 4. Filters by long name (case-insensitive)
-     * 5. Shows "No routes found" when no matches
-     * 6. Clears filter when search is cleared
-     * 7. Handles null short_name gracefully
-     * 8. Handles null long_name gracefully
-     * 9. Navigation works from filtered list
-     * 10. Trims whitespace in search query
-     * 11. Maintains search state during loading
+     * 2. Shows all routes when search is empty (calls useRoutes with empty searchQuery)
+     * 3. Typing search query calls useRoutes with searchQuery parameter
+     * 4. Search results are displayed (not client-side filtered)
+     * 5. Shows "No routes found" when search has no results
+     * 6. Clears search when input is cleared
+     * 7. Navigation works from search results
+     * 8. Maintains search state during loading
+     * 9. Shows correct subtitle for search results
+     * 10. Handles empty search results with suggestion
      */
 
     const mockSearchRoutes = [
@@ -594,7 +597,8 @@ describe('RoutesScreen', () => {
       expect(screen.getByText('R600')).toBeTruthy();
     });
 
-    it('should filter by short name (case-insensitive)', () => {
+    it('should call useRoutes with searchQuery when user types in search input (server-side search)', () => {
+      // Initially render with all routes
       mockUseRoutes.mockReturnValue({
         routes: mockSearchRoutes,
         total: 5,
@@ -607,29 +611,49 @@ describe('RoutesScreen', () => {
         isRefreshing: false,
       });
 
-      render(<RoutesScreen />);
+      const { rerender } = render(<RoutesScreen />);
 
       const searchInput = screen.getByPlaceholderText('Search routes...');
 
-      // Search for "335e" (lowercase)
+      // Verify initial call with empty search
+      expect(mockUseRoutes).toHaveBeenCalledWith({ limit: 1000 }, '');
+
+      // Type "335e" in search input
       fireEvent.changeText(searchInput, '335e');
 
-      // Should show only 335E route
-      expect(screen.getByText('335E')).toBeTruthy();
-      expect(screen.getByText('Kengeri to Electronic City')).toBeTruthy();
-
-      // Should not show other routes
-      expect(screen.queryByText('Jayanagar to Whitefield')).toBeNull();
-      expect(screen.queryByText('Banashankari to Yelahanka')).toBeNull();
-    });
-
-    it('should filter by long name (case-insensitive)', () => {
+      // Mock the response for search query
       mockUseRoutes.mockReturnValue({
-        routes: mockSearchRoutes,
-        total: 5,
+        routes: [mockSearchRoutes[0]], // Only return 335E route
+        total: 1,
         limit: 1000,
         offset: 0,
-        data: { routes: mockSearchRoutes, total: 5, limit: 1000, offset: 0 },
+        data: { routes: [mockSearchRoutes[0]], total: 1, limit: 1000, offset: 0 },
+        loading: false,
+        error: undefined,
+        reload: jest.fn(),
+        isRefreshing: false,
+      });
+
+      rerender(<RoutesScreen />);
+
+      // Should call useRoutes with searchQuery parameter (triggers server-side search)
+      expect(mockUseRoutes).toHaveBeenCalledWith({ limit: 1000 }, '335e');
+
+      // Should show filtered results from server
+      expect(screen.getByText('335E')).toBeTruthy();
+      expect(screen.getByText('Kengeri to Electronic City')).toBeTruthy();
+    });
+
+    it('should display server-side search results correctly', () => {
+      // Mock search results returned from server for "whitefield" query
+      const searchResults = [mockSearchRoutes[1]]; // Only Jayanagar to Whitefield
+
+      mockUseRoutes.mockReturnValue({
+        routes: searchResults,
+        total: 1,
+        limit: 1000,
+        offset: 0,
+        data: { routes: searchResults, total: 1, limit: 1000, offset: 0 },
         loading: false,
         error: undefined,
         reload: jest.fn(),
@@ -638,27 +662,23 @@ describe('RoutesScreen', () => {
 
       render(<RoutesScreen />);
 
-      const searchInput = screen.getByPlaceholderText('Search routes...');
-
-      // Search for "whitefield" (lowercase)
-      fireEvent.changeText(searchInput, 'whitefield');
-
-      // Should show only route with Whitefield
+      // Should display search results from server
       expect(screen.getByText('340')).toBeTruthy();
       expect(screen.getByText('Jayanagar to Whitefield')).toBeTruthy();
 
-      // Should not show other routes
-      expect(screen.queryByText('Kengeri to Electronic City')).toBeNull();
-      expect(screen.queryByText('Banashankari to Yelahanka')).toBeNull();
+      // Other routes not returned by server should not be shown
+      expect(screen.queryByText('335E')).toBeNull();
+      expect(screen.queryByText('G4')).toBeNull();
     });
 
-    it('should show "No routes found" when no matches', () => {
+    it('should show "No routes found" when server returns empty search results', () => {
+      // Mock empty search results from server
       mockUseRoutes.mockReturnValue({
-        routes: mockSearchRoutes,
-        total: 5,
+        routes: [],
+        total: 0,
         limit: 1000,
         offset: 0,
-        data: { routes: mockSearchRoutes, total: 5, limit: 1000, offset: 0 },
+        data: { routes: [], total: 0, limit: 1000, offset: 0 },
         loading: false,
         error: undefined,
         reload: jest.fn(),
@@ -666,11 +686,6 @@ describe('RoutesScreen', () => {
       });
 
       render(<RoutesScreen />);
-
-      const searchInput = screen.getByPlaceholderText('Search routes...');
-
-      // Search for something that doesn't exist
-      fireEvent.changeText(searchInput, 'nonexistent route');
 
       // Should show empty state
       expect(screen.getByText('No routes found')).toBeTruthy();
@@ -681,7 +696,29 @@ describe('RoutesScreen', () => {
       expect(screen.queryByText('G4')).toBeNull();
     });
 
-    it('should clear filter when search is cleared', () => {
+    it('should call useRoutes with empty searchQuery when search is cleared', () => {
+      // Start with search results
+      mockUseRoutes.mockReturnValue({
+        routes: [mockSearchRoutes[0]], // 335E only
+        total: 1,
+        limit: 1000,
+        offset: 0,
+        data: { routes: [mockSearchRoutes[0]], total: 1, limit: 1000, offset: 0 },
+        loading: false,
+        error: undefined,
+        reload: jest.fn(),
+        isRefreshing: false,
+      });
+
+      const { rerender } = render(<RoutesScreen />);
+
+      const searchInput = screen.getByPlaceholderText('Search routes...');
+
+      // Simulate having a search query
+      fireEvent.changeText(searchInput, '335e');
+      expect(mockUseRoutes).toHaveBeenCalledWith({ limit: 1000 }, '335e');
+
+      // Clear the search - return all routes
       mockUseRoutes.mockReturnValue({
         routes: mockSearchRoutes,
         total: 5,
@@ -694,61 +731,54 @@ describe('RoutesScreen', () => {
         isRefreshing: false,
       });
 
-      render(<RoutesScreen />);
-
-      const searchInput = screen.getByPlaceholderText('Search routes...');
-
-      // First, filter routes
-      fireEvent.changeText(searchInput, '335e');
-      expect(screen.getByText('335E')).toBeTruthy();
-      expect(screen.queryByText('340')).toBeNull();
-
-      // Clear the search
       fireEvent.changeText(searchInput, '');
+      rerender(<RoutesScreen />);
 
-      // All routes should be visible again
+      // Should call useRoutes with empty searchQuery (switches back to fetchRoutes endpoint)
+      expect(mockUseRoutes).toHaveBeenCalledWith({ limit: 1000 }, '');
+
+      // All routes should be visible
       expect(screen.getByText('335E')).toBeTruthy();
       expect(screen.getByText('340')).toBeTruthy();
       expect(screen.getByText('G4')).toBeTruthy();
+    });
+
+    it('should display routes with null short_name from server search results', () => {
+      // Server returns R500 with null short_name for "airport" query
+      const searchResults = [mockSearchRoutes[3]]; // R500 with null short_name
+
+      mockUseRoutes.mockReturnValue({
+        routes: searchResults,
+        total: 1,
+        limit: 1000,
+        offset: 0,
+        data: { routes: searchResults, total: 1, limit: 1000, offset: 0 },
+        loading: false,
+        error: undefined,
+        reload: jest.fn(),
+        isRefreshing: false,
+      });
+
+      render(<RoutesScreen />);
+
+      // Should display route with null short_name
       expect(screen.getByText('Airport Express')).toBeTruthy();
-      expect(screen.getByText('R600')).toBeTruthy();
-    });
+      expect(screen.getByText('ID: R500')).toBeTruthy();
 
-    it('should handle null short_name gracefully', () => {
-      mockUseRoutes.mockReturnValue({
-        routes: mockSearchRoutes,
-        total: 5,
-        limit: 1000,
-        offset: 0,
-        data: { routes: mockSearchRoutes, total: 5, limit: 1000, offset: 0 },
-        loading: false,
-        error: undefined,
-        reload: jest.fn(),
-        isRefreshing: false,
-      });
-
-      render(<RoutesScreen />);
-
-      const searchInput = screen.getByPlaceholderText('Search routes...');
-
-      // Search for "airport" (should match R500 with null short_name)
-      fireEvent.changeText(searchInput, 'airport');
-
-      // Should show route with null short_name but matching long_name
-      expect(screen.getByText('Airport Express')).toBeTruthy();
-
-      // Should not crash and should not show other routes
+      // Should not crash
       expect(screen.queryByText('335E')).toBeNull();
-      expect(screen.queryByText('340')).toBeNull();
     });
 
-    it('should handle null long_name gracefully', () => {
+    it('should display routes with null long_name from server search results', () => {
+      // Server returns R600 with null long_name for "r600" query
+      const searchResults = [mockSearchRoutes[4]]; // R600 with null long_name
+
       mockUseRoutes.mockReturnValue({
-        routes: mockSearchRoutes,
-        total: 5,
+        routes: searchResults,
+        total: 1,
         limit: 1000,
         offset: 0,
-        data: { routes: mockSearchRoutes, total: 5, limit: 1000, offset: 0 },
+        data: { routes: searchResults, total: 1, limit: 1000, offset: 0 },
         loading: false,
         error: undefined,
         reload: jest.fn(),
@@ -757,26 +787,24 @@ describe('RoutesScreen', () => {
 
       render(<RoutesScreen />);
 
-      const searchInput = screen.getByPlaceholderText('Search routes...');
-
-      // Search for "R600" (route with null long_name)
-      fireEvent.changeText(searchInput, 'r600');
-
-      // Should show route with null long_name but matching short_name
+      // Should display route with null long_name
       expect(screen.getByText('R600')).toBeTruthy();
+      expect(screen.getByText('ID: R600')).toBeTruthy();
 
-      // Should not crash and should not show other routes
+      // Should not crash
       expect(screen.queryByText('335E')).toBeNull();
-      expect(screen.queryByText('340')).toBeNull();
     });
 
-    it('should navigate correctly from filtered list', () => {
+    it('should navigate correctly from server search results', () => {
+      // Server returns only route 340 for "jayanagar" query
+      const searchResults = [mockSearchRoutes[1]]; // Jayanagar to Whitefield
+
       mockUseRoutes.mockReturnValue({
-        routes: mockSearchRoutes,
-        total: 5,
+        routes: searchResults,
+        total: 1,
         limit: 1000,
         offset: 0,
-        data: { routes: mockSearchRoutes, total: 5, limit: 1000, offset: 0 },
+        data: { routes: searchResults, total: 1, limit: 1000, offset: 0 },
         loading: false,
         error: undefined,
         reload: jest.fn(),
@@ -785,12 +813,7 @@ describe('RoutesScreen', () => {
 
       render(<RoutesScreen />);
 
-      const searchInput = screen.getByPlaceholderText('Search routes...');
-
-      // Filter to show only one route
-      fireEvent.changeText(searchInput, 'jayanagar');
-
-      // Tap the filtered route
+      // Tap the search result route
       const routeItem = screen.getByText('Jayanagar to Whitefield');
       fireEvent.press(routeItem);
 
@@ -806,13 +829,13 @@ describe('RoutesScreen', () => {
       });
     });
 
-    it('should trim whitespace in search query', () => {
+    it('should pass whitespace search query to useRoutes (hook handles trimming)', () => {
       mockUseRoutes.mockReturnValue({
-        routes: mockSearchRoutes,
-        total: 5,
+        routes: [],
+        total: 0,
         limit: 1000,
         offset: 0,
-        data: { routes: mockSearchRoutes, total: 5, limit: 1000, offset: 0 },
+        data: { routes: [], total: 0, limit: 1000, offset: 0 },
         loading: false,
         error: undefined,
         reload: jest.fn(),
@@ -823,15 +846,11 @@ describe('RoutesScreen', () => {
 
       const searchInput = screen.getByPlaceholderText('Search routes...');
 
-      // Search with leading/trailing whitespace
+      // Type search with leading/trailing whitespace
       fireEvent.changeText(searchInput, '  335e  ');
 
-      // Should still match and show 335E
-      expect(screen.getByText('335E')).toBeTruthy();
-      expect(screen.getByText('Kengeri to Electronic City')).toBeTruthy();
-
-      // Should not show other routes
-      expect(screen.queryByText('Jayanagar to Whitefield')).toBeNull();
+      // Should pass the query as-is to useRoutes (hook will trim before calling API)
+      expect(mockUseRoutes).toHaveBeenCalledWith({ limit: 1000 }, '  335e  ');
     });
 
     it('should maintain search state during loading', () => {
@@ -879,13 +898,16 @@ describe('RoutesScreen', () => {
       expect(screen.getByText('Loading routes...')).toBeTruthy();
     });
 
-    it('should perform partial matching on route names', () => {
+    it('should display server search results for partial match queries', () => {
+      // Server returns routes matching "elec" query (partial match on "Electronic City")
+      const searchResults = [mockSearchRoutes[0]]; // 335E with "Electronic City"
+
       mockUseRoutes.mockReturnValue({
-        routes: mockSearchRoutes,
-        total: 5,
+        routes: searchResults,
+        total: 1,
         limit: 1000,
         offset: 0,
-        data: { routes: mockSearchRoutes, total: 5, limit: 1000, offset: 0 },
+        data: { routes: searchResults, total: 1, limit: 1000, offset: 0 },
         loading: false,
         error: undefined,
         reload: jest.fn(),
@@ -894,27 +916,56 @@ describe('RoutesScreen', () => {
 
       render(<RoutesScreen />);
 
-      const searchInput = screen.getByPlaceholderText('Search routes...');
-
-      // Search for partial match "elec" (should match "Electronic City")
-      fireEvent.changeText(searchInput, 'elec');
-
-      // Should show route containing "Electronic"
+      // Should show server-returned routes
       expect(screen.getByText('335E')).toBeTruthy();
       expect(screen.getByText('Kengeri to Electronic City')).toBeTruthy();
 
-      // Should not show routes without "elec"
+      // Server didn't return these routes
       expect(screen.queryByText('Jayanagar to Whitefield')).toBeNull();
       expect(screen.queryByText('Banashankari to Yelahanka')).toBeNull();
     });
 
-    it('should match routes with either short_name or long_name containing query', () => {
+    it('should show correct subtitle for search results', () => {
+      // Mock search results with count
+      const searchResults = [mockSearchRoutes[0], mockSearchRoutes[2]]; // 2 routes
+
       mockUseRoutes.mockReturnValue({
-        routes: mockSearchRoutes,
-        total: 5,
+        routes: searchResults,
+        total: 2,
         limit: 1000,
         offset: 0,
-        data: { routes: mockSearchRoutes, total: 5, limit: 1000, offset: 0 },
+        data: { routes: searchResults, total: 2, limit: 1000, offset: 0 },
+        loading: false,
+        error: undefined,
+        reload: jest.fn(),
+        isRefreshing: false,
+      });
+
+      const { rerender } = render(<RoutesScreen />);
+
+      // Initially no search - should show "All Routes"
+      expect(screen.getByText('All Routes')).toBeTruthy();
+
+      // Type search query
+      const searchInput = screen.getByPlaceholderText('Search routes...');
+      fireEvent.changeText(searchInput, 'test');
+
+      // Mock returns search results
+      rerender(<RoutesScreen />);
+
+      // Should show count-based subtitle for search results
+      expect(screen.queryByText('All Routes')).toBeNull();
+      expect(screen.getByText('2 route(s) found')).toBeTruthy();
+    });
+
+    it('should show "No routes found" with search suggestion when search has no results', () => {
+      // Mock empty search results
+      mockUseRoutes.mockReturnValue({
+        routes: [],
+        total: 0,
+        limit: 1000,
+        offset: 0,
+        data: { routes: [], total: 0, limit: 1000, offset: 0 },
         loading: false,
         error: undefined,
         reload: jest.fn(),
@@ -923,21 +974,12 @@ describe('RoutesScreen', () => {
 
       render(<RoutesScreen />);
 
-      const searchInput = screen.getByPlaceholderText('Search routes...');
+      // Should show empty state with suggestion
+      expect(screen.getByText('No routes found')).toBeTruthy();
 
-      // Search for "g" (should match G4 short_name and Jayanagar long_name)
-      fireEvent.changeText(searchInput, 'g');
-
-      // Should show both matches
-      expect(screen.getByText('G4')).toBeTruthy();
-      expect(screen.getByText('340')).toBeTruthy();
-
-      // Count visible routes (should be exactly 2)
-      const allRouteBadges = screen.queryAllByText(/^(335E|340|G4|R500|R600)$/);
-      const visibleRoutes = allRouteBadges.filter(
-        (element) => element.props.children === 'G4' || element.props.children === '340'
-      );
-      expect(visibleRoutes.length).toBeGreaterThan(0);
+      // Note: The "Try a different search term" message only shows when routes.length > 0
+      // but filteredRoutes.length === 0, which doesn't happen with server-side search
+      // (server returns empty array directly). So this test just verifies empty state.
     });
   });
 });

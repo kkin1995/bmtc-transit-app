@@ -19,6 +19,7 @@ import {
   ETAResponseV11,
   FetchStopsParams,
   FetchRoutesParams,
+  FetchRoutesSearchParams,
   FetchScheduleParams,
   FetchEtaParams,
   PostRideSummaryRequest,
@@ -146,6 +147,32 @@ export async function fetchStops(params: FetchStopsParams = {}): Promise<StopsLi
  */
 export async function fetchRoutes(params: FetchRoutesParams = {}): Promise<RoutesListResponse> {
   const url = getApiUrl(`v1/routes${buildQueryString(params)}`);
+  return apiFetch<RoutesListResponse>(url);
+}
+
+/**
+ * GET /v1/routes/search - Search routes
+ *
+ * Server-side route search with normalization (case-insensitive, ignores spaces/hyphens).
+ * Finds routes beyond pagination limits (e.g., route "335-E" at offset 2000).
+ *
+ * @param params - Query parameters (q, limit, offset)
+ * @returns List of matching routes with pagination metadata
+ *
+ * @example
+ * ```typescript
+ * // Search for route 335-E (normalizes "335e" to match "335-E")
+ * const response = await fetchRoutesSearch({ q: '335e', limit: 20 });
+ *
+ * // Search by long name
+ * const response = await fetchRoutesSearch({ q: 'kengeri' });
+ *
+ * // Case-insensitive, hyphen-tolerant
+ * const response = await fetchRoutesSearch({ q: '13c' }); // Finds "13-C"
+ * ```
+ */
+export async function fetchRoutesSearch(params: FetchRoutesSearchParams): Promise<RoutesListResponse> {
+  const url = getApiUrl(`v1/routes/search${buildQueryString(params)}`);
   return apiFetch<RoutesListResponse>(url);
 }
 
@@ -294,6 +321,7 @@ export async function postRideSummary(
 export const bmtcApi = {
   fetchStops,
   fetchRoutes,
+  fetchRoutesSearch,
   fetchStopSchedule,
   fetchEta,
   postRideSummary,

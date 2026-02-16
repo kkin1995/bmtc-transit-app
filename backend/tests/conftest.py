@@ -310,6 +310,91 @@ def sample_ride_data():
 
 
 # ==============================================================================
+# GTFS Test Data Fixtures
+# ==============================================================================
+
+
+@pytest.fixture
+def db_with_test_routes(temp_db) -> Generator[tuple[str, sqlite3.Connection], None, None]:
+    """Provide database with sample GTFS routes for route search tests.
+
+    This fixture adds test routes that match the patterns expected by route search tests:
+    - Hyphenated route names (335-E, 13-C)
+    - Routes with "Kengeri" and "HAL" in long names
+    - Various numeric prefixes (1, 13, 335, etc.)
+
+    Use this for testing GTFS route discovery endpoints.
+    """
+    db_path, conn = temp_db
+    cursor = conn.cursor()
+
+    # Insert test agency
+    cursor.execute(
+        "INSERT OR IGNORE INTO agency (agency_id, agency_name, agency_url, agency_timezone) VALUES (?, ?, ?, ?)",
+        ("BMTC", "Bangalore Metropolitan Transport Corporation", "http://mybmtc.com", "Asia/Kolkata")
+    )
+
+    # Insert test routes with patterns expected by tests
+    test_routes = [
+        # Hyphenated routes for normalization tests
+        ("4715", "335-E", "Kengeri to Electronic City", 3, "BMTC"),
+        ("4716", "335-A", "Kengeri to Banashankari", 3, "BMTC"),
+        ("8821", "13-C", "City Market to HSR Layout", 3, "BMTC"),
+        ("8822", "13-D", "HAL Airport to Whitefield", 3, "BMTC"),
+
+        # Numeric routes for prefix matching
+        ("1001", "1", "Majestic to Jayanagar", 3, "BMTC"),
+        ("1010", "10", "Shivajinagar to Yeshwanthpur", 3, "BMTC"),
+        ("1100", "100", "KR Market to Electronic City", 3, "BMTC"),
+        ("2130", "213", "Marathahalli to HAL Layout", 3, "BMTC"),
+
+        # Routes with "HAL" for partial match tests
+        ("5001", "500A", "HAL Airport Express", 3, "BMTC"),
+        ("5002", "501", "Indiranagar to HAL Stage", 3, "BMTC"),
+
+        # Additional variety for pagination tests
+        ("6001", "600", "Hebbal to Silk Board", 3, "BMTC"),
+        ("7001", "700", "Yelahanka to Bannerghatta", 3, "BMTC"),
+    ]
+
+    cursor.executemany(
+        "INSERT OR IGNORE INTO routes (route_id, route_short_name, route_long_name, route_type, agency_id) VALUES (?, ?, ?, ?, ?)",
+        test_routes
+    )
+    conn.commit()
+
+    yield db_path, conn
+
+    # Cleanup handled by temp_db fixture
+
+
+@pytest.fixture
+def client_with_routes(db_with_test_routes, test_settings) -> Generator[TestClient, None, None]:
+    """Provide FastAPI TestClient with GTFS route data loaded.
+
+    This fixture combines db_with_test_routes and test_settings to provide
+    a client ready for testing route discovery endpoints.
+
+    Use this for testing:
+    - GET /v1/routes
+    - GET /v1/routes/search
+    - Any endpoint that queries GTFS routes table
+    """
+    from app.main import app
+    from app.config import get_settings
+
+    # Clear settings cache to pick up test environment
+    get_settings.cache_clear()
+
+    # Create test client (lifespan will init DB)
+    with TestClient(app) as test_client:
+        yield test_client
+
+    # Clear cache after test
+    get_settings.cache_clear()
+
+
+# ==============================================================================
 # Test Isolation Verification
 # ==============================================================================
 

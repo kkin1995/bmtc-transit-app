@@ -245,6 +245,18 @@ export interface FetchRoutesParams {
 }
 
 /**
+ * Query parameters for GET /v1/routes/search
+ */
+export interface FetchRoutesSearchParams {
+  /** Search query string (required, non-empty after trimming) */
+  q: string;
+  /** Maximum results per page (default 50, max 1000) */
+  limit?: number;
+  /** Pagination offset (default 0) */
+  offset?: number;
+}
+
+/**
  * Query parameters for GET /v1/stops/{stop_id}/schedule
  */
 export interface FetchScheduleParams {

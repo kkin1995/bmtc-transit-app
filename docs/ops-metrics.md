@@ -376,6 +376,39 @@ FROM bucket_stats;
 
 ---
 
+### Query 11: Route Search Analytics (Manual Verification)
+
+**Purpose:** Verify route search functionality and coverage for acceptance criteria validation.
+
+```sql
+-- Example: Verify search matches for common queries
+-- Test case: Query "335" should find routes like "335-E", "335A", "335D"
+SELECT route_id, route_short_name, route_long_name
+FROM routes
+WHERE REPLACE(REPLACE(UPPER(route_short_name), ' ', ''), '-', '') LIKE '%335%'
+   OR REPLACE(REPLACE(UPPER(route_long_name), ' ', ''), '-', '') LIKE '%335%'
+LIMIT 10;
+
+-- Expected results for "335" query:
+-- route_id | route_short_name | route_long_name
+-- ---------|------------------|------------------
+-- 335E     | 335-E            | Kempegowda Bus Station to Sarjapura
+-- 335A     | 335A             | Kempegowda Bus Station to Electronic City
+-- ...
+
+-- Interpretation:
+-- This query mimics the normalization logic in GET /v1/routes/search
+-- Use this to manually verify that search results match acceptance criteria
+-- Replace '335' with any test query to validate search behavior
+--
+-- ACCEPTANCE CRITERIA VALIDATION:
+-- - Query "335e" should find route "335-E" (case-insensitive)
+-- - Query "electronic city" should find routes with "Electronic City" in name
+-- - Search should ignore spaces and hyphens in matching
+```
+
+---
+
 ## Logging Keys for Troubleshooting
 
 The API logs structured events to journald with grep-friendly key=value pairs.
@@ -388,6 +421,7 @@ The API logs structured events to journald with grep-friendly key=value pairs.
 | Low confidence rejection | `event=low_confidence_rejected segment_id=<id> bin_id=<id> conf=<x> threshold=<t>` | Low mapmatch_conf rejected: segment_id=12345, bin_id=87, conf=0.65, threshold=0.70 |
 | Rate limit hit | `event=rate_limit_exceeded bucket_id=<hash> bucket_type=<device\|ip>` | Rate limit exceeded for device bucket (id: 7a1f2b5c...) |
 | Idempotency replay | `event=idempotent_replay key=<uuid>` | Idempotent replay detected: 550e8400-e29b-41d4-a716-446655440000 |
+| Route search | `query_length=<n> results=<total> paginated=<returned>` | Route search completed: query_length=3, results=15, paginated=15 |
 
 ### Common Journalctl Queries
 
@@ -409,6 +443,15 @@ journalctl -u bmtc-api --since "1 hour ago" | grep -c "Idempotent replay"
 
 # View low confidence rejections with details
 journalctl -u bmtc-api --since "6 hours ago" | grep "Low mapmatch_conf"
+
+# Monitor route search activity (last hour)
+journalctl -u bmtc-api --since "1 hour ago" | grep "Route search completed"
+
+# Analyze search query patterns (last 24 hours)
+journalctl -u bmtc-api --since "24 hours ago" \
+  | grep "Route search completed" \
+  | grep -oP "query_length=\d+" \
+  | sort | uniq -c | sort -rn
 ```
 
 ---

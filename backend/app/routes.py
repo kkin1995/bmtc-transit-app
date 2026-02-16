@@ -740,3 +740,147 @@ async def get_stop_schedule(
         departures=departures,
         query_time=query_time_iso
     )
+
+
+def normalize_for_search(text: str) -> str:
+    """Remove spaces/hyphens and uppercase for search matching.
+
+    Used to normalize both query string and database values for case-insensitive
+    substring matching. Original GTFS values are preserved in response.
+
+    Args:
+        text: Input string to normalize
+
+    Returns:
+        Normalized string (spaces/hyphens removed, uppercased)
+    """
+    return text.replace(" ", "").replace("-", "").upper()
+
+
+@router.get("/routes/search", response_model=RoutesListResponse)
+async def search_routes(
+    q: Optional[str] = Query(None, description="Search query string"),
+    limit: Optional[int] = Query(50, description="Maximum results per page"),
+    offset: Optional[int] = Query(0, description="Pagination offset"),
+):
+    """Search GTFS routes by name with normalized matching.
+
+    Performs case-insensitive substring matching across route_short_name and
+    route_long_name. Normalization (remove spaces/hyphens, uppercase) is applied
+    during matching only; original GTFS values are preserved in response.
+
+    Args:
+        q: Search query string (required)
+        limit: Maximum results per page (default 50, max 1000)
+        offset: Pagination offset (default 0)
+
+    Returns:
+        RoutesListResponse with matching routes, total count, limit, offset
+
+    Raises:
+        422: Empty/whitespace-only query, invalid limit/offset
+        500: Database errors
+    """
+    settings = get_settings()
+
+    # Validate query parameter (required and non-empty)
+    if q is None or not q or q.strip() == "":
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": "unprocessable",
+                "message": "Search query cannot be empty or whitespace-only",
+                "details": {"q": q if q is not None else ""}
+            }
+        )
+
+    # Validate limit parameter manually (FastAPI Query() le/ge returns 422 with different format)
+    if limit is None:
+        limit = 50
+    if limit < 1 or limit > 1000:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": "unprocessable",
+                "message": "limit must be between 1 and 1000",
+                "details": {"limit": limit}
+            }
+        )
+
+    # Validate offset parameter manually
+    if offset is None:
+        offset = 0
+    if offset < 0:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": "unprocessable",
+                "message": "offset must be greater than or equal to 0",
+                "details": {"offset": offset}
+            }
+        )
+
+    try:
+        conn = get_connection(settings.db_path)
+        cursor = conn.cursor()
+
+        # Normalize search query
+        normalized_query = normalize_for_search(q)
+
+        # Fetch all routes and filter in Python (normalization cannot be done in SQLite easily)
+        cursor.execute("""
+            SELECT route_id, route_short_name, route_long_name, route_type, agency_id
+            FROM routes
+            ORDER BY route_short_name
+        """)
+
+        all_routes = cursor.fetchall()
+
+        # Filter routes using normalized matching
+        matching_routes = []
+        for row in all_routes:
+            route_id, route_short_name, route_long_name, route_type, agency_id = row
+
+            # Normalize database values for matching
+            normalized_short = normalize_for_search(route_short_name or "")
+            normalized_long = normalize_for_search(route_long_name or "")
+
+            # Check if normalized query is substring of either field
+            if normalized_query in normalized_short or normalized_query in normalized_long:
+                matching_routes.append({
+                    "route_id": route_id,
+                    "route_short_name": route_short_name,
+                    "route_long_name": route_long_name,
+                    "route_type": route_type,
+                    "agency_id": agency_id
+                })
+
+        conn.close()
+
+        # Calculate total and apply pagination
+        total = len(matching_routes)
+        paginated_routes = matching_routes[offset:offset + limit]
+
+        # Convert to response models
+        routes = [RouteResponse(**route) for route in paginated_routes]
+
+        # Log successful search for observability
+        logger.info(f"Route search completed: query_length={len(q)}, results={total}, paginated={len(paginated_routes)}")
+
+        return RoutesListResponse(
+            routes=routes,
+            total=total,
+            limit=limit,
+            offset=offset
+        )
+
+    except Exception as e:
+        logger.error(f"Error in route search: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "server_error",
+                "message": "An unexpected error occurred",
+                "details": {}
+            }
+        )

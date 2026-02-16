@@ -1,6 +1,6 @@
 import { StyleSheet, FlatList, ActivityIndicator, Pressable, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 
 import { Text, View } from '@/components/Themed';
 import { HomeLayout } from '@/src/components/layout';
@@ -10,25 +10,16 @@ import { apiConfig } from '@/src/config/api';
 
 export default function RoutesScreen() {
   const router = useRouter();
-  const { routes, loading, error, reload } = useRoutes({ limit: apiConfig.routesListLimit });
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Filter routes based on search query
-  const filteredRoutes = useMemo(() => {
-    const trimmedQuery = searchQuery.trim();
-    if (!trimmedQuery) {
-      return routes;
-    }
+  // Use server-side search when query is non-empty, otherwise fetch all routes
+  const { routes, loading, error, reload } = useRoutes(
+    { limit: apiConfig.routesListLimit },
+    searchQuery
+  );
 
-    const lowerQuery = trimmedQuery.toLowerCase();
-
-    return routes.filter((route) => {
-      const shortName = route.route_short_name?.toLowerCase() || '';
-      const longName = route.route_long_name?.toLowerCase() || '';
-
-      return shortName.includes(lowerQuery) || longName.includes(lowerQuery);
-    });
-  }, [routes, searchQuery]);
+  // Server-side search handles filtering, so filteredRoutes is just routes
+  const filteredRoutes = routes;
 
   // Render individual route item
   const renderRouteItem = ({ item }: { item: Route }) => (

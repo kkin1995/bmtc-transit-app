@@ -480,7 +480,193 @@ Response:
 
 ---
 
-### 3) `GET /v1/stops/{stop_id}/schedule` — Get scheduled departures *(Unauthenticated)*
+### 3) `GET /v1/routes/search` — Search routes by name *(Unauthenticated)*
+
+Search GTFS routes using case-insensitive substring matching across `route_short_name` and `route_long_name`. Performs normalization (removes spaces/hyphens, converts to uppercase) for matching only, while preserving original GTFS values in response. Designed to find routes beyond pagination limits of GET /v1/routes.
+
+**Query parameters**
+
+* `q` (required): Search query string (e.g., "335e", "kengeri", "13c")
+* `limit` (optional): Maximum results per page (default 50, max 1000)
+* `offset` (optional): Pagination offset (default 0)
+
+**Matching Logic**
+
+* Case-insensitive substring match across both `route_short_name` and `route_long_name`
+* Normalization for matching only (original values preserved in response):
+  * Remove spaces and hyphens from query and database values
+  * Convert to uppercase
+  * Example: query "335e" matches route "335-E"
+  * Example: query "13c" matches route "13-C"
+  * Example: query "kengeri" matches route long name "Kengeri to Electronic City"
+* Results ordered by `route_short_name` for deterministic pagination
+
+**Response — 200 OK**
+
+```json
+{
+  "routes": [
+    {
+      "route_id": "4715",
+      "route_short_name": "335-E",
+      "route_long_name": "Kengeri to Electronic City",
+      "route_type": 3,
+      "agency_id": "BMTC"
+    },
+    {
+      "route_id": "8821",
+      "route_short_name": "13-C",
+      "route_long_name": "City Market to HSR Layout",
+      "route_type": 3,
+      "agency_id": "BMTC"
+    }
+  ],
+  "total": 2,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+**GTFS Mapping**
+
+Response schema identical to GET /v1/routes:
+- `route_id` → routes.route_id (TEXT, required)
+- `route_short_name` → routes.route_short_name (TEXT, optional)
+- `route_long_name` → routes.route_long_name (TEXT, optional)
+- `route_type` → routes.route_type (INTEGER, required, 3=bus per GTFS spec)
+- `agency_id` → routes.agency_id (TEXT, optional)
+
+**Status codes**
+
+* `200` — Success (empty array if no matches)
+* `422` — Validation error (`error="unprocessable"`)
+* `500` — Internal error (`error="server_error"`)
+
+**Error Responses**
+
+**422 unprocessable** - Query parameter validation failures:
+* Empty or whitespace-only `q` parameter
+* `limit` exceeds maximum (1000)
+* `limit` less than 1
+* `offset` is negative
+
+Example (empty query):
+```json
+{
+  "error": "unprocessable",
+  "message": "Search query cannot be empty or whitespace-only",
+  "details": {
+    "q": "   "
+  }
+}
+```
+
+Example (limit too high):
+```json
+{
+  "error": "unprocessable",
+  "message": "limit must be between 1 and 1000",
+  "details": {
+    "limit": 5000
+  }
+}
+```
+
+Example (negative offset):
+```json
+{
+  "error": "unprocessable",
+  "message": "offset must be greater than or equal to 0",
+  "details": {
+    "offset": -1
+  }
+}
+```
+
+**500 server_error** - Database errors or unexpected failures:
+```json
+{
+  "error": "server_error",
+  "message": "An unexpected error occurred",
+  "details": {}
+}
+```
+
+**cURL examples**
+
+**Search for route 335-E:**
+```bash
+curl "http://localhost:8000/v1/routes/search?q=335e&limit=20"
+```
+
+**Search for routes with "kengeri" in name:**
+```bash
+curl "http://localhost:8000/v1/routes/search?q=kengeri"
+```
+
+**Search with pagination:**
+```bash
+curl "http://localhost:8000/v1/routes/search?q=13&limit=50&offset=0"
+```
+
+**Search case-insensitive (all return same results):**
+```bash
+curl "http://localhost:8000/v1/routes/search?q=335E"
+curl "http://localhost:8000/v1/routes/search?q=335e"
+curl "http://localhost:8000/v1/routes/search?q=335-e"
+```
+
+**Error example — Empty query:**
+```bash
+curl "http://localhost:8000/v1/routes/search?q=%20%20"
+```
+
+Response:
+```json
+{
+  "error": "unprocessable",
+  "message": "Search query cannot be empty or whitespace-only",
+  "details": {
+    "q": "  "
+  }
+}
+```
+
+**Error example — Limit too high:**
+```bash
+curl "http://localhost:8000/v1/routes/search?q=335&limit=5000"
+```
+
+Response:
+```json
+{
+  "error": "unprocessable",
+  "message": "limit must be between 1 and 1000",
+  "details": {
+    "limit": 5000
+  }
+}
+```
+
+**Error example — Negative offset:**
+```bash
+curl "http://localhost:8000/v1/routes/search?q=335&offset=-1"
+```
+
+Response:
+```json
+{
+  "error": "unprocessable",
+  "message": "offset must be greater than or equal to 0",
+  "details": {
+    "offset": -1
+  }
+}
+```
+
+---
+
+### 4) `GET /v1/stops/{stop_id}/schedule` — Get scheduled departures *(Unauthenticated)*
 
 Query scheduled departures for a stop from GTFS data. Returns upcoming departures within a time window.
 
@@ -659,7 +845,7 @@ Response:
 
 ---
 
-### 4) `POST /v1/ride_summary` — Submit ride for learning *(Authenticated, Idempotent)*
+### 5) `POST /v1/ride_summary` — Submit ride for learning *(Authenticated, Idempotent)*
 
 Ingest a single ride consisting of ordered segments. The server updates per-segment×time-bin statistics (Welford mean/variance, EMA) and logs rejections (outliers, low confidence, etc.).
 
@@ -1009,7 +1195,7 @@ Response:
 
 ---
 
-### 5) `GET /v1/eta` — Query ETA with predictions *(Unauthenticated)*
+### 6) `GET /v1/eta` — Query ETA with predictions *(Unauthenticated)*
 
 Return both GTFS scheduled duration and ML-predicted ETA at a given time (defaults to server "now"). Separates schedule data from prediction data.
 
@@ -1185,7 +1371,7 @@ Response:
 
 ---
 
-### 6) `GET /v1/config` — Server configuration *(Unauthenticated)*
+### 7) `GET /v1/config` — Server configuration *(Unauthenticated)*
 
 Returns public configuration and tuning parameters.
 
@@ -1247,7 +1433,7 @@ curl http://localhost:8000/v1/config
 
 ---
 
-### 7) `GET /v1/health` — Health & uptime *(Unauthenticated)*
+### 8) `GET /v1/health` — Health & uptime *(Unauthenticated)*
 
 Liveness/readiness with DB check.
 
@@ -1430,6 +1616,20 @@ curl http://localhost:8000/v1/config | jq .
 ## Changelog (API)
 
 See [`CHANGELOG.md`](./CHANGELOG.md) for detailed version history.
+
+**v1.2 — 2026-02-16 (Server-Side Route Search):**
+* **New endpoint:**
+  * GET `/v1/routes/search` - Server-side route search with normalized matching
+  * Solves mobile app limitation of finding routes beyond first page (e.g., route "335-E" at offset 2000)
+  * Case-insensitive substring match with normalization (removes spaces/hyphens)
+  * Preserves original GTFS values in response (no data transformation)
+  * Supports pagination with limit/offset (default 50, max 1000)
+  * Returns 422 unprocessable for validation errors (empty query, invalid limit/offset)
+  * Results ordered by route_short_name for deterministic pagination
+* **Design rationale:**
+  * Chose new endpoint over modifying GET /v1/routes to avoid altering existing semantics
+  * Normalization applied only during matching, not to response data (GTFS compliance)
+  * Handles BMTC dataset with 4190 routes containing hyphenated forms ("335-E", "13-C")
 
 **v1.1 — 2025-11-18 (GTFS Alignment - Spec Pass):**
 * **New endpoints (GTFS discovery):**
