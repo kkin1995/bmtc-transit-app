@@ -1,6 +1,6 @@
 import { StyleSheet, FlatList, ActivityIndicator, Pressable, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 import { Text, View } from '@/components/Themed';
 import { HomeLayout } from '@/src/components/layout';
@@ -11,11 +11,31 @@ import { apiConfig } from '@/src/config/api';
 export default function RoutesScreen() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const isFirstMount = useRef(true);
+
+  // Debounce search query changes
+  useEffect(() => {
+    // On first mount, set debounced query immediately (no debounce)
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+      setDebouncedSearchQuery(searchQuery);
+      return;
+    }
+
+    // On subsequent changes, debounce for 300ms
+    const timeoutId = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+
+    // Cleanup: cancel timeout on new change or unmount
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery]);
 
   // Use server-side search when query is non-empty, otherwise fetch all routes
   const { routes, loading, error, reload } = useRoutes(
     { limit: apiConfig.routesListLimit },
-    searchQuery
+    debouncedSearchQuery
   );
 
   // Server-side search handles filtering, so filteredRoutes is just routes
