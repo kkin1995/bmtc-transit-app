@@ -26,19 +26,21 @@ These capabilities exist and are working in the current codebase:
 - ✓ **182 tests across 10 test files** — full isolation (in-memory DB, settings cache cleared, env patched), parallel execution — Phase 1+
 - ✓ **systemd deployment** — bmtc-api.service, hourly backup timer, daily retention timer — Phase 1
 - ✓ **Mobile app (Expo/React Native)** — ETA query, stop schedule, trip tracking with stop detection, routes search with server-side endpoint — Phase 3+
+- ✓ **SQLite connection leak fixed** — `get_connection()` is an `@contextmanager` closing on every exit path (try/finally); forced-exception regression test added — Phase 1
+- ✓ **CORS locked to explicit allowlist** — `BMTC_CORS_ORIGINS` env-driven allowlist; `allow_credentials` fully removed — Phase 1
+- ✓ **Idempotency replay returns correct stored response** — `response_body` persisted and replayed byte-for-byte; legacy NULL rows reprocess fresh — Phase 1
+- ✓ **Expired idempotency keys purged on startup** — `cleanup_expired_keys()` wired into lifespan after `init_db()` — Phase 1
+- ✓ **X-Deprecation-Warning header** — delivered on POST /v1/ride_summary and GET /v1/eta when deprecated `timestamp_utc` is used; documented spec-first in docs/api.md — Phase 1
+- ✓ **Single rate-limiting mechanism** — dead `slowapi` Limiter code removed from main.py/routes.py/pyproject.toml; `RateLimitMiddleware` is sole limiter — Phase 1
 
 ### Active
 
-Current work: fix critical bugs, fill learning algorithm gaps, complete the API surface, and add operational infrastructure.
+Current work: fill learning algorithm gaps, complete the API surface, and add operational infrastructure. (Backend correctness bugs from Phase 1 are resolved — see Validated above.)
 
-- [ ] SQLite connection leak fixed (try/finally or context manager in all handlers)
-- [ ] CORS wildcard + credentials resolved (lock origins before production)
-- [ ] Idempotency replay returns correct stored response (not stale zeros)
 - [ ] First-observation learning works (missing_stats → upsert, not reject)
 - [ ] Variance uses sample formula (n-1), fixing systematically narrow P90
 - [ ] All segment writes in a single transaction per ride (not 100 commits)
 - [ ] EMA either incorporated into blend or removed (not silent dead code)
-- [ ] Cleanup expired idempotency keys on startup
 - [ ] GET /v1/stops/{stop_id} and GET /v1/routes/{route_id} endpoints
 - [ ] Geospatial stop search (radius_m parameter)
 - [ ] Stop names returned in /v1/eta response
@@ -62,10 +64,11 @@ Current work: fix critical bugs, fill learning algorithm gaps, complete the API 
 ## Context
 
 **Codebase state (as of 2026-07-01):**
-- Backend: FastAPI + SQLite WAL, `uv` package manager, 182 tests, systemd deployed
+- Backend: FastAPI + SQLite WAL, `uv` package manager, 195 tests (14 test files), systemd deployed
 - Mobile: Expo 54 / React Native 0.81, Tamagui, expo-location, expo-router
-- 9 API endpoints, all live; several have known correctness bugs (see CONCERNS.md)
-- CONCERNS.md documents P0 connection leak, broken idempotency replay, EMA dead code, multiple commits-per-segment, variance formula error
+- 9 API endpoints, all live; Phase 1 resolved the P0 connection leak, idempotency replay, and CORS bugs — remaining known issues are learning-algorithm and rate-limit-hardening scoped (see CONCERNS.md, ROADMAP.md Phase 6)
+- CONCERNS.md documents EMA dead code, multiple commits-per-segment, variance formula error (Phase 2 territory)
+- 01-REVIEW.md (Phase 1) found 3 pre-existing rate-limit/idempotency-error-shape defects (`rate_limit.py`, error response contract) explicitly deferred to Phase 6 — not phase-1-blocking, 6 tests remain red
 
 **Key technical decisions already made:**
 - SQLite WAL as the sole data store (no PostgreSQL, no Redis)
@@ -118,4 +121,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-01 after initial project initialization (brownfield)*
+*Last updated: 2026-07-01 after Phase 1 (Backend Correctness) completion*
