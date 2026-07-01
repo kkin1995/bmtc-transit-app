@@ -1,5 +1,6 @@
 """API route handlers."""
 
+import json
 import logging
 import time
 from typing import Optional
@@ -88,12 +89,21 @@ async def ride_summary(
                 )
 
             # Body hash matches or not verified (backward compat) - return cached response
-            logger.info(f"Idempotent replay detected: {idempotency_key}")
-            # For now, return success with zero rejected count (client should cache response)
-            response = RideSummaryResponse(
-                accepted_segments=0, rejected_segments=0, rejected_by_reason={}
-            )
-            return response
+            response_body = cached_response.get("response_body")
+            if response_body is not None:
+                # Genuine replay — return the ORIGINAL response byte-for-byte (D-08)
+                logger.info(f"Idempotent replay detected: {idempotency_key}")
+                cached_data = json.loads(response_body)
+                response = RideSummaryResponse(**cached_data)
+                if deprecation_warning:
+                    return JSONResponse(
+                        content=response.model_dump(),
+                        headers={"X-Deprecation-Warning": deprecation_warning},
+                    )
+                return response
+            # else: response_body IS NULL (legacy row, D-09) — treat as a cache
+            # miss and fall through to reprocess the request fresh, exactly as
+            # if no idempotency key existed at all.
 
     # Validate max segments
     if len(ride.segments) > settings.max_segments_per_ride:
@@ -212,12 +222,12 @@ async def ride_summary(
 
     response = RideSummaryResponse(**response_data)
 
-    # Add deprecation header if needed
+    # Deliver deprecation signal to the client via response header (API-05, D-10..D-12)
     if deprecation_warning:
-        # Note: FastAPI doesn't easily allow adding headers to response_model responses
-        # This will be handled in middleware or by returning Response object
-        # For now, log the warning
-        logger.warning(f"Deprecated field used: {deprecation_warning}")
+        return JSONResponse(
+            content=response.model_dump(),
+            headers={"X-Deprecation-Warning": deprecation_warning},
+        )
 
     return response
 
@@ -288,6 +298,7 @@ async def get_eta(
 
         # Determine timestamp epoch (Priority: when > timestamp_utc > now)
         timestamp_epoch = None
+        deprecation_warning = None
         if when is not None:
             # Parse ISO-8601 timestamp string
             try:
@@ -306,6 +317,7 @@ async def get_eta(
             # Backward compatibility: use deprecated timestamp_utc
             logger.warning(f"timestamp_utc parameter is deprecated, use 'when' instead (route={route_id})")
             timestamp_epoch = timestamp_utc
+            deprecation_warning = "timestamp_utc is deprecated, use observed_at_utc (ISO-8601). Will be removed in v0.3.0 (2025-11-30)"
         else:
             # Default to server "now"
             timestamp_epoch = int(time.time())
@@ -355,7 +367,7 @@ async def get_eta(
     query_time_iso = datetime.fromtimestamp(timestamp_epoch, tz=timezone.utc).isoformat().replace("+00:00", "Z")
     confidence = _compute_confidence(n)
 
-    return ETAResponseV11(
+    model = ETAResponseV11(
         # New v1.1 structured format
         segment=SegmentInfo(
             route_id=route_id,
@@ -391,6 +403,15 @@ async def get_eta(
         bin_id=bin_id,
         last_updated=last_updated_iso
     )
+
+    # Deliver deprecation signal to the client via response header (API-05, D-10..D-12)
+    if deprecation_warning:
+        return JSONResponse(
+            content=model.model_dump(),
+            headers={"X-Deprecation-Warning": deprecation_warning},
+        )
+
+    return model
 
 
 @router.get("/config", response_model=ConfigResponse)

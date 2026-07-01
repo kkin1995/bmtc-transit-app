@@ -47,10 +47,11 @@ def test_idempotency_key_store_and_retrieve(idempotency_db):
     from app.idempotency import store_idempotency_key, check_idempotency_key, compute_response_hash
 
     key = "test-key-456"
+    body_data = {"route_id": "335E", "direction_id": 0}
     response_data = {"accepted": True, "rejected_count": 2}
 
     # Store key
-    store_idempotency_key(key, response_data)
+    store_idempotency_key(key, body_data, response_data)
 
     # Retrieve key
     cached = check_idempotency_key(key)
@@ -156,17 +157,18 @@ def test_idempotency_key_replace(idempotency_db):
     from app.idempotency import store_idempotency_key, check_idempotency_key
 
     key = "replace-key-123"
+    body_data = {"route_id": "335E", "direction_id": 0}
     response1 = {"accepted": True, "rejected_count": 1}
     response2 = {"accepted": True, "rejected_count": 2}
 
     # Store first time
-    store_idempotency_key(key, response1)
+    store_idempotency_key(key, body_data, response1)
     cached1 = check_idempotency_key(key)
     hash1 = cached1["response_hash"]
 
     # Store again with different response (simulates retry with different result)
     time.sleep(0.1)
-    store_idempotency_key(key, response2)
+    store_idempotency_key(key, body_data, response2)
     cached2 = check_idempotency_key(key)
     hash2 = cached2["response_hash"]
 
