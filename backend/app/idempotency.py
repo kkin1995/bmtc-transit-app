@@ -55,6 +55,7 @@ def check_idempotency_key(idempotency_key: str, body_dict: Optional[dict] = None
         - "response_hash": SHA256 of cached response
         - "body_hash": SHA256 of request body (None if not stored)
         - "body_hash_match": True if body_hash matches, False if mismatch, None if not verified
+        - "response_body": Serialized JSON response for replay (None for legacy rows, D-09)
         Returns None if key doesn't exist or is expired.
     """
     settings = get_settings()
@@ -67,7 +68,7 @@ def check_idempotency_key(idempotency_key: str, body_dict: Optional[dict] = None
 
         cursor.execute(
             """
-            SELECT response_hash, body_hash FROM idempotency_keys
+            SELECT response_hash, body_hash, response_body FROM idempotency_keys
             WHERE key = ? AND submitted_at >= ?
             """,
             (idempotency_key, min_timestamp),
@@ -75,13 +76,14 @@ def check_idempotency_key(idempotency_key: str, body_dict: Optional[dict] = None
         row = cursor.fetchone()
 
     if row:
-        stored_response_hash = row[0]
-        stored_body_hash = row[1] if len(row) > 1 else None
+        stored_response_hash = row["response_hash"]
+        stored_body_hash = row["body_hash"]
 
         result = {
             "_cached": True,
             "response_hash": stored_response_hash,
-            "body_hash": stored_body_hash
+            "body_hash": stored_body_hash,
+            "response_body": row["response_body"],  # may be None for legacy rows (D-09)
         }
 
         # Verify body hash if provided and stored hash exists
@@ -112,13 +114,14 @@ def store_idempotency_key(idempotency_key: str, body_data: dict, response_data: 
 
         body_hash = compute_body_hash(body_data)
         response_hash = compute_response_hash(response_data)
+        response_body = json.dumps(response_data)
 
         cursor.execute(
             """
-            INSERT OR REPLACE INTO idempotency_keys (key, submitted_at, response_hash, body_hash)
-            VALUES (?, ?, ?, ?)
+            INSERT OR REPLACE INTO idempotency_keys (key, submitted_at, response_hash, body_hash, response_body)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (idempotency_key, int(time.time()), response_hash, body_hash),
+            (idempotency_key, int(time.time()), response_hash, body_hash, response_body),
         )
         conn.commit()
 
