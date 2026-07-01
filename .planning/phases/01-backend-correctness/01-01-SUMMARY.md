@@ -148,3 +148,12 @@ None - no external service configuration required.
 ---
 *Phase: 01-backend-correctness*
 *Completed: 2026-07-01*
+
+## Self-Check: PASSED
+
+- FOUND: backend/tests/test_connection_leak.py
+- FOUND: .planning/phases/01-backend-correctness/01-01-SUMMARY.md
+- FOUND: a6137a1 (test commit)
+- FOUND: ec06b62 (feat commit)
+- FOUND: 63e4d92 (fix commit)
+- FOUND: ccd8ac5 (docs commit)
