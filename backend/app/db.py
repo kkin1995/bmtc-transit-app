@@ -1,6 +1,7 @@
 """Database initialization and connection management."""
 
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 
 
@@ -34,12 +35,21 @@ def init_db(db_path: str) -> None:
     conn.close()
 
 
-def get_connection(db_path: str) -> sqlite3.Connection:
-    """Get database connection with WAL enabled."""
+@contextmanager
+def get_connection(db_path: str):
+    """Get database connection with WAL enabled.
+
+    Guarantees `conn.close()` on every exit path (normal return, raised
+    HTTPException, or unhandled exception) via try/finally wrapping the
+    yield. Usage: `with get_connection(db_path) as conn: ...` (BUGFIX-01).
+    """
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA busy_timeout=5000")
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def compute_bin_id(timestamp_utc: int, is_holiday: bool = False) -> int:
