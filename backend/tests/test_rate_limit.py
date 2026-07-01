@@ -53,34 +53,33 @@ def setup_rate_limit_segment(rate_limit_client):
     from app.db import get_connection
 
     settings = get_settings()
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
 
-    # Insert test segment
-    cursor.execute(
-        "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
-        ("ROUTE1", 0, "STOP_A", "STOP_B"),
-    )
-    conn.commit()
+        # Insert test segment
+        cursor.execute(
+            "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
+            ("ROUTE1", 0, "STOP_A", "STOP_B"),
+        )
+        conn.commit()
 
-    # Get segment_id and insert baseline stats
-    cursor.execute(
-        "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
-        ("ROUTE1", 0, "STOP_A", "STOP_B"),
-    )
-    segment_id = cursor.fetchone()[0]
+        # Get segment_id and insert baseline stats
+        cursor.execute(
+            "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
+            ("ROUTE1", 0, "STOP_A", "STOP_B"),
+        )
+        segment_id = cursor.fetchone()[0]
 
-    # Insert baseline stats for bin 0
-    cursor.execute(
-        """
-        INSERT OR IGNORE INTO segment_stats
-        (segment_id, bin_id, n, welford_mean, welford_m2, ema_mean, schedule_mean, last_update)
-        VALUES (?, 0, 0, 0, 0, 0, 300, ?)
-        """,
-        (segment_id, int(time.time())),
-    )
-    conn.commit()
-    conn.close()
+        # Insert baseline stats for bin 0
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO segment_stats
+            (segment_id, bin_id, n, welford_mean, welford_m2, ema_mean, schedule_mean, last_update)
+            VALUES (?, 0, 0, 0, 0, 0, 300, ?)
+            """,
+            (segment_id, int(time.time())),
+        )
+        conn.commit()
 
     yield rate_limit_client
 
@@ -199,18 +198,17 @@ def test_refill_bucket_after_hour(temp_db):
     assert remaining == 0
 
     # Simulate hour passing by manipulating last_refill
-    conn = get_connection(db_path)
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        UPDATE rate_limit_buckets
-        SET last_refill = datetime('now', '-2 hours')
-        WHERE bucket_id = ?
-        """,
-        (bucket_id,),
-    )
-    conn.commit()
-    conn.close()
+    with get_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE rate_limit_buckets
+            SET last_refill = datetime('now', '-2 hours')
+            WHERE bucket_id = ?
+            """,
+            (bucket_id,),
+        )
+        conn.commit()
 
     # Next request should refill and allow
     allowed, remaining, _ = check_and_spend_token(bucket_id, db_path, limit=5)
@@ -367,23 +365,22 @@ def test_feature_flag_disabled(client, auth_headers):
 
     # Setup segment
     from app.db import get_connection
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
-        ("ROUTE1", 0, "STOP_A", "STOP_B"),
-    )
-    cursor.execute(
-        "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
-        ("ROUTE1", 0, "STOP_A", "STOP_B"),
-    )
-    segment_id = cursor.fetchone()[0]
-    cursor.execute(
-        "INSERT OR IGNORE INTO segment_stats (segment_id, bin_id, schedule_mean) VALUES (?, 0, 300.0)",
-        (segment_id,),
-    )
-    conn.commit()
-    conn.close()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
+            ("ROUTE1", 0, "STOP_A", "STOP_B"),
+        )
+        cursor.execute(
+            "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
+            ("ROUTE1", 0, "STOP_A", "STOP_B"),
+        )
+        segment_id = cursor.fetchone()[0]
+        cursor.execute(
+            "INSERT OR IGNORE INTO segment_stats (segment_id, bin_id, schedule_mean) VALUES (?, 0, 300.0)",
+            (segment_id,),
+        )
+        conn.commit()
 
     bucket_id = "d" * 64
     request_data = create_test_request(device_bucket=bucket_id)

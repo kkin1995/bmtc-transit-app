@@ -24,34 +24,33 @@ def global_agg_client(client):
     from app.db import get_connection
 
     settings = get_settings()
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
 
-    # Insert segment
-    cursor.execute(
-        "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
-        ("ROUTE_GLOBAL", 0, "STOP_X", "STOP_Y"),
-    )
-    conn.commit()
+        # Insert segment
+        cursor.execute(
+            "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
+            ("ROUTE_GLOBAL", 0, "STOP_X", "STOP_Y"),
+        )
+        conn.commit()
 
-    # Get segment_id
-    cursor.execute(
-        "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
-        ("ROUTE_GLOBAL", 0, "STOP_X", "STOP_Y"),
-    )
-    segment_id = cursor.fetchone()[0]
+        # Get segment_id
+        cursor.execute(
+            "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
+            ("ROUTE_GLOBAL", 0, "STOP_X", "STOP_Y"),
+        )
+        segment_id = cursor.fetchone()[0]
 
-    # Insert segment_stats for bin 0 with baseline
-    cursor.execute(
-        """
-        INSERT OR IGNORE INTO segment_stats (
-            segment_id, bin_id, schedule_mean, n, welford_mean, welford_m2
-        ) VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (segment_id, 0, 300.0, 0, 0.0, 0.0),
-    )
-    conn.commit()
-    conn.close()
+        # Insert segment_stats for bin 0 with baseline
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO segment_stats (
+                segment_id, bin_id, schedule_mean, n, welford_mean, welford_m2
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (segment_id, 0, 300.0, 0, 0.0, 0.0),
+        )
+        conn.commit()
 
     yield client
 
@@ -87,13 +86,12 @@ def test_idempotency_header_handling(global_agg_client, auth_headers):
     assert response1.status_code == 200
 
     # Check that idempotency key was stored
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT key FROM idempotency_keys WHERE key=?", ("test-idem-key-unique-001",)
-    )
-    row = cursor.fetchone()
-    conn.close()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT key FROM idempotency_keys WHERE key=?", ("test-idem-key-unique-001",)
+        )
+        row = cursor.fetchone()
 
     assert row is not None
     assert row[0] == "test-idem-key-unique-001"
@@ -131,13 +129,12 @@ def test_device_bucket_tracking(global_agg_client, auth_headers):
     assert response.status_code == 200
 
     # Check device_buckets table
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT observation_count FROM device_buckets WHERE bucket_id=?", (test_bucket,)
-    )
-    row = cursor.fetchone()
-    conn.close()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT observation_count FROM device_buckets WHERE bucket_id=?", (test_bucket,)
+        )
+        row = cursor.fetchone()
 
     assert row is not None
     assert row[0] >= 1  # Should have at least 1 observation
@@ -174,13 +171,12 @@ def test_device_bucket_persistence(global_agg_client, auth_headers):
     )
 
     # Check observation count
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT observation_count FROM device_buckets WHERE bucket_id=?", (test_bucket,)
-    )
-    count1 = cursor.fetchone()[0]
-    conn.close()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT observation_count FROM device_buckets WHERE bucket_id=?", (test_bucket,)
+        )
+        count1 = cursor.fetchone()[0]
 
     # Submit second ride with same bucket
     global_agg_client.post(
@@ -190,13 +186,12 @@ def test_device_bucket_persistence(global_agg_client, auth_headers):
     )
 
     # Count should increment
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT observation_count FROM device_buckets WHERE bucket_id=?", (test_bucket,)
-    )
-    count2 = cursor.fetchone()[0]
-    conn.close()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT observation_count FROM device_buckets WHERE bucket_id=?", (test_bucket,)
+        )
+        count2 = cursor.fetchone()[0]
 
     assert count2 > count1
 
@@ -241,24 +236,23 @@ def test_outlier_rejection(global_agg_client, auth_headers):
     bin_id = compute_bin_id(timestamp)
 
     # First, populate segment with some normal observations for the specific bin
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
-        ("ROUTE_GLOBAL", 0, "STOP_X", "STOP_Y"),
-    )
-    segment_id = cursor.fetchone()[0]
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
+            ("ROUTE_GLOBAL", 0, "STOP_X", "STOP_Y"),
+        )
+        segment_id = cursor.fetchone()[0]
 
-    # Update segment_stats for the specific bin with n=10, welford_mean=300, welford_m2=1000 (std ~10)
-    cursor.execute(
-        """
-        INSERT OR REPLACE INTO segment_stats (segment_id, bin_id, n, welford_mean, welford_m2, schedule_mean)
-        VALUES (?, ?, 10, 300.0, 1000.0, 300.0)
-        """,
-        (segment_id, bin_id),
-    )
-    conn.commit()
-    conn.close()
+        # Update segment_stats for the specific bin with n=10, welford_mean=300, welford_m2=1000 (std ~10)
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO segment_stats (segment_id, bin_id, n, welford_mean, welford_m2, schedule_mean)
+            VALUES (?, ?, 10, 300.0, 1000.0, 300.0)
+            """,
+            (segment_id, bin_id),
+        )
+        conn.commit()
 
     # Submit outlier (3 sigma = 30, so >330 or <270 is outlier)
     ride_data = {
@@ -376,19 +370,18 @@ def test_global_aggregation_increments_n(global_agg_client, auth_headers):
     bin_id = compute_bin_id(timestamp)
 
     # Get initial n for the specific bin
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        SELECT n FROM segment_stats ss
-        JOIN segments s ON ss.segment_id = s.segment_id
-        WHERE s.route_id=? AND s.direction_id=? AND s.from_stop_id=? AND s.to_stop_id=? AND ss.bin_id=?
-        """,
-        ("ROUTE_GLOBAL", 0, "STOP_X", "STOP_Y", bin_id),
-    )
-    row = cursor.fetchone()
-    initial_n = row[0] if row else 0
-    conn.close()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT n FROM segment_stats ss
+            JOIN segments s ON ss.segment_id = s.segment_id
+            WHERE s.route_id=? AND s.direction_id=? AND s.from_stop_id=? AND s.to_stop_id=? AND ss.bin_id=?
+            """,
+            ("ROUTE_GLOBAL", 0, "STOP_X", "STOP_Y", bin_id),
+        )
+        row = cursor.fetchone()
+        initial_n = row[0] if row else 0
 
     # Submit valid segment
     ride_data = {
@@ -414,19 +407,18 @@ def test_global_aggregation_increments_n(global_agg_client, auth_headers):
     result = response.json()
 
     # Check n incremented (if accepted)
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        SELECT n FROM segment_stats ss
-        JOIN segments s ON ss.segment_id = s.segment_id
-        WHERE s.route_id=? AND s.direction_id=? AND s.from_stop_id=? AND s.to_stop_id=? AND ss.bin_id=?
-        """,
-        ("ROUTE_GLOBAL", 0, "STOP_X", "STOP_Y", bin_id),
-    )
-    row = cursor.fetchone()
-    new_n = row[0] if row else 0
-    conn.close()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT n FROM segment_stats ss
+            JOIN segments s ON ss.segment_id = s.segment_id
+            WHERE s.route_id=? AND s.direction_id=? AND s.from_stop_id=? AND s.to_stop_id=? AND ss.bin_id=?
+            """,
+            ("ROUTE_GLOBAL", 0, "STOP_X", "STOP_Y", bin_id),
+        )
+        row = cursor.fetchone()
+        new_n = row[0] if row else 0
 
     # If no rejections, n should increment (v1: rejected_segments)
     if result["rejected_segments"] == 0:

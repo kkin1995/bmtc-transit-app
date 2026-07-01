@@ -57,31 +57,30 @@ def _setup_test_segment(client):
     from app.db import get_connection
 
     settings = get_settings()
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
 
-    cursor.execute(
-        "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
-        ("ROUTE1", 0, "STOP_A", "STOP_B"),
-    )
-
-    cursor.execute(
-        "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
-        ("ROUTE1", 0, "STOP_A", "STOP_B"),
-    )
-    segment_id = cursor.fetchone()[0]
-
-    for bin_id in range(192):
         cursor.execute(
-            """
-            INSERT OR IGNORE INTO segment_stats (segment_id, bin_id, schedule_mean)
-            VALUES (?, ?, ?)
-            """,
-            (segment_id, bin_id, 300.0),
+            "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
+            ("ROUTE1", 0, "STOP_A", "STOP_B"),
         )
 
-    conn.commit()
-    conn.close()
+        cursor.execute(
+            "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
+            ("ROUTE1", 0, "STOP_A", "STOP_B"),
+        )
+        segment_id = cursor.fetchone()[0]
+
+        for bin_id in range(192):
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO segment_stats (segment_id, bin_id, schedule_mean)
+                VALUES (?, ?, ?)
+                """,
+                (segment_id, bin_id, 300.0),
+            )
+
+        conn.commit()
 
 
 def test_forced_exception_does_not_leak_connection(

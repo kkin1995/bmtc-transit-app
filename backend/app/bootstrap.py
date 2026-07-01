@@ -25,9 +25,8 @@ def main():
         sys.exit(1)
 
     print(f"Parsing GTFS from {gtfs_zip}...")
-    conn = get_connection(settings.db_path)
-    gtfs_version = parse_gtfs(str(gtfs_zip), conn)
-    conn.close()
+    with get_connection(settings.db_path) as conn:
+        gtfs_version = parse_gtfs(str(gtfs_zip), conn)
 
     print(f"Bootstrap complete. GTFS version: {gtfs_version}")
     print("Segments and segment_stats populated with schedule baselines.")

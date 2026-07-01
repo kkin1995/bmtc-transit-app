@@ -21,34 +21,33 @@ def setup_segment_for_bodyhash(client):
     from app.db import get_connection
 
     settings = get_settings()
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
 
-    # Insert test segment
-    cursor.execute(
-        "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
-        ("TEST_ROUTE", 0, "STOP1", "STOP2"),
-    )
-    conn.commit()
+        # Insert test segment
+        cursor.execute(
+            "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
+            ("TEST_ROUTE", 0, "STOP1", "STOP2"),
+        )
+        conn.commit()
 
-    # Get segment_id and insert baseline stats
-    cursor.execute(
-        "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
-        ("TEST_ROUTE", 0, "STOP1", "STOP2"),
-    )
-    segment_id = cursor.fetchone()[0]
+        # Get segment_id and insert baseline stats
+        cursor.execute(
+            "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
+            ("TEST_ROUTE", 0, "STOP1", "STOP2"),
+        )
+        segment_id = cursor.fetchone()[0]
 
-    # Insert baseline stats for bin 0
-    cursor.execute(
-        """
-        INSERT OR IGNORE INTO segment_stats
-        (segment_id, bin_id, n, welford_mean, welford_m2, ema_mean, schedule_mean, last_update)
-        VALUES (?, 0, 0, 0, 0, 0, 300, ?)
-        """,
-        (segment_id, int(time.time())),
-    )
-    conn.commit()
-    conn.close()
+        # Insert baseline stats for bin 0
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO segment_stats
+            (segment_id, bin_id, n, welford_mean, welford_m2, ema_mean, schedule_mean, last_update)
+            VALUES (?, 0, 0, 0, 0, 0, 300, ?)
+            """,
+            (segment_id, int(time.time())),
+        )
+        conn.commit()
 
     yield client
 
@@ -135,15 +134,14 @@ def test_store_idempotency_key_with_body_hash(temp_db):
 
     # Verify database storage
     settings = get_settings()
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
 
-    cursor.execute(
-        "SELECT response_hash, body_hash FROM idempotency_keys WHERE key = ?",
-        (key,)
-    )
-    row = cursor.fetchone()
-    conn.close()
+        cursor.execute(
+            "SELECT response_hash, body_hash FROM idempotency_keys WHERE key = ?",
+            (key,)
+        )
+        row = cursor.fetchone()
 
     assert row is not None
     assert row[0] is not None  # response_hash
@@ -177,15 +175,14 @@ def test_first_submission_stores_body_hash(setup_segment_for_bodyhash, auth_head
     from app.config import get_settings
 
     settings = get_settings()
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
 
-    cursor.execute(
-        "SELECT body_hash FROM idempotency_keys WHERE key = ?",
-        (idempotency_key,)
-    )
-    row = cursor.fetchone()
-    conn.close()
+        cursor.execute(
+            "SELECT body_hash FROM idempotency_keys WHERE key = ?",
+            (idempotency_key,)
+        )
+        row = cursor.fetchone()
 
     assert row is not None
     assert row[0] is not None
@@ -366,21 +363,19 @@ def test_expired_key_allows_new_submission(setup_segment_for_bodyhash, auth_head
 
     # Manually insert expired key with old body hash
     settings = get_settings()
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
-
     old_timestamp = int(time.time()) - (25 * 3600)  # 25 hours ago (past 24h TTL)
     from app.idempotency import compute_body_hash
 
     old_body = {"route_id": "OLD_ROUTE", "direction_id": 0}
     old_body_hash = compute_body_hash(old_body)
 
-    cursor.execute(
-        "INSERT INTO idempotency_keys (key, submitted_at, response_hash, body_hash) VALUES (?, ?, ?, ?)",
-        (idempotency_key, old_timestamp, "dummy_response_hash", old_body_hash),
-    )
-    conn.commit()
-    conn.close()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO idempotency_keys (key, submitted_at, response_hash, body_hash) VALUES (?, ?, ?, ?)",
+            (idempotency_key, old_timestamp, "dummy_response_hash", old_body_hash),
+        )
+        conn.commit()
 
     # Submit with DIFFERENT body - should succeed because key is expired
     new_request = create_ride_request(device_bucket="new_bucket_" + "x" * 53)
@@ -408,15 +403,13 @@ def test_body_hash_verification_with_null_stored_hash(setup_segment_for_bodyhash
 
     # Manually insert key WITHOUT body_hash (simulates pre-migration data)
     settings = get_settings()
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
-
-    cursor.execute(
-        "INSERT INTO idempotency_keys (key, submitted_at, response_hash) VALUES (?, ?, ?)",
-        (idempotency_key, int(time.time()), "dummy_response_hash"),
-    )
-    conn.commit()
-    conn.close()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO idempotency_keys (key, submitted_at, response_hash) VALUES (?, ?, ?)",
+            (idempotency_key, int(time.time()), "dummy_response_hash"),
+        )
+        conn.commit()
 
     # Replay with ANY body - should succeed (backward compat: NULL body_hash means no verification)
     request_data = create_ride_request()

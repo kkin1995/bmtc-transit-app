@@ -553,34 +553,33 @@ def setup_test_segment_for_eta(client):
     from app.db import get_connection
 
     settings = get_settings()
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
 
-    # Insert segment (idempotent)
-    cursor.execute(
-        "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
-        ("ROUTE1", 0, "STOP_A", "STOP_B"),
-    )
-
-    # Get segment_id
-    cursor.execute(
-        "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
-        ("ROUTE1", 0, "STOP_A", "STOP_B"),
-    )
-    segment_id = cursor.fetchone()[0]
-
-    # Insert segment_stats for all 192 bins (idempotent)
-    for bin_id in range(192):
+        # Insert segment (idempotent)
         cursor.execute(
-            """
-            INSERT OR IGNORE INTO segment_stats (segment_id, bin_id, schedule_mean)
-            VALUES (?, ?, ?)
-            """,
-            (segment_id, bin_id, 300.0),  # 5 min schedule baseline
+            "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
+            ("ROUTE1", 0, "STOP_A", "STOP_B"),
         )
 
-    conn.commit()
-    conn.close()
+        # Get segment_id
+        cursor.execute(
+            "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
+            ("ROUTE1", 0, "STOP_A", "STOP_B"),
+        )
+        segment_id = cursor.fetchone()[0]
+
+        # Insert segment_stats for all 192 bins (idempotent)
+        for bin_id in range(192):
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO segment_stats (segment_id, bin_id, schedule_mean)
+                VALUES (?, ?, ?)
+                """,
+                (segment_id, bin_id, 300.0),  # 5 min schedule baseline
+            )
+
+        conn.commit()
 
 
 def test_get_eta_new_structure_basic(client):

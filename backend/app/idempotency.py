@@ -58,22 +58,21 @@ def check_idempotency_key(idempotency_key: str, body_dict: Optional[dict] = None
         Returns None if key doesn't exist or is expired.
     """
     settings = get_settings()
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
 
-    # Check TTL
-    ttl_seconds = settings.idempotency_ttl_hours * 3600
-    min_timestamp = int(time.time()) - ttl_seconds
+        # Check TTL
+        ttl_seconds = settings.idempotency_ttl_hours * 3600
+        min_timestamp = int(time.time()) - ttl_seconds
 
-    cursor.execute(
-        """
-        SELECT response_hash, body_hash FROM idempotency_keys
-        WHERE key = ? AND submitted_at >= ?
-        """,
-        (idempotency_key, min_timestamp),
-    )
-    row = cursor.fetchone()
-    conn.close()
+        cursor.execute(
+            """
+            SELECT response_hash, body_hash FROM idempotency_keys
+            WHERE key = ? AND submitted_at >= ?
+            """,
+            (idempotency_key, min_timestamp),
+        )
+        row = cursor.fetchone()
 
     if row:
         stored_response_hash = row[0]
@@ -108,21 +107,20 @@ def store_idempotency_key(idempotency_key: str, body_data: dict, response_data: 
         response_data: Response dictionary to cache
     """
     settings = get_settings()
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
 
-    body_hash = compute_body_hash(body_data)
-    response_hash = compute_response_hash(response_data)
+        body_hash = compute_body_hash(body_data)
+        response_hash = compute_response_hash(response_data)
 
-    cursor.execute(
-        """
-        INSERT OR REPLACE INTO idempotency_keys (key, submitted_at, response_hash, body_hash)
-        VALUES (?, ?, ?, ?)
-        """,
-        (idempotency_key, int(time.time()), response_hash, body_hash),
-    )
-    conn.commit()
-    conn.close()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO idempotency_keys (key, submitted_at, response_hash, body_hash)
+            VALUES (?, ?, ?, ?)
+            """,
+            (idempotency_key, int(time.time()), response_hash, body_hash),
+        )
+        conn.commit()
 
 
 def cleanup_expired_keys() -> int:
@@ -132,17 +130,16 @@ def cleanup_expired_keys() -> int:
         Number of keys deleted
     """
     settings = get_settings()
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
 
-    ttl_seconds = settings.idempotency_ttl_hours * 3600
-    min_timestamp = int(time.time()) - ttl_seconds
+        ttl_seconds = settings.idempotency_ttl_hours * 3600
+        min_timestamp = int(time.time()) - ttl_seconds
 
-    cursor.execute(
-        "DELETE FROM idempotency_keys WHERE submitted_at < ?", (min_timestamp,)
-    )
-    deleted_count = cursor.rowcount
-    conn.commit()
-    conn.close()
+        cursor.execute(
+            "DELETE FROM idempotency_keys WHERE submitted_at < ?", (min_timestamp,)
+        )
+        deleted_count = cursor.rowcount
+        conn.commit()
 
     return deleted_count
