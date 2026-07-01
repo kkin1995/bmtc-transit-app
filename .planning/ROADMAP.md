@@ -34,11 +34,11 @@
   5. The response to POST /v1/ride_summary includes an `X-Deprecation-Warning` header when the deprecated `timestamp_utc` field is used; clients receive the signal without reading server logs
   6. The `slowapi` `Limiter` instances in `routes.py` and `main.py` are deleted — the codebase has one rate-limiting mechanism (`RateLimitMiddleware`), not two
 
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — get_connection() context-manager conversion + all call-site updates (BUGFIX-01)
+- [x] 01-01-PLAN.md — get_connection() context-manager conversion + all call-site updates (BUGFIX-01)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -127,7 +127,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Backend Correctness | 0/3 | Not started | - |
+| 1. Backend Correctness | 1/3 | In Progress|  |
 | 2. Learning Algorithm Integrity | 0/? | Not started | - |
 | 3. API Surface Completion | 0/? | Not started | - |
 | 4. Data Management | 0/? | Not started | - |

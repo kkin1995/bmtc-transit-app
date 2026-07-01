@@ -30,7 +30,7 @@ The following are built and working. Captured here for traceability; not include
 
 ### Backend Correctness
 
-- [ ] **BUGFIX-01**: SQLite connections are always closed even on unexpected exceptions (try/finally or context manager in all handlers — currently any exception between `get_connection()` and `conn.close()` leaks the FD)
+- [x] **BUGFIX-01**: SQLite connections are always closed even on unexpected exceptions (try/finally or context manager in all handlers — currently any exception between `get_connection()` and `conn.close()` leaks the FD)
 - [ ] **BUGFIX-02**: CORS configuration locks `allow_origins` to an explicit list (not wildcard) before production; `allow_credentials` removed or scoped correctly
 - [ ] **BUGFIX-03**: Idempotency replay returns the original stored response body (not stale `accepted_segments=0, rejected_segments=0`)
 - [ ] **BUGFIX-04**: First observation on a new segment upserts a `segment_stats` row (not rejected as `missing_stats`); ensures new segments can learn from day one
@@ -155,6 +155,7 @@ The following are built and working. Captured here for traceability; not include
 | APIDOC-02 | Phase 6 | Rate-Limit Hardening & API Docs Completeness | Pending |
 
 **Coverage:**
+
 - v1 requirements: 31 total
 - Mapped to phases: 31
 - Unmapped: 0 ✓
