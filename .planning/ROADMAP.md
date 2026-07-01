@@ -2,8 +2,8 @@
 
 **Project:** ETA learning system for Bengaluru buses (brownfield — Phases 1–3 of prior work validated)
 **Granularity:** Standard
-**Active requirements:** 24 (BUGFIX-01 through OPS-04)
-**Coverage:** 24/24 ✓
+**Active requirements:** 31 (BUGFIX-01 through APIDOC-02)
+**Coverage:** 31/31 ✓
 
 ---
 
@@ -14,6 +14,7 @@
 - [ ] **Phase 3: API Surface Completion** — Add missing single-resource endpoints, geospatial stop search, enriched ETA response, and client-visible deprecation headers
 - [ ] **Phase 4: Data Management** — Establish a DB migration framework, wire rate-limit cleanup, fix retention orphans, and add a safe GTFS update workflow
 - [ ] **Phase 5: Quality & Operations** — Add performance tests, bootstrap smoke tests, CI pipeline, and structured monitoring so production targets are verifiably met
+- [ ] **Phase 6: Rate-Limit Hardening & API Docs Completeness** — Close the rate-limiting gaps flagged by the STRIDE security review (disabled-by-default, quota-check ordering, idempotency interaction) and fill the remaining privacy/error-model documentation gaps in docs/api.md
 
 ---
 
@@ -77,6 +78,19 @@
   4. Structured log fields `request_latency_ms` and `error_rate` are emitted on every request, OR a `/metrics` Prometheus endpoint exists — an operator can observe p95 latency and error counts without instrumenting the process externally
 **Plans:** TBD
 
+### Phase 6: Rate-Limit Hardening & API Docs Completeness
+**Goal:** Rate limiting cannot be silently disabled in production, quota is checked before any state mutation, idempotent replays never double-spend quota, rate-limit headers are always present, and docs/api.md fully documents the privacy/retention model and error codes
+**Depends on:** Phase 1
+**Requirements:** RATELIMIT-01, RATELIMIT-02, RATELIMIT-03, RATELIMIT-04, RATELIMIT-05, APIDOC-01, APIDOC-02
+**Success Criteria** (what must be TRUE):
+  1. A request that exceeds quota produces zero writes to `segment_stats` or `rejection_log` — verified by asserting row counts are unchanged before/after a 429 response
+  2. Concurrent POSTs to the same `device_bucket` never oversell quota — a load test with N concurrent requests against a bucket with `tokens < N` results in exactly `tokens` accepted and the rest 429'd
+  3. Replaying a POST with the same `Idempotency-Key` and body does not decrement `tokens` a second time — verified by checking `tokens` is unchanged after a replay
+  4. `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` headers are present on both 2xx and 429 POST responses
+  5. `BMTC_RATE_LIMIT_ENABLED=false` is a real, working config toggle — quota checks are skipped (all requests succeed) but headers are still returned
+  6. `docs/api.md` documents `device_bucket` privacy properties, all four retention windows, and all 7 error codes with worked examples — a reviewer can answer "what happens on a 409" from the doc alone
+**Plans:** TBD
+
 ---
 
 ## Progress
@@ -88,8 +102,10 @@
 | 3. API Surface Completion | 0/? | Not started | - |
 | 4. Data Management | 0/? | Not started | - |
 | 5. Quality & Operations | 0/? | Not started | - |
+| 6. Rate-Limit Hardening & API Docs Completeness | 0/? | Not started | - |
 
 ---
 
 *Roadmap created: 2026-07-01*
 *Brownfield project — prior Phases 1–3 validated; active roadmap starts at new Phase 1*
+*Phase 6 added 2026-07-01 via `/gsd-ingest-docs --mode merge`*

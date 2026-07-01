@@ -1,0 +1,13 @@
+{
+  "source_path": "/home/karankinariwala/KARAN/1-Projects/Active/bmtc-transit-app/docs/ALIGNMENT_SUMMARY.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "API v1 Alignment Summary",
+  "summary": "Change log documenting how backend implementation was aligned with docs/api.md v1 spec, with test results and migration notes.",
+  "scope": ["POST /v1/ride_summary", "GET /v1/eta", "device_bucket", "rate limiting", "backward compatibility", "docs/api.md"],
+  "cross_refs": ["docs/api.md", "docs/ALIGNMENT_STATUS.md", "backend/app/models.py", "backend/app/routes.py", "backend/app/rate_limit.py", "backend/app/learning.py", "backend/tests/test_api_v1_alignment.py", "backend/tests/test_integration.py", "backend/tests/test_global_aggregation.py", "backend/tests/conftest.py"],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

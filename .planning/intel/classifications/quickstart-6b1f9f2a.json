@@ -1,0 +1,13 @@
+{
+  "source_path": "/home/karankinariwala/KARAN/1-Projects/Active/bmtc-transit-app/docs/quickstart.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "Quick Start Guide",
+  "summary": "Step-by-step setup guide for running the BMTC API locally including install, bootstrap, and testing.",
+  "scope": ["BMTC API", "uv", "GTFS bootstrap", "ride_summary endpoint", "eta endpoint", "SQLite", "pytest"],
+  "cross_refs": ["../docs/api.md", "../docs/deploy.md", "scripts/generate_sample_data.py"],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

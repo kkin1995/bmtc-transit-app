@@ -1,0 +1,13 @@
+{
+  "source_path": "/home/karankinariwala/KARAN/1-Projects/Active/bmtc-transit-app/docs/prd/device-bucket-rate-limit.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "PRD: Device-Bucket Rate Limiting for POST /v1/ride_summary",
+  "summary": "Defines requirements for a 500 req/hour per-device_bucket token-bucket rate limit on the ride_summary ingest endpoint.",
+  "scope": ["POST /v1/ride_summary", "rate_limit_buckets table", "device_bucket", "Idempotency-Key", "X-RateLimit headers", "BMTC_RATE_LIMIT_ENABLED feature flag"],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

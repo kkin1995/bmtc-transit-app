@@ -360,6 +360,8 @@ Transition from single-user to multi-device, crowd-sourced learning while mainta
 
 ## API Contract
 
+> **⚠ SUPERSEDED (2025-10-22):** The field names below (`accepted`, `rejected_count`, `timestamp_utc` as primary segment field, flat `GET /v1/eta` response) describe the pre-alignment contract and no longer reflect the implementation. The v1.0.0 API alignment (see `docs/ALIGNMENT_STATUS.md`, `docs/ALIGNMENT_SUMMARY.md`) renamed these to `accepted_segments`/`rejected_segments`, promoted `observed_at_utc` (ISO-8601) to the primary segment timestamp field (with `timestamp_utc` demoted to a deprecated fallback), and restructured `GET /v1/eta` into nested `segment{}`/`scheduled{}`/`prediction{}` objects. **`docs/api.md` is the canonical, current API specification** — this section is retained for historical context on the original MVP design only.
+
 ### POST /v1/ride_summary
 **Request:**
 ```json

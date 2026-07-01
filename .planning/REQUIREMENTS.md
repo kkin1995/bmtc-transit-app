@@ -66,6 +66,23 @@ The following are built and working. Captured here for traceability; not include
 - [ ] **OPS-03**: CI pipeline runs the full 182-test suite on every commit (GitHub Actions or equivalent)
 - [ ] **OPS-04**: Monitoring/alerting integration — structured log fields for request latency + error rate, or Prometheus metrics endpoint
 
+### Rate-Limit Hardening
+
+*Ingested from `docs/prd/device-bucket-rate-limit.md` (2026-07-01), rescoped to the actual implemented `rate_limit_buckets` schema (`tokens`/`last_refill`), not the PRD's original `quota_remaining`/`reset_utc` column names — see `.planning/INGEST-CONFLICTS.md`.*
+
+- [ ] **RATELIMIT-01**: Quota is checked and enforced BEFORE `segment_stats`/`rejection_log` are updated — a request over quota causes zero state changes, not a partial write
+- [ ] **RATELIMIT-02**: The `tokens` decrement happens atomically in the same transaction as ride ingest (single UPDATE with `WHERE tokens > 0`, matching the existing atomic check-and-spend pattern) — no oversell under concurrent POSTs to the same bucket
+- [ ] **RATELIMIT-03**: A replayed request (identical `Idempotency-Key` + `body_sha256`) does not deduct quota a second time — only the first submission spends a token
+- [ ] **RATELIMIT-04**: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` headers are present on every POST response, including 429s
+- [ ] **RATELIMIT-05**: `BMTC_RATE_LIMIT_ENABLED` exists as a real config field (default `true`); when `false`, quota checks are skipped but headers are still returned — currently only referenced in a log message, not implemented (flagged HIGH in `docs/SECURITY_REVIEW/2025-10-22_v0.2.0-stride-review.md`: "rate limiting disabled by default")
+
+### API Documentation Completeness
+
+*Ingested from `docs/prd/api-docs-v1-refresh.md` (2026-07-01) — only the still-relevant items carried forward. The PRD's original field-alignment ACs (AC3–AC5) targeted an already-superseded API shape and are dropped; see `.planning/INGEST-CONFLICTS.md` INFO bucket.*
+
+- [ ] **APIDOC-01**: `docs/api.md` documents that `device_bucket` is a client-salted hash never returned by any GET endpoint, and states the retention windows (`ride_segments` 90d, `rejection_log` 30d, `idempotency_keys` 24h, `segment_stats` long-lived)
+- [ ] **APIDOC-02**: `docs/api.md` error section lists all 7 canonical error codes with HTTP status mapping and a request/response example for each of 400/401/409/422/429
+
 ---
 
 ## v2 Requirements (Deferred)
@@ -129,17 +146,28 @@ The following are built and working. Captured here for traceability; not include
 | OPS-02 | Phase 5 | Quality & Operations | Pending |
 | OPS-03 | Phase 5 | Quality & Operations | Pending |
 | OPS-04 | Phase 5 | Quality & Operations | Pending |
+| RATELIMIT-01 | Phase 6 | Rate-Limit Hardening & API Docs Completeness | Pending |
+| RATELIMIT-02 | Phase 6 | Rate-Limit Hardening & API Docs Completeness | Pending |
+| RATELIMIT-03 | Phase 6 | Rate-Limit Hardening & API Docs Completeness | Pending |
+| RATELIMIT-04 | Phase 6 | Rate-Limit Hardening & API Docs Completeness | Pending |
+| RATELIMIT-05 | Phase 6 | Rate-Limit Hardening & API Docs Completeness | Pending |
+| APIDOC-01 | Phase 6 | Rate-Limit Hardening & API Docs Completeness | Pending |
+| APIDOC-02 | Phase 6 | Rate-Limit Hardening & API Docs Completeness | Pending |
 
 **Coverage:**
-- v1 requirements: 24 total
-- Mapped to phases: 24
+- v1 requirements: 31 total
+- Mapped to phases: 31
 - Unmapped: 0 ✓
 
 **Note:** BUGFIX-07 (idempotency key cleanup on startup) was reassigned from Phase 3 to Phase 1.
 It belongs with backend correctness fixes — it is an operational reliability concern, not an API
 surface addition. This corrects the initial traceability draft.
 
+**Note (2026-07-01 doc ingest):** RATELIMIT-01..05 and APIDOC-01..02 were added via `/gsd-ingest-docs --mode merge`
+from `docs/prd/device-bucket-rate-limit.md` and `docs/prd/api-docs-v1-refresh.md`, rescoped to match the
+implemented schema and current API shape. See `.planning/INGEST-CONFLICTS.md` for the full conflict resolution.
+
 ---
 
 *Requirements defined: 2026-07-01*
-*Last updated: 2026-07-01 — traceability updated after roadmap creation; BUGFIX-07 moved from Phase 3 to Phase 1*
+*Last updated: 2026-07-01 — doc ingest merge added RATELIMIT-01..05, APIDOC-01..02, and Phase 6*

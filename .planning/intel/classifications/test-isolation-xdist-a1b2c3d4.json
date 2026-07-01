@@ -1,0 +1,13 @@
+{
+  "source_path": "/home/karankinariwala/KARAN/1-Projects/Active/bmtc-transit-app/docs/prd/test-isolation-xdist.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "PRD: Test Isolation & Parallel Execution with pytest-xdist",
+  "summary": "PRD to fix settings cache isolation and enable parallel pytest execution via pytest-xdist so all 33 backend tests pass together.",
+  "scope": ["pytest-xdist", "pytest-randomly", "settings singleton", "conftest.py fixtures", "test isolation", "backend test suite"],
+  "cross_refs": ["backend/pyproject.toml", "backend/conftest.py", "README.md", "backend/README.md", "backend/app/config.py"],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

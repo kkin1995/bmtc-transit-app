@@ -1,0 +1,13 @@
+{
+  "source_path": "/home/karankinariwala/KARAN/1-Projects/Active/bmtc-transit-app/docs/prd/api-docs-v1-refresh.md",
+  "type": "PRD",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "PRD: API Docs v1 Refresh",
+  "summary": "Requirements to correct field-name and behavior mismatches between docs/api.md and the actual API implementation.",
+  "scope": ["docs/api.md", "POST /v1/ride_summary", "GET /v1/eta", "RideSummaryResponse", "ETAResponse", "rate limit headers", "idempotency", "device_bucket"],
+  "cross_refs": ["docs/api.md", "models.py", "routes.py"],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

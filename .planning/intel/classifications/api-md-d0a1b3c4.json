@@ -1,0 +1,27 @@
+{
+  "source_path": "/home/karankinariwala/KARAN/1-Projects/Active/bmtc-transit-app/docs/api.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "API Reference (v1)",
+  "summary": "Canonical v1 API specification for BMTC ETA endpoints, covering auth, idempotency, rate limits, errors, and 8 endpoint contracts.",
+  "scope": [
+    "POST /v1/ride_summary",
+    "GET /v1/eta",
+    "GET /v1/config",
+    "GET /v1/health",
+    "GET /v1/stops",
+    "GET /v1/routes",
+    "GET /v1/routes/search",
+    "GET /v1/stops/{stop_id}/schedule",
+    "authentication",
+    "idempotency",
+    "rate limiting",
+    "error model",
+    "GTFS compliance"
+  ],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

@@ -1,0 +1,36 @@
+{
+  "source_path": "/home/karankinariwala/KARAN/1-Projects/Active/bmtc-transit-app/docs/PLAN.md",
+  "type": "ADR",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "BMTC Transit Learning API - Execution Plan",
+  "summary": "Execution plan for the BMTC ETA learning backend embedding two accepted ADRs on stack choice and global aggregation design plus API/DB specs.",
+  "scope": [
+    "FastAPI",
+    "SQLite WAL",
+    "Welford algorithm",
+    "EMA",
+    "schedule blend",
+    "outlier rejection",
+    "time bins",
+    "idempotency keys",
+    "device buckets",
+    "rejection logging",
+    "map-match confidence",
+    "Cloudflare Tunnel",
+    "Bearer token auth",
+    "POST /v1/ride_summary",
+    "GET /v1/eta",
+    "GET /v1/config",
+    "GET /v1/health"
+  ],
+  "cross_refs": [
+    "backend/TODO.md",
+    "backend/README.md",
+    "docs/api.md",
+    "docs/deploy.md"
+  ],
+  "locked": true,
+  "precedence": null,
+  "notes": "This file is a hybrid document: primarily a checklisted execution plan (Build Plan Parts A/B/C, Test Checklist, Ops Checklist, Risks), but it embeds two clearly-structured ADRs ('ADR-0001: Stack & Architecture Decisions' and 'ADR-0002: Global Aggregation Design Decisions') with explicit Decision/Why-Not rationale, plus an API Contract section (SPEC-like) and a Learning Spec (SPEC-like). No frontmatter or status field, but text uses checkmarks implying Accepted/completed status for the embedded ADRs (Phase 1 and Phase 2 both marked Complete in the header). Classified as ADR because the locked architectural decisions are the highest-precedence content and must not be lost; the synthesizer should also extract the API Contract/Learning Spec sections as SPEC-level technical constraints and the numbered build-plan items as historical context only. Confidence is medium due to the mixed-type nature of the file."
+}

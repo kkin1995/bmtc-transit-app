@@ -1,0 +1,13 @@
+{
+  "source_path": "/home/karankinariwala/KARAN/1-Projects/Active/bmtc-transit-app/docs/gtfs-analysis.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "BMTC GTFS Data Analysis",
+  "summary": "Analysis of the BMTC community GTFS dataset covering routes, stops, trip stats, peak hours, and bootstrap implications for the learning DB.",
+  "scope": ["GTFS dataset", "routes", "stops", "trips", "stop_times", "segment_stats bootstrap", "peak hours", "database footprint"],
+  "cross_refs": ["https://github.com/Vonter/bmtc-gtfs", "https://gtfs.org/schedule/reference/", "https://mybmtc.karnataka.gov.in/"],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

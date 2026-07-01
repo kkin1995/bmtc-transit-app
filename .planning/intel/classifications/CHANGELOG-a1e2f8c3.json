@@ -1,0 +1,13 @@
+{
+  "source_path": "/home/karankinariwala/KARAN/1-Projects/Active/bmtc-transit-app/docs/CHANGELOG.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "Changelog",
+  "summary": "Keep-a-Changelog style history of BMTC Transit API releases (v1.0.0, v1.1.0) and unreleased mobile app changes.",
+  "scope": ["BMTC Transit API", "ride_summary endpoint", "eta endpoint", "GTFS discovery endpoints", "rate limiting", "idempotency", "mobile routes search"],
+  "cross_refs": ["docs/api.md", "PLAN.md", "docs/SECURITY_REVIEW/"],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}
