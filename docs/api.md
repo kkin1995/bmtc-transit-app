@@ -913,7 +913,10 @@ X-RateLimit-Limit: 500
 X-RateLimit-Remaining: 499
 X-RateLimit-Reset: 1761136800
 X-API-Version: 1
+X-Deprecation-Warning: timestamp_utc is deprecated, use observed_at_utc (ISO-8601). Will be removed in v0.3.0 (2025-11-30)
 ```
+
+`X-Deprecation-Warning` is present **only** when a request segment used the deprecated per-segment `timestamp_utc` field instead of `observed_at_utc`; the header is absent entirely when `observed_at_utc` is used. Value is the exact deprecation message text shown above (not paraphrased). See "Deprecation Header (API-05)" note below and the Changelog entry for details.
 
 **Status codes**
 
@@ -1207,6 +1210,16 @@ Return both GTFS scheduled duration and ML-predicted ETA at a given time (defaul
 * `to_stop_id` — required (string)
 * `when` — optional ISO-8601 UTC timestamp string (e.g., `2025-10-22T10:41:00Z`); defaults to server "now"
 * `timestamp_utc` — **DEPRECATED** (use `when` instead); optional Unix epoch timestamp (integer); maintained for backward compatibility
+
+**Deprecation Header (API-05)**
+
+When the deprecated `timestamp_utc` query parameter is used (instead of `when`), the response includes:
+
+```
+X-Deprecation-Warning: timestamp_utc is deprecated, use observed_at_utc (ISO-8601). Will be removed in v0.3.0 (2025-11-30)
+```
+
+The header is absent when `when` is used (or when neither timestamp parameter is provided). Value is the exact deprecation message text shown above.
 
 **Response — 200 OK**
 
@@ -1616,6 +1629,12 @@ curl http://localhost:8000/v1/config | jq .
 ## Changelog (API)
 
 See [`CHANGELOG.md`](./CHANGELOG.md) for detailed version history.
+
+**Unreleased — Deprecation Header (API-05):**
+* `POST /v1/ride_summary` and `GET /v1/eta` now emit an `X-Deprecation-Warning` response header when the deprecated `timestamp_utc` field is used (per-segment field on POST; query parameter on GET).
+* Header value: `timestamp_utc is deprecated, use observed_at_utc (ISO-8601). Will be removed in v0.3.0 (2025-11-30)`.
+* Header is absent when the current field (`observed_at_utc` for POST, `when` for GET) is used.
+* Previously this deprecation was only logged server-side; clients had no way to detect deprecated-field usage without inspecting server logs.
 
 **v1.2 — 2026-02-16 (Server-Side Route Search):**
 * **New endpoint:**
