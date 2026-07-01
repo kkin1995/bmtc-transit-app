@@ -6,8 +6,6 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Header
 from fastapi.responses import JSONResponse
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from app.auth import verify_token
 from app.config import get_settings
@@ -46,7 +44,6 @@ from app.state import get_startup_time
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/ride_summary", response_model=RideSummaryResponse)
