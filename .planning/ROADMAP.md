@@ -9,7 +9,7 @@
 
 ## Phases
 
-- [ ] **Phase 1: Backend Correctness** — Eliminate P0 connection leaks, broken idempotency replay, CORS misconfiguration, and dead code that undermines production reliability
+- [x] **Phase 1: Backend Correctness** — Eliminate P0 connection leaks, broken idempotency replay, CORS misconfiguration, and dead code that undermines production reliability (completed 2026-07-01)
 - [ ] **Phase 2: Learning Algorithm Integrity** — Fix variance formula, first-observation bootstrapping, EMA dead code, and per-segment transaction commits so the learning model produces accurate outputs
 - [ ] **Phase 3: API Surface Completion** — Add missing single-resource endpoints, geospatial stop search, enriched ETA response, and client-visible deprecation headers
 - [ ] **Phase 4: Data Management** — Establish a DB migration framework, wire rate-limit cleanup, fix retention orphans, and add a safe GTFS update workflow
@@ -34,7 +34,7 @@
   5. The response to POST /v1/ride_summary includes an `X-Deprecation-Warning` header when the deprecated `timestamp_utc` field is used; clients receive the signal without reading server logs
   6. The `slowapi` `Limiter` instances in `routes.py` and `main.py` are deleted — the codebase has one rate-limiting mechanism (`RateLimitMiddleware`), not two
 
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 Plans:
 **Wave 1**
 
@@ -46,7 +46,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 01-03-PLAN.md — idempotency replay fix + X-Deprecation-Warning headers (BUGFIX-03, API-05)
+- [x] 01-03-PLAN.md — idempotency replay fix + X-Deprecation-Warning headers (BUGFIX-03, API-05)
 
 ### Phase 2: Learning Algorithm Integrity
 
@@ -127,7 +127,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Backend Correctness | 2/3 | In Progress|  |
+| 1. Backend Correctness | 3/3 | Complete   | 2026-07-01 |
 | 2. Learning Algorithm Integrity | 0/? | Not started | - |
 | 3. API Surface Completion | 0/? | Not started | - |
 | 4. Data Management | 0/? | Not started | - |

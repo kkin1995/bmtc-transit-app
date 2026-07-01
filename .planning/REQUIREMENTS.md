@@ -32,7 +32,7 @@ The following are built and working. Captured here for traceability; not include
 
 - [x] **BUGFIX-01**: SQLite connections are always closed even on unexpected exceptions (try/finally or context manager in all handlers — currently any exception between `get_connection()` and `conn.close()` leaks the FD)
 - [x] **BUGFIX-02**: CORS configuration locks `allow_origins` to an explicit list (not wildcard) before production; `allow_credentials` removed or scoped correctly
-- [ ] **BUGFIX-03**: Idempotency replay returns the original stored response body (not stale `accepted_segments=0, rejected_segments=0`)
+- [x] **BUGFIX-03**: Idempotency replay returns the original stored response body (not stale `accepted_segments=0, rejected_segments=0`)
 - [ ] **BUGFIX-04**: First observation on a new segment upserts a `segment_stats` row (not rejected as `missing_stats`); ensures new segments can learn from day one
 - [ ] **BUGFIX-05**: Variance calculation uses sample formula `m2 / (n-1)` — not population `m2 / n` — fixing systematically narrow P90 bounds
 - [ ] **BUGFIX-06**: All per-segment writes for a ride are committed in a single transaction (not ~100 commits per ride via per-segment `conn.commit()`)
@@ -50,7 +50,7 @@ The following are built and working. Captured here for traceability; not include
 - [ ] **API-02**: GET /v1/routes/{route_id} returns single route detail (stops, trips, schedules)
 - [ ] **API-03**: GET /v1/stops?lat=X&lon=Y&radius_m=500 — geospatial stop search (currently only bbox)
 - [ ] **API-04**: GET /v1/eta response includes `from_stop_name`, `to_stop_name`, `route_short_name` (currently only IDs)
-- [ ] **API-05**: Deprecated `timestamp_utc` field sends `Deprecation` or `X-Deprecation-Warning` header to clients (currently only logs server-side)
+- [x] **API-05**: Deprecated `timestamp_utc` field sends `Deprecation` or `X-Deprecation-Warning` header to clients (currently only logs server-side)
 
 ### Data Management
 

@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 01
 status: executing
-stopped_at: Completed 01-02-PLAN.md
-last_updated: "2026-07-01T09:04:32.931Z"
+stopped_at: Completed 01-03-PLAN.md
+last_updated: "2026-07-01T09:37:00.000Z"
 progress:
   total_phases: 6
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 3
-  completed_plans: 2
-  percent: 67
+  completed_plans: 3
+  percent: 17
 ---
 
 # Project State
@@ -31,9 +31,9 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 | Field | Value |
 |-------|-------|
 | Active phase | Phase 1: Backend Correctness |
-| Active plan | 01-03 (01-01, 01-02 complete) |
-| Phase status | In progress (2/3 plans complete) |
-| Overall progress | 0/6 phases complete |
+| Active plan | 01-03 complete (01-01, 01-02, 01-03 all complete) |
+| Phase status | Complete (3/3 plans complete) — ready for verification |
+| Overall progress | 0/6 phases complete (Phase 1 execution done, pending phase-level verification) |
 
 ```
 Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
@@ -52,15 +52,16 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 
 | Metric | Value |
 |--------|-------|
-| Phases complete | 0/6 |
-| Plans complete | 2 |
-| Tests passing | 182/190 (182 passed, 8 pre-existing failures — baseline unchanged) |
+| Phases complete | 1/6 |
+| Plans complete | 3 |
+| Tests passing | 189/195 (189 passed, 6 pre-existing failures — baseline reduced from 8 via drive-by fix) |
 | Open blockers | 0 |
 
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 01 P01 | 14min | 3 tasks | 13 files |
 | Phase 01 P02 | 27min | 3 tasks | 5 files |
+| Phase 01 P03 | 33min | 4 tasks | 9 files |
 
 ---
 
@@ -76,6 +77,9 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 - [Phase 01-02]: CORS now reads an explicit allowlist from `BMTC_CORS_ORIGINS` with `allow_credentials` fully removed (BUGFIX-02) — Bearer-header auth only, no cookies
 - [Phase 01-02]: `cleanup_expired_keys()` wired into `lifespan` startup after `init_db()` (BUGFIX-07) — expired idempotency rows purged on every restart
 - [Phase 01-02]: All `slowapi` dead code removed from `main.py`/`routes.py`/`pyproject.toml` (LEARN-03) — `RateLimitMiddleware` is the sole active rate limiter
+- [Phase 01-03]: `response_body TEXT` column added to `idempotency_keys` via `schema.sql` + guarded `ALTER TABLE` in `db.py`'s `init_db()` (BUGFIX-03) — idempotent replay returns the original response; legacy `response_body IS NULL` rows fall through to fresh reprocessing (D-09)
+- [Phase 01-03]: `X-Deprecation-Warning` header delivered via `JSONResponse` on both `POST /v1/ride_summary` and `GET /v1/eta` when `timestamp_utc` is used (API-05) — documented spec-first in `docs/api.md` per CLAUDE.md Rule 1
+- [Phase 01-03]: 2 stale `test_idempotency.py` tests (old 2-arg `store_idempotency_key()` signature) fixed as a drive-by — full suite baseline reduced from 8 to 6 pre-existing failures
 
 ### Active TODOs
 
@@ -89,12 +93,12 @@ None
 
 ## Session Continuity
 
-**Last session:** 2026-07-01T09:04:32.931Z
-**Stopped at:** Completed 01-02-PLAN.md
+**Last session:** 2026-07-01T09:21:15.346Z
+**Stopped at:** Completed 01-03-PLAN.md
 **Resume file:** None
 
 **Last updated:** 2026-07-01
-**Next action:** Continue executing Phase 1 — run 01-03-PLAN.md
+**Next action:** Phase 1 (Backend Correctness) execution complete — proceed to phase verification, then Phase 2 (Learning Correctness)
 
 ---
 
