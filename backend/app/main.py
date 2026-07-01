@@ -14,6 +14,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import get_settings
 from app.db import init_db
+from app.idempotency import cleanup_expired_keys
 from app import routes
 from app import state
 from app.rate_limit import RateLimitMiddleware
@@ -46,6 +47,12 @@ async def lifespan(app: FastAPI):
 
     # Initialize database on startup
     init_db(settings.db_path)
+
+    # Purge expired idempotency keys (BUGFIX-07) so the table does not grow
+    # unbounded across restarts.
+    deleted = cleanup_expired_keys()
+    logger.info(f"Startup cleanup: removed {deleted} expired idempotency keys")
+
     state.set_startup_time(int(time.time()))
 
     yield
@@ -56,9 +63,11 @@ async def lifespan(app: FastAPI):
 
 limiter = Limiter(key_func=get_remote_address)
 
+settings = get_settings()
+
 app = FastAPI(
     title="BMTC Transit Learning API",
-    version=get_settings().server_version,
+    version=settings.server_version,
     lifespan=lifespan,
 )
 
@@ -87,11 +96,13 @@ async def http_exception_handler(request: Request, exc: HTTPException):
         content={"detail": exc.detail}
     )
 
-# Add CORS middleware (allow requests from Expo dev server and web browsers)
+# Add CORS middleware (explicit origin allowlist from BMTC_CORS_ORIGINS).
+# allow_credentials is intentionally absent (D-01) — Bearer-header auth only,
+# no cookies — avoiding the wildcard-origin + credentials combination that
+# browsers reject and Starlette silently degrades to origin-reflection.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for development
-    allow_credentials=True,
+    allow_origins=settings.cors_origins.split(","),
     allow_methods=["*"],  # Allow all HTTP methods
     allow_headers=["*"],  # Allow all headers
 )
