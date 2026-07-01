@@ -31,7 +31,11 @@
   4. Expired idempotency keys are removed on application startup — the `idempotency_keys` table has no rows older than 24h after a fresh server start
   5. The response to POST /v1/ride_summary includes an `X-Deprecation-Warning` header when the deprecated `timestamp_utc` field is used; clients receive the signal without reading server logs
   6. The `slowapi` `Limiter` instances in `routes.py` and `main.py` are deleted — the codebase has one rate-limiting mechanism (`RateLimitMiddleware`), not two
-**Plans:** TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 01-01-PLAN.md — get_connection() context-manager conversion + all call-site updates (BUGFIX-01)
+- [ ] 01-02-PLAN.md — CORS allowlist, startup idempotency cleanup, slowapi dead-code removal (BUGFIX-02, BUGFIX-07, LEARN-03)
+- [ ] 01-03-PLAN.md — idempotency replay fix + X-Deprecation-Warning headers (BUGFIX-03, API-05)
 
 ### Phase 2: Learning Algorithm Integrity
 **Goal:** The Welford+EMA learning model produces statistically correct outputs — new segments learn from their first observation, P90 bounds are not systematically underestimated, all segment writes commit in one transaction, and EMA is either used or removed
@@ -97,7 +101,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Backend Correctness | 0/? | Not started | - |
+| 1. Backend Correctness | 0/3 | Not started | - |
 | 2. Learning Algorithm Integrity | 0/? | Not started | - |
 | 3. API Surface Completion | 0/? | Not started | - |
 | 4. Data Management | 0/? | Not started | - |
