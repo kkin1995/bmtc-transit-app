@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 01
 status: executing
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-07-01T04:40:42.945Z"
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-07-01T09:04:32.931Z"
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
-  percent: 0
+  completed_plans: 2
+  percent: 67
 ---
 
 # Project State
@@ -31,8 +31,8 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 | Field | Value |
 |-------|-------|
 | Active phase | Phase 1: Backend Correctness |
-| Active plan | 01-02 (01-01 complete) |
-| Phase status | In progress (1/3 plans complete) |
+| Active plan | 01-03 (01-01, 01-02 complete) |
+| Phase status | In progress (2/3 plans complete) |
 | Overall progress | 0/6 phases complete |
 
 ```
@@ -53,13 +53,14 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 | Metric | Value |
 |--------|-------|
 | Phases complete | 0/6 |
-| Plans complete | 1 |
-| Tests passing | 176/184 (176 passed, 8 pre-existing failures — baseline unchanged) |
+| Plans complete | 2 |
+| Tests passing | 182/190 (182 passed, 8 pre-existing failures — baseline unchanged) |
 | Open blockers | 0 |
 
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 01 P01 | 14min | 3 tasks | 13 files |
+| Phase 01 P02 | 27min | 3 tasks | 5 files |
 
 ---
 
@@ -72,6 +73,9 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 - CORS: lock origins in Phase 1; `allow_credentials` removal depends on auth review
 - Migration framework: lightweight versioned SQL scripts (not Alembic) — keep deps minimal
 - [Phase 01-01]: `get_connection()` converted to `@contextmanager` (BUGFIX-01) — all 15 app + 24 test call sites migrated to `with` syntax; zero manual `conn.close()` remain in `routes.py`
+- [Phase 01-02]: CORS now reads an explicit allowlist from `BMTC_CORS_ORIGINS` with `allow_credentials` fully removed (BUGFIX-02) — Bearer-header auth only, no cookies
+- [Phase 01-02]: `cleanup_expired_keys()` wired into `lifespan` startup after `init_db()` (BUGFIX-07) — expired idempotency rows purged on every restart
+- [Phase 01-02]: All `slowapi` dead code removed from `main.py`/`routes.py`/`pyproject.toml` (LEARN-03) — `RateLimitMiddleware` is the sole active rate limiter
 
 ### Active TODOs
 
@@ -85,12 +89,12 @@ None
 
 ## Session Continuity
 
-**Last session:** 2026-07-01T04:40:42.941Z
-**Stopped at:** Completed 01-01-PLAN.md
+**Last session:** 2026-07-01T09:04:32.931Z
+**Stopped at:** Completed 01-02-PLAN.md
 **Resume file:** None
 
 **Last updated:** 2026-07-01
-**Next action:** Continue executing Phase 1 — run 01-02-PLAN.md
+**Next action:** Continue executing Phase 1 — run 01-03-PLAN.md
 
 ---
 
