@@ -104,37 +104,42 @@ The following are built and working. Captured here for traceability; not include
 
 ## Traceability
 
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| BUGFIX-01 | Phase 1 | Pending |
-| BUGFIX-02 | Phase 1 | Pending |
-| BUGFIX-03 | Phase 1 | Pending |
-| BUGFIX-04 | Phase 2 | Pending |
-| BUGFIX-05 | Phase 2 | Pending |
-| BUGFIX-06 | Phase 2 | Pending |
-| BUGFIX-07 | Phase 3 | Pending |
-| LEARN-01 | Phase 2 | Pending |
-| LEARN-02 | Phase 2 | Pending |
-| LEARN-03 | Phase 1 | Pending |
-| API-01 | Phase 3 | Pending |
-| API-02 | Phase 3 | Pending |
-| API-03 | Phase 3 | Pending |
-| API-04 | Phase 3 | Pending |
-| API-05 | Phase 1 | Pending |
-| DATA-01 | Phase 4 | Pending |
-| DATA-02 | Phase 4 | Pending |
-| DATA-03 | Phase 4 | Pending |
-| DATA-04 | Phase 4 | Pending |
-| OPS-01 | Phase 5 | Pending |
-| OPS-02 | Phase 5 | Pending |
-| OPS-03 | Phase 5 | Pending |
-| OPS-04 | Phase 5 | Pending |
+| Requirement | Phase | Phase Name | Status |
+|-------------|-------|------------|--------|
+| BUGFIX-01 | Phase 1 | Backend Correctness | Pending |
+| BUGFIX-02 | Phase 1 | Backend Correctness | Pending |
+| BUGFIX-03 | Phase 1 | Backend Correctness | Pending |
+| BUGFIX-07 | Phase 1 | Backend Correctness | Pending |
+| LEARN-03 | Phase 1 | Backend Correctness | Pending |
+| API-05 | Phase 1 | Backend Correctness | Pending |
+| BUGFIX-04 | Phase 2 | Learning Algorithm Integrity | Pending |
+| BUGFIX-05 | Phase 2 | Learning Algorithm Integrity | Pending |
+| BUGFIX-06 | Phase 2 | Learning Algorithm Integrity | Pending |
+| LEARN-01 | Phase 2 | Learning Algorithm Integrity | Pending |
+| LEARN-02 | Phase 2 | Learning Algorithm Integrity | Pending |
+| API-01 | Phase 3 | API Surface Completion | Pending |
+| API-02 | Phase 3 | API Surface Completion | Pending |
+| API-03 | Phase 3 | API Surface Completion | Pending |
+| API-04 | Phase 3 | API Surface Completion | Pending |
+| DATA-01 | Phase 4 | Data Management | Pending |
+| DATA-02 | Phase 4 | Data Management | Pending |
+| DATA-03 | Phase 4 | Data Management | Pending |
+| DATA-04 | Phase 4 | Data Management | Pending |
+| OPS-01 | Phase 5 | Quality & Operations | Pending |
+| OPS-02 | Phase 5 | Quality & Operations | Pending |
+| OPS-03 | Phase 5 | Quality & Operations | Pending |
+| OPS-04 | Phase 5 | Quality & Operations | Pending |
 
 **Coverage:**
 - v1 requirements: 24 total
 - Mapped to phases: 24
 - Unmapped: 0 ✓
 
+**Note:** BUGFIX-07 (idempotency key cleanup on startup) was reassigned from Phase 3 to Phase 1.
+It belongs with backend correctness fixes — it is an operational reliability concern, not an API
+surface addition. This corrects the initial traceability draft.
+
 ---
+
 *Requirements defined: 2026-07-01*
-*Last updated: 2026-07-01 after brownfield initialization*
+*Last updated: 2026-07-01 — traceability updated after roadmap creation; BUGFIX-07 moved from Phase 3 to Phase 1*
