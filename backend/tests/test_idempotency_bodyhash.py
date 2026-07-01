@@ -220,6 +220,71 @@ def test_replay_with_same_body_succeeds(setup_segment_for_bodyhash, auth_headers
     # Should return cached response
 
 
+def test_replay_returns_original_accepted_count_not_zero(setup_segment_for_bodyhash, auth_headers):
+    """Test that replaying a submission returns the ORIGINAL accepted/rejected counts,
+    not the hardcoded zero-count response (BUGFIX-03, D-06..D-09)."""
+    from app.config import get_settings
+    from app.db import get_connection
+
+    client = setup_segment_for_bodyhash
+    idempotency_key = str(uuid4())
+
+    # setup_segment_for_bodyhash only seeds baseline stats for bin_id=0, but the
+    # request's timestamp maps to whichever bin "now" falls into — seed all 192
+    # bins so update_segment_stats() always finds a row to accept against.
+    settings = get_settings()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
+            ("TEST_ROUTE", 0, "STOP1", "STOP2"),
+        )
+        segment_id = cursor.fetchone()[0]
+        for bin_id in range(192):
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO segment_stats
+                (segment_id, bin_id, n, welford_mean, welford_m2, ema_mean, schedule_mean, last_update)
+                VALUES (?, ?, 0, 0, 0, 0, 300, ?)
+                """,
+                (segment_id, bin_id, int(time.time())),
+            )
+        conn.commit()
+
+    request_data = create_ride_request()
+
+    # First submission — accepts 1 segment
+    response1 = client.post(
+        "/v1/ride_summary",
+        json=request_data,
+        headers={
+            **auth_headers,
+            "Idempotency-Key": idempotency_key,
+        },
+    )
+    assert response1.status_code == 200
+    data1 = response1.json()
+    assert data1["accepted_segments"] == 1
+
+    # Replay with SAME key + body
+    response2 = client.post(
+        "/v1/ride_summary",
+        json=request_data,
+        headers={
+            **auth_headers,
+            "Idempotency-Key": idempotency_key,
+        },
+    )
+    assert response2.status_code == 200
+    data2 = response2.json()
+
+    # Replay must return the ORIGINAL counts, not zeros
+    assert data2["accepted_segments"] == data1["accepted_segments"]
+    assert data2["accepted_segments"] != 0
+    assert data2["rejected_segments"] == data1["rejected_segments"]
+    assert data2["rejected_by_reason"] == data1["rejected_by_reason"]
+
+
 def test_replay_with_different_body_returns_409(setup_segment_for_bodyhash, auth_headers):
     """Test that replaying with different body returns 409 Conflict (H1 fix)."""
     client = setup_segment_for_bodyhash

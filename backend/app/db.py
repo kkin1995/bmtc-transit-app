@@ -18,6 +18,13 @@ def init_db(db_path: str) -> None:
         schema = f.read()
     conn.executescript(schema)
 
+    # Guarded ALTER TABLE: add response_body column for existing DBs whose
+    # CREATE TABLE IF NOT EXISTS was a no-op (BUGFIX-03, D-06). Idempotent —
+    # safe to run on every startup since it checks PRAGMA table_info first.
+    existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(idempotency_keys)").fetchall()}
+    if "response_body" not in existing_cols:
+        conn.execute("ALTER TABLE idempotency_keys ADD COLUMN response_body TEXT")
+
     # Initialize 192 time bins
     bins = []
     bin_id = 0
