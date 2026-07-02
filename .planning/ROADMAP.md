@@ -62,7 +62,7 @@ Plans:
 
 **Note (2026-07-02):** Criterion 5 (`dwell_stats` resolution) removed from this phase — LEARN-02 moved to v2 as LEARN-V2-05 during Phase 2 discussion; dwell-time learning needs algorithm research before implementation. See `.planning/REQUIREMENTS.md`.
 
-**Plans:** 1/4 plans executed
+**Plans:** 2/4 plans executed
 Plans:
 **Wave 1**
 
@@ -70,7 +70,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1)*
 
-- [ ] 02-02-PLAN.md — BUGFIX-04 + LEARN-01 core: seed-on-first-observation in update_segment_stats, remove EMA/is_stale dead code, update rejection tests
+- [x] 02-02-PLAN.md — BUGFIX-04 + LEARN-01 core: seed-on-first-observation in update_segment_stats, remove EMA/is_stale dead code, update rejection tests
 
 **Wave 3** *(blocked on Wave 2)*
 
@@ -145,7 +145,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Backend Correctness | 3/3 | Complete    | 2026-07-01 |
-| 2. Learning Algorithm Integrity | 1/4 | In Progress|  |
+| 2. Learning Algorithm Integrity | 2/4 | In Progress|  |
 | 3. API Surface Completion | 0/? | Not started | - |
 | 4. Data Management | 0/? | Not started | - |
 | 5. Quality & Operations | 0/? | Not started | - |
