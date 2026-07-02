@@ -276,12 +276,9 @@ def test_outlier_rejection(global_agg_client, auth_headers):
     )
     assert response.status_code == 200
     result = response.json()
-    # Check if outlier was detected (depends on implementation) (v1: rejected_segments)
-    if result["rejected_segments"] > 0:
-        assert (
-            "outlier" in result["rejected_by_reason"]
-            or "missing_stats" in result["rejected_by_reason"]
-        )
+    # The bin is pre-seeded with n=10 above, so the 400.0 duration is a genuine
+    # outlier (>3 sigma) — outlier is the only expected rejection reason.
+    assert "outlier" in result["rejected_by_reason"]
 
 
 def test_max_segments_validation(global_agg_client, auth_headers):
@@ -348,6 +345,8 @@ def test_rejected_by_reason_breakdown(global_agg_client, auth_headers):
     result = response.json()
 
     # Should have rejections for different reasons (v1: rejected_segments)
+    # The third segment (mapmatch_conf=1.0, unseeded bin) is now seeded-and-accepted
+    # post-BUGFIX-04, so the deterministic rejection is the low-mapmatch-conf segment.
     assert result["rejected_segments"] >= 1
     assert "rejected_by_reason" in result
     reasons = result["rejected_by_reason"]
@@ -355,7 +354,6 @@ def test_rejected_by_reason_breakdown(global_agg_client, auth_headers):
     # Check structure
     assert isinstance(reasons, dict)
     assert "low_mapmatch_conf" in reasons
-    assert "missing_stats" in reasons or "outlier" in reasons
 
 
 def test_global_aggregation_increments_n(global_agg_client, auth_headers):
