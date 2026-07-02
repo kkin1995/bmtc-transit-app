@@ -41,8 +41,9 @@ The following are built and working. Captured here for traceability; not include
 ### Learning Algorithm Integrity
 
 - [ ] **LEARN-01**: EMA values are either incorporated into the blend formula OR all EMA writes are removed — no silent dead code
-- [ ] **LEARN-02**: `dwell_stats` table is either populated by dwell-time learning or dropped from schema — no orphaned tables
 - [x] **LEARN-03**: `slowapi` `Limiter` dead code removed from `routes.py` and `main.py` (actual limiting is in `RateLimitMiddleware`)
+
+**Note (2026-07-02, Phase 2 discussion):** LEARN-02 (`dwell_stats` resolution) moved to v2 — see LEARN-V2-05 below. Deferred pending research into the most effective algorithm for learning dwell times from mobile-app-submitted `dwell_sec` data (same rationale as LEARN-V2-01 for EMA). ROADMAP.md Phase 2 success criterion #5 amended accordingly.
 
 ### API Surface
 
@@ -93,6 +94,7 @@ The following are built and working. Captured here for traceability; not include
 - **LEARN-V2-02**: P90 uses log-normal or gamma distribution approximation (not normal) to better model right-skewed bus travel times
 - **LEARN-V2-03**: Welford `n` resets or decays over time (prevents over-confidence after route changes)
 - **LEARN-V2-04**: Property-based / fuzz testing for Welford/EMA edge cases (hypothesis library)
+- **LEARN-V2-05**: `dwell_stats` populated by dwell-time learning (Welford pattern on `dwell_sec`, already collected in `ride_segments`) — research the most effective dwell-prediction approach first; moved from v1 LEARN-02 during Phase 2 discussion (2026-07-02)
 
 ### Analytics
 
@@ -133,7 +135,6 @@ The following are built and working. Captured here for traceability; not include
 | BUGFIX-05 | Phase 2 | Learning Algorithm Integrity | Pending |
 | BUGFIX-06 | Phase 2 | Learning Algorithm Integrity | Pending |
 | LEARN-01 | Phase 2 | Learning Algorithm Integrity | Pending |
-| LEARN-02 | Phase 2 | Learning Algorithm Integrity | Pending |
 | API-01 | Phase 3 | API Surface Completion | Pending |
 | API-02 | Phase 3 | API Surface Completion | Pending |
 | API-03 | Phase 3 | API Surface Completion | Pending |
@@ -156,8 +157,8 @@ The following are built and working. Captured here for traceability; not include
 
 **Coverage:**
 
-- v1 requirements: 31 total
-- Mapped to phases: 31
+- v1 requirements: 30 total (LEARN-02 moved to v2 as LEARN-V2-05, 2026-07-02)
+- Mapped to phases: 30
 - Unmapped: 0 ✓
 
 **Note:** BUGFIX-07 (idempotency key cleanup on startup) was reassigned from Phase 3 to Phase 1.

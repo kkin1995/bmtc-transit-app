@@ -2,8 +2,8 @@
 
 **Project:** ETA learning system for Bengaluru buses (brownfield — Phases 1–3 of prior work validated)
 **Granularity:** Standard
-**Active requirements:** 31 (BUGFIX-01 through APIDOC-02)
-**Coverage:** 31/31 ✓
+**Active requirements:** 30 (BUGFIX-01 through APIDOC-02; LEARN-02 moved to v2 as LEARN-V2-05, 2026-07-02)
+**Coverage:** 30/30 ✓
 
 ---
 
@@ -52,14 +52,15 @@ Plans:
 
 **Goal:** The Welford+EMA learning model produces statistically correct outputs — new segments learn from their first observation, P90 bounds are not systematically underestimated, all segment writes commit in one transaction, and EMA is either used or removed
 **Depends on:** Phase 1
-**Requirements:** BUGFIX-04, BUGFIX-05, BUGFIX-06, LEARN-01, LEARN-02
+**Requirements:** BUGFIX-04, BUGFIX-05, BUGFIX-06, LEARN-01
 **Success Criteria** (what must be TRUE):
 
   1. Submitting a ride segment for a brand-new (never-seen) route segment results in a `segment_stats` row being created and the observation counted as accepted — not rejected with `missing_stats`
   2. The variance calculation returns `m2 / (n-1)` for n >= 2 — after 10 observations the P90 ETA bound is measurably wider than with the population formula, verifiable via unit test
   3. A ride with 50 segments triggers exactly one `conn.commit()` call — not ~100 — confirmed by a test that asserts a single transaction wraps all per-segment writes
   4. EMA values are either incorporated into `compute_blended_mean` (with a test asserting non-zero influence on the returned ETA) or all EMA write paths are removed from `learning.py` — no silent dead code remains
-  5. The `dwell_stats` table is either populated by a code path that writes dwell observations, or dropped from `schema.sql` with a migration script — no orphaned table exists
+
+**Note (2026-07-02):** Criterion 5 (`dwell_stats` resolution) removed from this phase — LEARN-02 moved to v2 as LEARN-V2-05 during Phase 2 discussion; dwell-time learning needs algorithm research before implementation. See `.planning/REQUIREMENTS.md`.
 
 **Plans:** TBD
 
