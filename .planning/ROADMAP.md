@@ -62,7 +62,7 @@ Plans:
 
 **Note (2026-07-02):** Criterion 5 (`dwell_stats` resolution) removed from this phase — LEARN-02 moved to v2 as LEARN-V2-05 during Phase 2 discussion; dwell-time learning needs algorithm research before implementation. See `.planning/REQUIREMENTS.md`.
 
-**Plans:** 2/4 plans executed
+**Plans:** 3/4 plans executed
 Plans:
 **Wave 1**
 
@@ -74,7 +74,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2)*
 
-- [ ] 02-03-PLAN.md — LEARN-01 config surface: remove ema_alpha/half_life_days settings, soft-deprecate GET /v1/config fields (D-14), docs pass (D-06)
+- [x] 02-03-PLAN.md — LEARN-01 config surface: remove ema_alpha/half_life_days settings, soft-deprecate GET /v1/config fields (D-14), docs pass (D-06)
 
 **Wave 4** *(blocked on Waves 2 & 3)*
 
@@ -145,7 +145,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Backend Correctness | 3/3 | Complete    | 2026-07-01 |
-| 2. Learning Algorithm Integrity | 2/4 | In Progress|  |
+| 2. Learning Algorithm Integrity | 3/4 | In Progress|  |
 | 3. API Surface Completion | 0/? | Not started | - |
 | 4. Data Management | 0/? | Not started | - |
 | 5. Quality & Operations | 0/? | Not started | - |

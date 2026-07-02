@@ -5,12 +5,12 @@ milestone_name: milestone
 current_phase: 02
 status: executing
 stopped_at: Phase 2 context gathered
-last_updated: "2026-07-02T11:33:01.501Z"
+last_updated: "2026-07-02T11:43:37.497Z"
 progress:
   total_phases: 6
   completed_phases: 1
   total_plans: 7
-  completed_plans: 5
+  completed_plans: 6
   percent: 17
 ---
 
@@ -31,8 +31,8 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 | Field | Value |
 |-------|-------|
 | Active phase | Phase 2: Learning Algorithm Integrity |
-| Active plan | Plan 2 of 4 complete (02-02) |
-| Phase status | Executing — Wave 1 done, Wave 2 pending |
+| Active plan | Plan 3 of 4 complete (02-03) |
+| Phase status | Executing — Wave 2 done, Wave 3 pending |
 | Overall progress | 1/6 phases complete (Phase 1 executed + verified; 6/6 must-haves passed) |
 
 ```
@@ -55,7 +55,7 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 | Metric | Value |
 |--------|-------|
 | Phases complete | 1/6 |
-| Plans complete | 5 |
+| Plans complete | 6 |
 | Tests passing | 196/202 (196 passed, 6 pre-existing failures — same baseline as Phase 1, no new failures) |
 | Open blockers | 0 |
 
@@ -66,6 +66,7 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 | Phase 01 P03 | 33min | 4 tasks | 9 files |
 | Phase 02 P01 | 6min | 2 tasks | 2 files |
 | Phase 02 P02 | 13min | 3 tasks | 3 files |
+| Phase 02 P03 | 11min | 3 tasks | 10 files |
 
 ---
 
@@ -87,6 +88,8 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 - [Phase 02-01]: `compute_variance()` divisor changed from `m2/n` to `m2/(n-1)` (BUGFIX-05) — sample variance is the canonical convention paired with Welford's algorithm; `n < 2` guard preserved exactly to protect the BUGFIX-04 seeded `n=0` row and first Welford update (`n=1`) from ZeroDivisionError
 - [Phase 02-02]: `update_segment_stats()` seeds a new segment_stats row (n=0, welford_mean/schedule_mean = AVG(schedule_mean) across the segment's other bins, or 0.0 fallback) for a never-seen (segment_id, bin_id), then falls through into the existing outlier-check + Welford-update logic so the triggering observation is accepted (BUGFIX-04) — `missing_stats` fully retired as a rejection reason
 - [Phase 02-02]: `update_ema`, `compute_time_based_alpha`, and `is_stale` deleted entirely from `app.learning` (LEARN-01) — zero remaining callers; `ema_mean`/`ema_var` no longer read or written by `update_segment_stats`; trailing `conn.commit()` removed from `update_segment_stats` (BUGFIX-06, this function only)
+- [Phase 02-03]: `Settings.ema_alpha`/`Settings.half_life_days` removed from `config.py`; `ConfigResponse` soft-deprecated to `Optional[...] = None` (D-04/D-14) — `GET /v1/config` returns 200 with null values, no mobile client breaks
+- [Phase 02-03]: D-06 docs pass reframed "Welford + EMA" prose across `CLAUDE.md`, `.claude/CLAUDE.md`, `docs/architecture.md`, `docs/PROJECT_STRUCTURE.md`, `docs/gtfs-database.md` as EMA-removed-from-active-pipeline / v2 research item (LEARN-V2-01), without erasing EMA mentions
 
 ### Active TODOs
 
@@ -100,12 +103,12 @@ None
 
 ## Session Continuity
 
-**Last session:** 2026-07-02T11:32:50.918Z
-**Stopped at:** Completed 02-02-PLAN.md (BUGFIX-04 seed-and-accept + LEARN-01 EMA removal)
-**Resume file:** .planning/phases/02-learning-algorithm-integrity/02-03-PLAN.md
+**Last session:** 2026-07-02T11:43:37.497Z
+**Stopped at:** Completed 02-03-PLAN.md (LEARN-01 config-surface soft-deprecation + D-06 docs pass)
+**Resume file:** .planning/phases/02-learning-algorithm-integrity/02-04-PLAN.md
 
 **Last updated:** 2026-07-02
-**Next action:** Execute Phase 2 Plan 3 (02-03-PLAN.md)
+**Next action:** Execute Phase 2 Plan 4 (02-04-PLAN.md)
 
 ---
 
