@@ -10,7 +10,7 @@
 ## Phases
 
 - [x] **Phase 1: Backend Correctness** — Eliminate P0 connection leaks, broken idempotency replay, CORS misconfiguration, and dead code that undermines production reliability (completed 2026-07-01)
-- [ ] **Phase 2: Learning Algorithm Integrity** — Fix variance formula, first-observation bootstrapping, EMA dead code, and per-segment transaction commits so the learning model produces accurate outputs
+- [x] **Phase 2: Learning Algorithm Integrity** — Fix variance formula, first-observation bootstrapping, EMA dead code, and per-segment transaction commits so the learning model produces accurate outputs (completed 2026-07-02)
 - [ ] **Phase 3: API Surface Completion** — Add missing single-resource endpoints, geospatial stop search, enriched ETA response, and client-visible deprecation headers
 - [ ] **Phase 4: Data Management** — Establish a DB migration framework, wire rate-limit cleanup, fix retention orphans, and add a safe GTFS update workflow
 - [ ] **Phase 5: Quality & Operations** — Add performance tests, bootstrap smoke tests, CI pipeline, and structured monitoring so production targets are verifiably met
@@ -62,7 +62,7 @@ Plans:
 
 **Note (2026-07-02):** Criterion 5 (`dwell_stats` resolution) removed from this phase — LEARN-02 moved to v2 as LEARN-V2-05 during Phase 2 discussion; dwell-time learning needs algorithm research before implementation. See `.planning/REQUIREMENTS.md`.
 
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 Plans:
 **Wave 1**
 
@@ -78,7 +78,7 @@ Plans:
 
 **Wave 4** *(blocked on Waves 2 & 3)*
 
-- [ ] 02-04-PLAN.md — BUGFIX-06: consolidate ride writes into one transaction, dedupe device_bucket update (D-13)
+- [x] 02-04-PLAN.md — BUGFIX-06: consolidate ride writes into one transaction, dedupe device_bucket update (D-13)
 
 ### Phase 3: API Surface Completion
 
@@ -145,7 +145,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Backend Correctness | 3/3 | Complete    | 2026-07-01 |
-| 2. Learning Algorithm Integrity | 3/4 | In Progress|  |
+| 2. Learning Algorithm Integrity | 4/4 | Complete   | 2026-07-02 |
 | 3. API Surface Completion | 0/? | Not started | - |
 | 4. Data Management | 0/? | Not started | - |
 | 5. Quality & Operations | 0/? | Not started | - |

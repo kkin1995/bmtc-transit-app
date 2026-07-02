@@ -5,13 +5,13 @@ milestone_name: milestone
 current_phase: 02
 status: executing
 stopped_at: Phase 2 context gathered
-last_updated: "2026-07-02T11:43:37.497Z"
+last_updated: "2026-07-02T11:54:05.794Z"
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 7
-  completed_plans: 6
-  percent: 17
+  completed_plans: 7
+  percent: 33
 ---
 
 # Project State
@@ -31,13 +31,13 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 | Field | Value |
 |-------|-------|
 | Active phase | Phase 2: Learning Algorithm Integrity |
-| Active plan | Plan 3 of 4 complete (02-03) |
-| Phase status | Executing — Wave 2 done, Wave 3 pending |
+| Active plan | Plan 4 of 4 complete (02-04) |
+| Phase status | Phase complete — ready for verification |
 | Overall progress | 1/6 phases complete (Phase 1 executed + verified; 6/6 must-haves passed) |
 
 ```
 Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
-           [   Done  ][  Active ][  Queued ][  Queued ][  Queued ][  Queued ]
+           [   Done  ][  Done   ][  Queued ][  Queued ][  Queued ][  Queued ]
 ```
 
 ---
@@ -54,9 +54,9 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 
 | Metric | Value |
 |--------|-------|
-| Phases complete | 1/6 |
-| Plans complete | 6 |
-| Tests passing | 196/202 (196 passed, 6 pre-existing failures — same baseline as Phase 1, no new failures) |
+| Phases complete | 1/6 (Phase 2 executed, pending verification) |
+| Plans complete | 7 |
+| Tests passing | 198/204 (198 passed, 6 pre-existing failures — same baseline as Phase 1, no new failures) |
 | Open blockers | 0 |
 
 | Plan | Duration | Tasks | Files |
@@ -67,6 +67,7 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 | Phase 02 P01 | 6min | 2 tasks | 2 files |
 | Phase 02 P02 | 13min | 3 tasks | 3 files |
 | Phase 02 P03 | 11min | 3 tasks | 10 files |
+| Phase 02 P04 | 5min | 2 tasks | 4 files |
 
 ---
 
@@ -90,6 +91,8 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 - [Phase 02-02]: `update_ema`, `compute_time_based_alpha`, and `is_stale` deleted entirely from `app.learning` (LEARN-01) — zero remaining callers; `ema_mean`/`ema_var` no longer read or written by `update_segment_stats`; trailing `conn.commit()` removed from `update_segment_stats` (BUGFIX-06, this function only)
 - [Phase 02-03]: `Settings.ema_alpha`/`Settings.half_life_days` removed from `config.py`; `ConfigResponse` soft-deprecated to `Optional[...] = None` (D-04/D-14) — `GET /v1/config` returns 200 with null values, no mobile client breaks
 - [Phase 02-03]: D-06 docs pass reframed "Welford + EMA" prose across `CLAUDE.md`, `.claude/CLAUDE.md`, `docs/architecture.md`, `docs/PROJECT_STRUCTURE.md`, `docs/gtfs-database.md` as EMA-removed-from-active-pipeline / v2 research item (LEARN-V2-01), without erasing EMA mentions
+- [Phase 02-04]: Removed trailing `conn.commit()` from `update_device_bucket()` and `log_rejection()` in `learning.py` (D-12); hoisted the `update_device_bucket` call out of the per-segment loop in `routes.py::ride_summary` so it runs once per ride, not once per segment (D-13) — BUGFIX-06 fully resolved, a ride of any size now issues exactly one `conn.commit()`
+- [Phase 02-04]: RESEARCH.md's documented `monkeypatch.setattr(sqlite3.Connection, "commit", ...)` test pattern is incompatible with this Python 3.12.13/sqlite3 3.50.4 build (immutable C type); substituted a `sqlite3.connect`-factory counting wrapper achieving the identical commit-counting assertion
 
 ### Active TODOs
 
@@ -103,12 +106,12 @@ None
 
 ## Session Continuity
 
-**Last session:** 2026-07-02T11:43:37.497Z
-**Stopped at:** Completed 02-03-PLAN.md (LEARN-01 config-surface soft-deprecation + D-06 docs pass)
-**Resume file:** .planning/phases/02-learning-algorithm-integrity/02-04-PLAN.md
+**Last session:** 2026-07-02T11:51:50Z
+**Stopped at:** Completed 02-04-PLAN.md (BUGFIX-06 transaction consolidation + D-13 device_bucket dedupe) — Phase 2 complete, ready for verification
+**Resume file:** None
 
 **Last updated:** 2026-07-02
-**Next action:** Execute Phase 2 Plan 4 (02-04-PLAN.md)
+**Next action:** Verify Phase 2 (all 4 plans complete)
 
 ---
 
