@@ -32,15 +32,15 @@ These capabilities exist and are working in the current codebase:
 - ✓ **Expired idempotency keys purged on startup** — `cleanup_expired_keys()` wired into lifespan after `init_db()` — Phase 1
 - ✓ **X-Deprecation-Warning header** — delivered on POST /v1/ride_summary and GET /v1/eta when deprecated `timestamp_utc` is used; documented spec-first in docs/api.md — Phase 1
 - ✓ **Single rate-limiting mechanism** — dead `slowapi` Limiter code removed from main.py/routes.py/pyproject.toml; `RateLimitMiddleware` is sole limiter — Phase 1
+- ✓ **First-observation learning works** — `update_segment_stats` seeds a new `segment_stats` row and falls through to accept the triggering observation instead of rejecting with `missing_stats` — Phase 2
+- ✓ **Variance uses sample formula (n-1)** — `compute_variance()` returns Bessel-corrected sample variance, fixing systematically narrow P90 bounds — Phase 2
+- ✓ **All segment writes in a single transaction per ride** — trailing `conn.commit()` calls removed from `update_device_bucket`/`log_rejection`/`update_segment_stats`; one commit per ride in `routes.py` — Phase 2
+- ✓ **EMA dead code removed** — `update_ema`, `compute_time_based_alpha`, `is_stale` deleted; config surface (`ema_alpha`, `half_life_days`) soft-deprecated in `GET /v1/config` (returns null, not 500) — Phase 2
 
 ### Active
 
-Current work: fill learning algorithm gaps, complete the API surface, and add operational infrastructure. (Backend correctness bugs from Phase 1 are resolved — see Validated above.)
+Current work: complete the API surface and add operational infrastructure. (Backend correctness bugs from Phase 1 and learning algorithm gaps from Phase 2 are resolved — see Validated above.)
 
-- [ ] First-observation learning works (missing_stats → upsert, not reject)
-- [ ] Variance uses sample formula (n-1), fixing systematically narrow P90
-- [ ] All segment writes in a single transaction per ride (not 100 commits)
-- [ ] EMA either incorporated into blend or removed (not silent dead code)
 - [ ] GET /v1/stops/{stop_id} and GET /v1/routes/{route_id} endpoints
 - [ ] Geospatial stop search (radius_m parameter)
 - [ ] Stop names returned in /v1/eta response
@@ -63,12 +63,12 @@ Current work: fill learning algorithm gaps, complete the API surface, and add op
 
 ## Context
 
-**Codebase state (as of 2026-07-01):**
-- Backend: FastAPI + SQLite WAL, `uv` package manager, 195 tests (14 test files), systemd deployed
+**Codebase state (as of 2026-07-02):**
+- Backend: FastAPI + SQLite WAL, `uv` package manager, 198 tests (14 test files), systemd deployed
 - Mobile: Expo 54 / React Native 0.81, Tamagui, expo-location, expo-router
-- 9 API endpoints, all live; Phase 1 resolved the P0 connection leak, idempotency replay, and CORS bugs — remaining known issues are learning-algorithm and rate-limit-hardening scoped (see CONCERNS.md, ROADMAP.md Phase 6)
-- CONCERNS.md documents EMA dead code, multiple commits-per-segment, variance formula error (Phase 2 territory)
-- 01-REVIEW.md (Phase 1) found 3 pre-existing rate-limit/idempotency-error-shape defects (`rate_limit.py`, error response contract) explicitly deferred to Phase 6 — not phase-1-blocking, 6 tests remain red
+- 9 API endpoints, all live; Phase 1 resolved the P0 connection leak, idempotency replay, and CORS bugs; Phase 2 resolved the learning-algorithm correctness bugs (variance formula, first-observation rejection, per-segment commits, EMA dead code) — remaining known issues are API-surface and rate-limit-hardening scoped (see ROADMAP.md Phases 3, 6)
+- 02-REVIEW.md (Phase 2) found 4 non-blocking warnings — stale `device_bucket` examples in docs/api.md, seed-quality drift on sparse segments, a dead import alias in routes.py — deferred, no blockers
+- 01-REVIEW.md (Phase 1) found 3 pre-existing rate-limit/idempotency-error-shape defects (`rate_limit.py`, error response contract) explicitly deferred to Phase 6 — not phase-1-blocking, 6 tests remain red (same baseline through Phase 2)
 
 **Key technical decisions already made:**
 - SQLite WAL as the sole data store (no PostgreSQL, no Redis)
@@ -99,7 +99,7 @@ Current work: fill learning algorithm gaps, complete the API surface, and add op
 | Privacy: device_bucket via SHA256 | GDPR-adjacent; no user tracking | ✓ Good |
 | n0=20 blend weight denominator | Blend converges to learned mean after ~40 observations | — Pending (not validated in production) |
 | Bearer token + Idempotency-Key on POST | Prevents replay and rate-limit bypass | ✓ Good |
-| EMA stored but not yet blended | Placeholder for future recency-weighting | ⚠️ Revisit — either use it or remove it |
+| EMA stored but not yet blended | Placeholder for future recency-weighting | ✓ Resolved — removed entirely in Phase 2 (LEARN-01); recency-weighting is a v2 research item if revisited |
 | Normal distribution approximation for P90 | Simple, fast; known to underestimate for skewed distributions | ⚠️ Revisit — acceptable for now, revisit with real data |
 | Client-side `is_holiday` flag | Simplicity; single BMTC service_id makes server-side compute redundant | ⚠️ Revisit — can be spoofed |
 
@@ -121,4 +121,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-01 after Phase 1 (Backend Correctness) completion*
+*Last updated: 2026-07-02 after Phase 2 (Learning Algorithm Integrity) completion*
