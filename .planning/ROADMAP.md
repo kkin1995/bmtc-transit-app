@@ -62,11 +62,11 @@ Plans:
 
 **Note (2026-07-02):** Criterion 5 (`dwell_stats` resolution) removed from this phase — LEARN-02 moved to v2 as LEARN-V2-05 during Phase 2 discussion; dwell-time learning needs algorithm research before implementation. See `.planning/REQUIREMENTS.md`.
 
-**Plans:** 4 plans
+**Plans:** 1/4 plans executed
 Plans:
 **Wave 1**
 
-- [ ] 02-01-PLAN.md — BUGFIX-05: compute_variance sample formula m2/(n-1) + golden/guard/P90-widening tests
+- [x] 02-01-PLAN.md — BUGFIX-05: compute_variance sample formula m2/(n-1) + golden/guard/P90-widening tests
 
 **Wave 2** *(blocked on Wave 1)*
 
@@ -145,7 +145,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Backend Correctness | 3/3 | Complete    | 2026-07-01 |
-| 2. Learning Algorithm Integrity | 0/4 | Planned | - |
+| 2. Learning Algorithm Integrity | 1/4 | In Progress|  |
 | 3. API Surface Completion | 0/? | Not started | - |
 | 4. Data Management | 0/? | Not started | - |
 | 5. Quality & Operations | 0/? | Not started | - |

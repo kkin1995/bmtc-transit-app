@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 2 — Learning Algorithm Integrity
+current_phase: 02
 status: executing
 stopped_at: Phase 2 context gathered
-last_updated: "2026-07-02T11:11:53.880Z"
+last_updated: "2026-07-02T11:18:34.274Z"
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 7
+  completed_plans: 4
   percent: 17
 ---
 
@@ -21,8 +21,8 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-01)
 
 **Core value:** Riders get progressively more accurate bus ETAs as more trips are observed
-**Current phase:** 2 — Learning Algorithm Integrity
-**Status:** Ready to execute
+**Current phase:** 02
+**Status:** Executing Phase 02
 
 ---
 
@@ -31,8 +31,8 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 | Field | Value |
 |-------|-------|
 | Active phase | Phase 2: Learning Algorithm Integrity |
-| Active plan | Not started |
-| Phase status | Ready to plan |
+| Active plan | Plan 1 of 4 complete (02-01) |
+| Phase status | Executing — Wave 1 done, Wave 2 pending |
 | Overall progress | 1/6 phases complete (Phase 1 executed + verified; 6/6 must-haves passed) |
 
 ```
@@ -55,8 +55,8 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 | Metric | Value |
 |--------|-------|
 | Phases complete | 1/6 |
-| Plans complete | 3 |
-| Tests passing | 189/195 (189 passed, 6 pre-existing failures — baseline reduced from 8 via drive-by fix) |
+| Plans complete | 4 |
+| Tests passing | 193/199 (193 passed, 6 pre-existing failures — same baseline as Phase 1, no new failures) |
 | Open blockers | 0 |
 
 | Plan | Duration | Tasks | Files |
@@ -64,6 +64,7 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 | Phase 01 P01 | 14min | 3 tasks | 13 files |
 | Phase 01 P02 | 27min | 3 tasks | 5 files |
 | Phase 01 P03 | 33min | 4 tasks | 9 files |
+| Phase 02 P01 | 6min | 2 tasks | 2 files |
 
 ---
 
@@ -82,6 +83,7 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 - [Phase 01-03]: `response_body TEXT` column added to `idempotency_keys` via `schema.sql` + guarded `ALTER TABLE` in `db.py`'s `init_db()` (BUGFIX-03) — idempotent replay returns the original response; legacy `response_body IS NULL` rows fall through to fresh reprocessing (D-09)
 - [Phase 01-03]: `X-Deprecation-Warning` header delivered via `JSONResponse` on both `POST /v1/ride_summary` and `GET /v1/eta` when `timestamp_utc` is used (API-05) — documented spec-first in `docs/api.md` per CLAUDE.md Rule 1
 - [Phase 01-03]: 2 stale `test_idempotency.py` tests (old 2-arg `store_idempotency_key()` signature) fixed as a drive-by — full suite baseline reduced from 8 to 6 pre-existing failures
+- [Phase 02-01]: `compute_variance()` divisor changed from `m2/n` to `m2/(n-1)` (BUGFIX-05) — sample variance is the canonical convention paired with Welford's algorithm; `n < 2` guard preserved exactly to protect the BUGFIX-04 seeded `n=0` row and first Welford update (`n=1`) from ZeroDivisionError
 
 ### Active TODOs
 
@@ -95,12 +97,12 @@ None
 
 ## Session Continuity
 
-**Last session:** 2026-07-02T10:30:59.156Z
-**Stopped at:** Phase 2 context gathered
-**Resume file:** .planning/phases/02-learning-algorithm-integrity/02-CONTEXT.md
+**Last session:** 2026-07-02T11:24:00Z
+**Stopped at:** Completed 02-01-PLAN.md (BUGFIX-05 sample variance fix)
+**Resume file:** .planning/phases/02-learning-algorithm-integrity/02-02-PLAN.md
 
 **Last updated:** 2026-07-02
-**Next action:** Discuss or plan Phase 2 (Learning Algorithm Integrity)
+**Next action:** Execute Phase 2 Plan 2 (02-02-PLAN.md)
 
 ---
 

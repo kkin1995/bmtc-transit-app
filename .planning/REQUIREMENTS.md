@@ -34,7 +34,7 @@ The following are built and working. Captured here for traceability; not include
 - [x] **BUGFIX-02**: CORS configuration locks `allow_origins` to an explicit list (not wildcard) before production; `allow_credentials` removed or scoped correctly
 - [x] **BUGFIX-03**: Idempotency replay returns the original stored response body (not stale `accepted_segments=0, rejected_segments=0`)
 - [ ] **BUGFIX-04**: First observation on a new segment upserts a `segment_stats` row (not rejected as `missing_stats`); ensures new segments can learn from day one
-- [ ] **BUGFIX-05**: Variance calculation uses sample formula `m2 / (n-1)` — not population `m2 / n` — fixing systematically narrow P90 bounds
+- [x] **BUGFIX-05**: Variance calculation uses sample formula `m2 / (n-1)` — not population `m2 / n` — fixing systematically narrow P90 bounds
 - [ ] **BUGFIX-06**: All per-segment writes for a ride are committed in a single transaction (not ~100 commits per ride via per-segment `conn.commit()`)
 - [x] **BUGFIX-07**: Expired idempotency keys are cleaned up automatically (call `cleanup_expired_keys()` on startup or via systemd timer)
 
