@@ -4,7 +4,7 @@
 
 **BMTC Transit App**
 
-A crowd-sourced ETA learning system for Bengaluru Metropolitan Transport Corporation (BMTC) buses. The backend API ingests ride observations from a mobile app, learns travel time statistics per segment×time-bin using Welford+EMA algorithms, and returns blended ETAs (incorporating GTFS schedule data). A React Native mobile app provides real-time ETA lookup, stop scheduling, and trip tracking with stop detection.
+A crowd-sourced ETA learning system for Bengaluru Metropolitan Transport Corporation (BMTC) buses. The backend API ingests ride observations from a mobile app, learns travel time statistics per segment×time-bin using Welford + schedule-blend algorithms (EMA was removed from the active pipeline in Phase 2 / LEARN-01; deferred to v2 research, see LEARN-V2-01), and returns blended ETAs (incorporating GTFS schedule data). A React Native mobile app provides real-time ETA lookup, stop scheduling, and trip tracking with stop detection.
 
 **Core Value:** Riders get progressively more accurate bus ETAs as more trips are observed — even when the GTFS schedule is wrong or stale.
 
@@ -133,7 +133,7 @@ A crowd-sourced ETA learning system for Bengaluru Metropolitan Transport Corpora
 
 - `backend/app/routes.py` — FastAPI route handlers only; delegates to `learning.py`, `db.py`
 - `backend/app/models.py` — Pydantic request/response schemas only
-- `backend/app/learning.py` — Welford/EMA algorithms, stat updates
+- `backend/app/learning.py` — Welford + schedule-blend algorithms, stat updates (EMA removed from active pipeline, LEARN-01; `ema_mean`/`ema_var` columns retained but inert, deferred to v2 research)
 - `backend/app/db.py` — SQLite connection management and `compute_bin_id()`
 - `backend/app/config.py` — Settings class and `get_settings()` singleton
 - `backend/app/auth.py` — Bearer token verification middleware
@@ -146,7 +146,7 @@ A crowd-sourced ETA learning system for Bengaluru Metropolitan Transport Corpora
 ## Configuration Patterns
 
 - File: `backend/app/config.py`
-- Defaults defined inline: `n0: int = 20`, `half_life_days: int = 30`
+- Defaults defined inline: `n0: int = 20`, `outlier_sigma: float = 3.0` (note: `ema_alpha`/`half_life_days` removed from `Settings`, LEARN-01 — `GET /v1/config` returns them as soft-deprecated `null`)
 - Optional secrets use `Optional[str] = None`: `hmac_secret_key`
 
 ## Database Patterns
@@ -181,7 +181,7 @@ A crowd-sourced ETA learning system for Bengaluru Metropolitan Transport Corpora
 |-----------|----------------|------|
 | FastAPI App | Startup, middleware, routing | `backend/app/main.py` |
 | Route Handlers | 9 API endpoint implementations | `backend/app/routes.py` |
-| Learning Engine | Welford, EMA, outlier detection, blend | `backend/app/learning.py` |
+| Learning Engine | Welford, outlier detection, schedule blend (EMA removed from active pipeline, LEARN-01) | `backend/app/learning.py` |
 | DB Layer | SQLite connections, bin computation | `backend/app/db.py` |
 | Auth | Bearer token verification | `backend/app/auth.py` |
 | Idempotency | UUID key check + body-hash storage | `backend/app/idempotency.py` |
@@ -225,7 +225,7 @@ A crowd-sourced ETA learning system for Bengaluru Metropolitan Transport Corpora
 | Table | Purpose |
 |-------|---------|
 | `segments` | Unique (route, direction, from_stop, to_stop) — ~110k rows |
-| `segment_stats` | Welford + EMA stats per `(segment_id, bin_id)` — 3-5M rows (sparse) |
+| `segment_stats` | Welford stats per `(segment_id, bin_id)` — 3-5M rows (sparse); `ema_mean`/`ema_var` columns retained but inert (EMA removed from active pipeline, LEARN-01; deferred to v2 research) |
 | `dwell_stats` | Per-stop dwell time stats per bin |
 | `rides` | Ride submission metadata |
 | `ride_segments` | Per-segment observations with acceptance flag |

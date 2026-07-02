@@ -256,8 +256,8 @@ CREATE TABLE segment_stats (
     n INTEGER NOT NULL DEFAULT 0,           -- Sample count
     welford_mean REAL NOT NULL DEFAULT 0.0, -- Online mean
     welford_m2 REAL NOT NULL DEFAULT 0.0,   -- Variance accumulator
-    ema_mean REAL NOT NULL DEFAULT 0.0,     -- Exponential moving avg
-    ema_var REAL NOT NULL DEFAULT 0.0,      -- EMA variance
+    ema_mean REAL NOT NULL DEFAULT 0.0,     -- Exponential moving avg (retained but not written by the active pipeline, LEARN-01)
+    ema_var REAL NOT NULL DEFAULT 0.0,      -- EMA variance (retained but not written by the active pipeline, LEARN-01)
     schedule_mean REAL NOT NULL DEFAULT 0.0,-- GTFS baseline
     last_update INTEGER,                    -- Unix timestamp
     PRIMARY KEY(segment_id, bin_id),
@@ -269,7 +269,7 @@ CREATE TABLE segment_stats (
 **Learning algorithm:**
 1. `schedule_mean` seeded from GTFS at bootstrap
 2. `welford_mean/m2` updated with each ride (Welford's online algorithm)
-3. `ema_mean/var` updated with α=0.1
+3. `ema_mean/var` — EMA was removed from the active pipeline in Phase 2 (LEARN-01); these columns remain in the schema but are no longer read or written, deferred to v2 research into the most effective algorithm for predicting bus schedules from mobile-submitted data (LEARN-V2-01)
 4. Final ETA = `w·welford_mean + (1−w)·schedule_mean` where `w=n/(n+20)`
 
 ---
