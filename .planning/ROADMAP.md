@@ -62,7 +62,23 @@ Plans:
 
 **Note (2026-07-02):** Criterion 5 (`dwell_stats` resolution) removed from this phase — LEARN-02 moved to v2 as LEARN-V2-05 during Phase 2 discussion; dwell-time learning needs algorithm research before implementation. See `.planning/REQUIREMENTS.md`.
 
-**Plans:** TBD
+**Plans:** 4 plans
+Plans:
+**Wave 1**
+
+- [ ] 02-01-PLAN.md — BUGFIX-05: compute_variance sample formula m2/(n-1) + golden/guard/P90-widening tests
+
+**Wave 2** *(blocked on Wave 1)*
+
+- [ ] 02-02-PLAN.md — BUGFIX-04 + LEARN-01 core: seed-on-first-observation in update_segment_stats, remove EMA/is_stale dead code, update rejection tests
+
+**Wave 3** *(blocked on Wave 2)*
+
+- [ ] 02-03-PLAN.md — LEARN-01 config surface: remove ema_alpha/half_life_days settings, soft-deprecate GET /v1/config fields (D-14), docs pass (D-06)
+
+**Wave 4** *(blocked on Waves 2 & 3)*
+
+- [ ] 02-04-PLAN.md — BUGFIX-06: consolidate ride writes into one transaction, dedupe device_bucket update (D-13)
 
 ### Phase 3: API Surface Completion
 
@@ -129,7 +145,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Backend Correctness | 3/3 | Complete    | 2026-07-01 |
-| 2. Learning Algorithm Integrity | 0/? | Not started | - |
+| 2. Learning Algorithm Integrity | 0/4 | Planned | - |
 | 3. API Surface Completion | 0/? | Not started | - |
 | 4. Data Management | 0/? | Not started | - |
 | 5. Quality & Operations | 0/? | Not started | - |
