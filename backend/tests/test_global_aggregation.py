@@ -438,6 +438,64 @@ def test_config_returns_global_aggregation_settings(client):
     assert config["idempotency_ttl_hours"] == 24
 
 
+def test_device_bucket_updated_once_per_ride(global_agg_client, auth_headers):
+    """D-13: update_device_bucket() must run once per ride, not once per segment.
+
+    Today the call lives inside the per-segment loop in routes.py, so a
+    3-segment ride increments device_buckets.observation_count by 3 instead
+    of 1. This pins the once-per-ride invariant.
+    """
+    from app.config import get_settings
+    from app.db import get_connection
+
+    settings = get_settings()
+    test_bucket = "b" * 64
+
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT observation_count FROM device_buckets WHERE bucket_id=?",
+            (test_bucket,),
+        )
+        row = cursor.fetchone()
+        initial_count = row[0] if row is not None else 0
+
+    ride_data = {
+        "route_id": "ROUTE_GLOBAL",
+        "direction_id": 0,
+        "device_bucket": test_bucket,
+        "segments": [
+            {
+                "from_stop_id": "STOP_X",
+                "to_stop_id": "STOP_Y",
+                "duration_sec": 300.0 + i,
+                "timestamp_utc": int(time.time()) - 100,
+                "mapmatch_conf": 0.95,
+            }
+            for i in range(3)
+        ],
+    }
+
+    response = global_agg_client.post(
+        "/v1/ride_summary",
+        json=ride_data,
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT observation_count FROM device_buckets WHERE bucket_id=?",
+            (test_bucket,),
+        )
+        row = cursor.fetchone()
+
+    assert row is not None
+    # Exactly one increment per ride, not one per segment (3 segments here).
+    assert row[0] == initial_count + 1
+
+
 def test_mapmatch_conf_default_value():
     """Test that mapmatch_conf defaults to 1.0 when not provided."""
     from app.models import RideSegment
