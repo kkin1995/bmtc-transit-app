@@ -5,6 +5,7 @@ database or API dependencies. They use pytest markers for organization.
 """
 
 import pytest
+import statistics
 import time
 
 # Mark all tests in this module as unit tests
@@ -152,3 +153,42 @@ def test_time_based_alpha():
     # Very old data: alpha → 1.0
     alpha = compute_time_based_alpha(now - 365 * 86400, half_life_days=30)
     assert alpha > 0.99
+
+
+def test_compute_variance_uses_sample_formula_not_population():
+    """BUGFIX-05: compute_variance must return m2/(n-1), not m2/n, for n>=2."""
+    samples = [100.0, 110.0, 90.0, 105.0, 95.0, 102.0, 98.0, 107.0, 93.0, 101.0]  # n=10
+    n, mean, m2 = 0, 0.0, 0.0
+    for x in samples:
+        n, mean, m2 = update_welford(n, mean, m2, x)
+
+    sample_variance = compute_variance(m2, n)
+    expected_sample_variance = statistics.variance(samples)  # ddof=1, i.e. n-1
+    wrong_population_variance = statistics.pvariance(samples)  # ddof=0, i.e. n
+
+    assert sample_variance == pytest.approx(expected_sample_variance, rel=1e-9)
+    assert sample_variance != pytest.approx(wrong_population_variance, rel=1e-9)
+    assert sample_variance > wrong_population_variance  # sample formula always >= population
+
+
+def test_compute_variance_guards_n_less_than_2():
+    """Guard must survive the divisor change — n=0 and n=1 both return 0.0."""
+    assert compute_variance(m2=0.0, n=0) == 0.0
+    assert compute_variance(m2=0.0, n=1) == 0.0
+    assert compute_variance(m2=50.0, n=1) == 0.0  # m2 nonzero but n<2 still guarded
+
+
+def test_p90_wider_with_sample_variance_than_population_variance():
+    """ROADMAP Phase 2 criterion #2: sample-variance P90 must be strictly wider than population-variance P90."""
+    samples = [100.0, 110.0, 90.0, 105.0, 95.0, 102.0, 98.0, 107.0, 93.0, 101.0]  # n=10
+    n, mean, m2 = 0, 0.0, 0.0
+    for x in samples:
+        n, mean, m2 = update_welford(n, mean, m2, x)
+
+    population_variance = m2 / n  # the OLD (buggy) formula, inlined for comparison
+    sample_variance = m2 / (n - 1)  # the NEW (correct) formula
+
+    _, p90_old, _ = compute_percentiles_robust(mean, population_variance, n, schedule_mean=mean)
+    _, p90_new, _ = compute_percentiles_robust(mean, sample_variance, n, schedule_mean=mean)
+
+    assert p90_new > p90_old  # sample-variance P90 bound must be strictly wider
