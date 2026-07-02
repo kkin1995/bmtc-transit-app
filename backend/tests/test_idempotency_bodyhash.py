@@ -495,6 +495,92 @@ def test_body_hash_verification_with_null_stored_hash(setup_segment_for_bodyhash
 # Edge cases
 
 
+def test_legacy_null_response_body_reprocesses_fresh(setup_segment_for_bodyhash, auth_headers):
+    """Legacy idempotency_keys row with response_body IS NULL (pre-migration data,
+    matching body_hash) must be treated as a cache miss and reprocessed fresh —
+    NOT crash, and NOT return a stale/zero-count response (BUGFIX-03, D-09)."""
+    from app.config import get_settings
+    from app.db import get_connection
+    from app.idempotency import compute_body_hash
+
+    client = setup_segment_for_bodyhash
+    idempotency_key = str(uuid4())
+
+    # Seed all 192 bins so update_segment_stats() always finds a row to accept
+    # against, regardless of which bin "now" maps to.
+    settings = get_settings()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
+            ("TEST_ROUTE", 0, "STOP1", "STOP2"),
+        )
+        segment_id = cursor.fetchone()[0]
+        for bin_id in range(192):
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO segment_stats
+                (segment_id, bin_id, n, welford_mean, welford_m2, ema_mean, schedule_mean, last_update)
+                VALUES (?, ?, 0, 0, 0, 0, 300, ?)
+                """,
+                (segment_id, bin_id, int(time.time())),
+            )
+        conn.commit()
+
+    request_data = create_ride_request()
+
+    # Pre-seed a "legacy" idempotency_keys row: same key, matching body_hash,
+    # but response_body IS NULL (simulates a row written before the D-06/D-07
+    # response_body column existed).
+    # NOTE: routes.py computes the body hash from `ride.model_dump()` (the
+    # parsed Pydantic model, which fills in defaults like dwell_sec=None,
+    # is_holiday=False), not the raw JSON dict — so the hash must be computed
+    # the same way, or the (unrelated) body-hash-mismatch 409 branch fires
+    # instead of exercising the legacy-NULL-response_body fallback path.
+    from app.models import RideSummary
+
+    parsed_body = RideSummary(**request_data).model_dump()
+    body_hash = compute_body_hash(parsed_body)
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO idempotency_keys (key, submitted_at, response_hash, body_hash, response_body)
+            VALUES (?, ?, ?, ?, NULL)
+            """,
+            (idempotency_key, int(time.time()), "dummy_response_hash", body_hash),
+        )
+        conn.commit()
+
+    response = client.post(
+        "/v1/ride_summary",
+        json=request_data,
+        headers={
+            **auth_headers,
+            "Idempotency-Key": idempotency_key,
+        },
+    )
+
+    # Must not crash, must not return the old stale zero-count response —
+    # it should be reprocessed fresh, accepting the real segment.
+    assert response.status_code == 200
+    data = response.json()
+    assert data["accepted_segments"] == 1
+    assert data["accepted_segments"] != 0
+
+    # The row should now be updated (INSERT OR REPLACE) with a non-NULL
+    # response_body from the fresh processing path.
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT response_body FROM idempotency_keys WHERE key = ?",
+            (idempotency_key,),
+        )
+        row = cursor.fetchone()
+    assert row is not None
+    assert row[0] is not None
+
+
 def test_body_hash_with_empty_segments(setup_segment_for_bodyhash, auth_headers):
     """Test body hash computation with minimal/empty segments list."""
     from app.idempotency import compute_body_hash
