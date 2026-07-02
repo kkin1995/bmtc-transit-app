@@ -1394,8 +1394,8 @@ Returns public configuration and tuning parameters.
 {
   "n0": 20,
   "time_bin_minutes": 15,
-  "half_life_days": 30,
-  "ema_alpha": 0.1,
+  "half_life_days": null,
+  "ema_alpha": null,
   "outlier_sigma": 3.0,
   "mapmatch_min_conf": 0.7,
   "max_segments_per_ride": 50,
@@ -1410,8 +1410,8 @@ Returns public configuration and tuning parameters.
 
 * `n0`: Blend weight denominator; `blend_weight = n / (n + n0)`
 * `time_bin_minutes`: Time bin granularity (15 minutes)
-* `half_life_days`: EMA half-life for time-based decay
-* `ema_alpha`: EMA smoothing parameter
+* `half_life_days`: DEPRECATED — always `null`. EMA was removed from the active learning pipeline in Phase 2 (LEARN-01); this field is retained for backward compatibility and may be reintroduced with a different meaning in a future v2 research effort (LEARN-V2-01)
+* `ema_alpha`: DEPRECATED — always `null`. EMA was removed from the active learning pipeline in Phase 2 (LEARN-01); this field is retained for backward compatibility and may be reintroduced with a different meaning in a future v2 research effort (LEARN-V2-01)
 * `outlier_sigma`: Outlier rejection threshold (standard deviations)
 * `mapmatch_min_conf`: Minimum map-matching confidence to accept observations
 * `max_segments_per_ride`: Maximum segments per ride submission
@@ -1520,7 +1520,7 @@ curl http://localhost:8000/v1/health
 * `mapmatch_min_conf = 0.7`
 * `outlier_sigma = 3.0` (reject if `|x−μ| > 3σ` and `n > 5`)
 * `n0 = 20` (schedule blend denominator)
-* `half_life_days = 30` (EMA recency)
+* `half_life_days` — DEPRECATED, always `null` (EMA removed from active pipeline, see LEARN-01; deferred to v2 research LEARN-V2-01)
 * **Timestamp window:** `observed_at_utc` must be within the past **7 days** and not in the future.
 * **Duration bounds:** `duration_sec` must be in (0, 7200] seconds (0 to 2 hours).
 

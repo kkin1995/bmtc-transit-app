@@ -142,8 +142,8 @@ class ConfigResponse(BaseModel):
 
     n0: int
     time_bin_minutes: int
-    half_life_days: int
-    ema_alpha: float
+    half_life_days: Optional[int] = None  # DEPRECATED: EMA removed from active pipeline, see LEARN-01
+    ema_alpha: Optional[float] = None  # DEPRECATED: EMA removed from active pipeline, see LEARN-01
     outlier_sigma: float
     mapmatch_min_conf: float
     max_segments_per_ride: int

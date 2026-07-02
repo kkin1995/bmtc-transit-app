@@ -434,8 +434,8 @@ async def get_config():
     return ConfigResponse(
         n0=settings.n0,
         time_bin_minutes=15,
-        half_life_days=settings.half_life_days,
-        ema_alpha=settings.ema_alpha,
+        half_life_days=None,  # DEPRECATED: EMA removed from active pipeline, see LEARN-01
+        ema_alpha=None,  # DEPRECATED: EMA removed from active pipeline, see LEARN-01
         outlier_sigma=settings.outlier_sigma,
         mapmatch_min_conf=settings.mapmatch_min_conf,
         max_segments_per_ride=settings.max_segments_per_ride,
