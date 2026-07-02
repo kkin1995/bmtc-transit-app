@@ -144,8 +144,6 @@ def update_device_bucket(conn, device_bucket: str) -> None:
             (device_bucket, now, now),
         )
 
-    conn.commit()
-
 
 def log_rejection(
     conn,
@@ -183,7 +181,6 @@ def log_rejection(
             mapmatch_conf,
         ),
     )
-    conn.commit()
 
 
 def update_segment_stats(

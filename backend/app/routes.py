@@ -129,11 +129,11 @@ async def ride_summary(
         # Extract device_bucket from top-level (not from segments)
         device_bucket = ride.device_bucket
 
-        for seq, segment in enumerate(ride.segments):
-            # Update device bucket tracking (if provided at top level)
-            if device_bucket:
-                update_device_bucket(conn, device_bucket)
+        # Update device bucket tracking once per ride (not per segment, D-13)
+        if device_bucket:
+            update_device_bucket(conn, device_bucket)
 
+        for seq, segment in enumerate(ride.segments):
             # Validate segment exists
             cursor.execute(
                 """
