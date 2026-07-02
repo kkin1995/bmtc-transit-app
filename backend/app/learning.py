@@ -54,7 +54,7 @@ def compute_variance(m2: float, n: int) -> float:
     """Compute sample variance from Welford M2."""
     if n < 2:
         return 0.0
-    return m2 / n
+    return m2 / (n - 1)
 
 
 def is_outlier(x: float, mean: float, variance: float, n: int) -> bool:
