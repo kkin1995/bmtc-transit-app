@@ -819,8 +819,8 @@ def test_get_config_has_all_spec_fields(client):
     required_fields = {
         "n0": int,
         "time_bin_minutes": int,
-        "half_life_days": int,
-        "ema_alpha": (int, float),
+        "half_life_days": (int, type(None)),  # DEPRECATED: EMA removed, see LEARN-01 (D-14)
+        "ema_alpha": (int, float, type(None)),  # DEPRECATED: EMA removed, see LEARN-01 (D-14)
         "outlier_sigma": (int, float),
         "mapmatch_min_conf": (int, float),
         "max_segments_per_ride": int,
@@ -850,8 +850,8 @@ def test_get_config_values_are_reasonable(client):
     # Check reasonable default values
     assert data["n0"] == 20
     assert data["time_bin_minutes"] == 15
-    assert data["half_life_days"] == 30
-    assert 0.0 <= data["ema_alpha"] <= 1.0
+    assert data["half_life_days"] is None  # DEPRECATED: EMA removed, see LEARN-01 (D-14)
+    assert data["ema_alpha"] is None  # DEPRECATED: EMA removed, see LEARN-01 (D-14)
     assert data["outlier_sigma"] > 0
     assert 0.0 <= data["mapmatch_min_conf"] <= 1.0
     assert data["max_segments_per_ride"] > 0
