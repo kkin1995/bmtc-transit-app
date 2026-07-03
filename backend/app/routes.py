@@ -301,6 +301,27 @@ async def get_eta(
 
         segment_id = row[0]
 
+        # Enrich segment with human-readable GTFS names (API-04, D-18).
+        # MUST be LEFT JOIN, never INNER JOIN: an orphaned from_stop_id,
+        # to_stop_id, or route_id must null only that one field, not drop
+        # the whole enrichment row (D-20).
+        cursor.execute(
+            """
+            SELECT
+                seg.segment_id,
+                fs.stop_name AS from_stop_name,
+                ts.stop_name AS to_stop_name,
+                r.route_short_name
+            FROM segments seg
+            LEFT JOIN stops fs ON seg.from_stop_id = fs.stop_id
+            LEFT JOIN stops ts ON seg.to_stop_id = ts.stop_id
+            LEFT JOIN routes r ON seg.route_id = r.route_id
+            WHERE seg.segment_id = ?
+            """,
+            (segment_id,),
+        )
+        enrichment_row = cursor.fetchone()
+
         # Determine timestamp epoch (Priority: when > timestamp_utc > now)
         timestamp_epoch = None
         deprecation_warning = None
@@ -378,7 +399,10 @@ async def get_eta(
             route_id=route_id,
             direction_id=direction_id,
             from_stop_id=from_stop_id,
-            to_stop_id=to_stop_id
+            to_stop_id=to_stop_id,
+            from_stop_name=enrichment_row["from_stop_name"],
+            to_stop_name=enrichment_row["to_stop_name"],
+            route_short_name=enrichment_row["route_short_name"]
         ),
         query_time=query_time_iso,
         scheduled=ScheduledInfo(

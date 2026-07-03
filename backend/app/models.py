@@ -277,6 +277,9 @@ class SegmentInfo(BaseModel):
     direction_id: int
     from_stop_id: str
     to_stop_id: str
+    from_stop_name: Optional[str] = None   # NEW (API-04, D-18)
+    to_stop_name: Optional[str] = None     # NEW (API-04, D-18)
+    route_short_name: Optional[str] = None # NEW (API-04, D-18)
 
 
 class ScheduledInfo(BaseModel):
