@@ -17,6 +17,8 @@ Testing approach:
 - Ensure backward compatibility where applicable
 """
 
+import math
+
 import pytest
 from datetime import datetime, timezone
 
@@ -170,6 +172,127 @@ def test_get_stops_returns_x_api_version(client):
     assert response.status_code == 200
     assert "X-API-Version" in response.headers
     assert response.headers["X-API-Version"] == "1"
+
+
+# ==============================================================================
+# GET /v1/stops - Radius Search Tests (API-03, D-12..D-17)
+# ==============================================================================
+
+
+EARTH_RADIUS_M = 6_371_000.0
+
+
+def destination_point(lat: float, lon: float, bearing_deg: float, distance_m: float) -> tuple[float, float]:
+    """Compute a lat/lon that is exactly `distance_m` meters from (lat, lon)
+    at the given compass bearing. Useful for generating deterministic
+    boundary-condition test fixtures (e.g., "exactly 500m away")."""
+    phi1 = math.radians(lat)
+    lam1 = math.radians(lon)
+    theta = math.radians(bearing_deg)
+    delta = distance_m / EARTH_RADIUS_M
+
+    phi2 = math.asin(
+        math.sin(phi1) * math.cos(delta) + math.cos(phi1) * math.sin(delta) * math.cos(theta)
+    )
+    lam2 = lam1 + math.atan2(
+        math.sin(theta) * math.sin(delta) * math.cos(phi1),
+        math.cos(delta) - math.sin(phi1) * math.sin(phi2),
+    )
+    return math.degrees(phi2), math.degrees(lam2)
+
+
+def insert_test_stop(client, stop_id: str, stop_name: str, lat: float, lon: float):
+    """Helper to insert a single stop directly into the test DB (idempotent)."""
+    from app.config import get_settings
+    from app.db import get_connection
+
+    settings = get_settings()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR IGNORE INTO stops (stop_id, stop_name, stop_lat, stop_lon, zone_id) VALUES (?, ?, ?, ?, ?)",
+            (stop_id, stop_name, lat, lon, None),
+        )
+        conn.commit()
+
+
+def test_get_stops_radius_boundary(client):
+    """A stop within 500m is included; a diagonal-bearing stop at 600m is
+    excluded (proves the Haversine second pass, not just the bbox pre-filter,
+    RESEARCH.md Pitfall 2 / ROADMAP success criterion #3)."""
+    origin_lat, origin_lon = 12.97, 77.59
+
+    inside_lat, inside_lon = destination_point(origin_lat, origin_lon, bearing_deg=45, distance_m=450)
+    outside_lat, outside_lon = destination_point(origin_lat, origin_lon, bearing_deg=45, distance_m=600)
+
+    insert_test_stop(client, "RADIUS_INSIDE", "Inside Radius Stop", inside_lat, inside_lon)
+    insert_test_stop(client, "RADIUS_OUTSIDE", "Outside Radius Stop", outside_lat, outside_lon)
+
+    response = client.get(
+        "/v1/stops",
+        params={"lat": origin_lat, "lon": origin_lon, "radius_m": 500, "limit": 1000},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    stop_ids = {stop["stop_id"] for stop in data["stops"]}
+
+    assert "RADIUS_INSIDE" in stop_ids
+    assert "RADIUS_OUTSIDE" not in stop_ids
+
+
+def test_get_stops_bbox_radius_mutually_exclusive(client):
+    """bbox + lat/lon/radius_m together returns 400 invalid_request (D-13)."""
+    response = client.get(
+        "/v1/stops",
+        params={"bbox": "1,2,3,4", "lat": 12.97, "lon": 77.59, "radius_m": 500},
+    )
+
+    assert response.status_code == 400
+    data = response.json()
+    assert data["error"] == "invalid_request"
+
+
+def test_get_stops_radius_all_or_nothing(client):
+    """Partial lat/lon/radius_m (radius_m missing) returns 400 invalid_request (D-14)."""
+    response = client.get("/v1/stops", params={"lat": 12.97, "lon": 77.59})
+
+    assert response.status_code == 400
+    data = response.json()
+    assert data["error"] == "invalid_request"
+
+
+def test_get_stops_radius_exceeds_cap(client):
+    """radius_m above the 2000m cap returns 400 invalid_request (D-15)."""
+    response = client.get(
+        "/v1/stops",
+        params={"lat": 12.97, "lon": 77.59, "radius_m": 5000},
+    )
+
+    assert response.status_code == 400
+    data = response.json()
+    assert data["error"] == "invalid_request"
+
+
+def test_get_stops_radius_invalid_latlon(client):
+    """Out-of-range lat for radius search returns 400 invalid_request (D-16)."""
+    response = client.get(
+        "/v1/stops",
+        params={"lat": 999, "lon": 77.59, "radius_m": 500},
+    )
+
+    assert response.status_code == 400
+    data = response.json()
+    assert data["error"] == "invalid_request"
+
+
+def test_get_stops_bbox_invalid_range(client):
+    """bbox with an out-of-range coordinate returns 400 invalid_request (D-17 drive-by)."""
+    response = client.get("/v1/stops", params={"bbox": "999,2,3,4"})
+
+    assert response.status_code == 400
+    data = response.json()
+    assert data["error"] == "invalid_request"
 
 
 # ==============================================================================
