@@ -257,10 +257,17 @@ Query GTFS stops with filtering and pagination. Returns stops in GTFS-compliant 
 
 **Query parameters**
 
-* `bbox` (optional): Bounding box filter as `min_lat,min_lon,max_lat,max_lon` (e.g., `12.9,77.5,13.1,77.7`)
+* `bbox` (optional): Bounding box filter as `min_lat,min_lon,max_lat,max_lon` (e.g., `12.9,77.5,13.1,77.7`). All four coordinates are range-validated (latitude -90 to 90, longitude -180 to 180). Mutually exclusive with `lat`/`lon`/`radius_m`.
 * `route_id` (optional): Filter stops served by this route
+* `lat` (optional): Latitude of a radius-search origin point, -90 to 90. Must be supplied together with `lon` and `radius_m`; mutually exclusive with `bbox`.
+* `lon` (optional): Longitude of a radius-search origin point, -180 to 180. Must be supplied together with `lat` and `radius_m`; mutually exclusive with `bbox`.
+* `radius_m` (optional): Search radius in meters from `(lat, lon)`, maximum `2000`. Must be supplied together with `lat` and `lon`; mutually exclusive with `bbox`.
 * `limit` (optional): Maximum results per page (default 100, max 1000)
 * `offset` (optional): Pagination offset (default 0)
+
+**Radius search (`lat`/`lon`/`radius_m`)**
+
+Returns all stops within `radius_m` meters of `(lat, lon)`, measured as great-circle (Haversine) distance — not a rectangular bounding-box approximation. All three params must be supplied together (partial sets are rejected), and the trio is mutually exclusive with `bbox` (use one geospatial filter or the other, never both). `radius_m` is capped at 2000 meters.
 
 **Response — 200 OK**
 
@@ -308,6 +315,10 @@ All response fields map directly to GTFS stops.txt:
 **400 invalid_request** - Query parameter validation failures:
 * Invalid bbox format (must be `min_lat,min_lon,max_lat,max_lon`)
 * Invalid bbox range (latitude must be -90 to 90, longitude must be -180 to 180)
+* `bbox` supplied together with any of `lat`/`lon`/`radius_m` (mutually exclusive geospatial filters)
+* Only some of `lat`/`lon`/`radius_m` supplied (must be all-or-nothing)
+* `radius_m` exceeds the 2000m cap
+* Invalid `lat`/`lon` range for radius search (latitude must be -90 to 90, longitude must be -180 to 180)
 * Invalid limit (must be 1 to 1000)
 * Invalid offset (must be ≥ 0)
 
@@ -348,6 +359,29 @@ curl "http://localhost:8000/v1/stops?bbox=12.9,77.5,13.1,77.7&limit=50"
 curl "http://localhost:8000/v1/stops?route_id=335E"
 ```
 
+**Stops within 500m of a point (radius search):**
+```bash
+curl "http://localhost:8000/v1/stops?lat=12.97&lon=77.59&radius_m=500"
+```
+
+Response:
+```json
+{
+  "stops": [
+    {
+      "stop_id": "20558",
+      "stop_name": "Majestic Bus Station",
+      "stop_lat": 12.97644,
+      "stop_lon": 77.57148,
+      "zone_id": "ZONE_A"
+    }
+  ],
+  "total": 1,
+  "limit": 100,
+  "offset": 0
+}
+```
+
 **Error example — Invalid bbox format:**
 ```bash
 curl "http://localhost:8000/v1/stops?bbox=invalid"
@@ -360,6 +394,22 @@ Response:
   "message": "bbox must be in format: min_lat,min_lon,max_lat,max_lon",
   "details": {
     "bbox": "invalid"
+  }
+}
+```
+
+**Error example — radius_m exceeds the 2000m cap:**
+```bash
+curl "http://localhost:8000/v1/stops?lat=12.97&lon=77.59&radius_m=5000"
+```
+
+Response:
+```json
+{
+  "error": "invalid_request",
+  "message": "radius_m must not exceed 2000",
+  "details": {
+    "radius_m": 5000
   }
 }
 ```
