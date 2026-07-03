@@ -1552,10 +1552,13 @@ The header is absent when `when` is used (or when neither timestamp parameter is
 ```json
 {
   "segment": {
-    "route_id": "335E",
+    "route_id": "215-NE ANP11-KMT-VSD",
     "direction_id": 0,
     "from_stop_id": "20558",
-    "to_stop_id": "29374"
+    "to_stop_id": "29374",
+    "from_stop_name": "Majestic Bus Station",
+    "to_stop_name": "Silk Board Junction",
+    "route_short_name": "335E"
   },
   "query_time": "2025-11-18T10:41:00Z",
   "scheduled": {
@@ -1580,10 +1583,15 @@ The header is absent when `when` is used (or when neither timestamp parameter is
 **Field descriptions**
 
 **segment object:**
-* `route_id`: GTFS route identifier
+* `route_id`: GTFS route identifier (the full GTFS `route_id`, e.g. `215-NE ANP11-KMT-VSD` — a compound string, distinct from the short rider-facing code)
 * `direction_id`: GTFS direction (0 or 1)
 * `from_stop_id`: GTFS origin stop identifier
 * `to_stop_id`: GTFS destination stop identifier
+* `from_stop_name` (string, nullable, API-04): Human-readable name of `from_stop_id`, resolved via GTFS `stops.stop_name`. `null` if `from_stop_id` has no matching `stops` row (orphaned reference); the response still returns `200` in that case (D-20)
+* `to_stop_name` (string, nullable, API-04): Human-readable name of `to_stop_id`, resolved via GTFS `stops.stop_name`. `null` under the same orphaned-reference conditions as `from_stop_name`
+* `route_short_name` (string, nullable, API-04): Rider-facing short route code (e.g. `335E`), resolved via GTFS `routes.route_short_name`. `null` if `route_id` has no matching `routes` row
+
+These 3 fields are added only to this nested `segment` object (the v1.1 structured shape); they are **not** added to the flat deprecated top-level ETA fields described below. `route_long_name` is intentionally not included here — only the 3 fields above are provided.
 
 **scheduled object (GTFS data):**
 * `duration_sec`: Scheduled duration from GTFS stop_times (seconds)
