@@ -2,6 +2,7 @@
 
 import json
 import logging
+import math
 import time
 from typing import Optional
 
@@ -477,14 +478,95 @@ async def health_check():
 
 # GTFS-aligned endpoints (Phase 0)
 
+EARTH_RADIUS_M = 6_371_000.0
+MAX_RADIUS_M = 2000  # D-15 cap
+
+
+def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance between two lat/lon points, in meters."""
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    d_phi = math.radians(lat2 - lat1)
+    d_lambda = math.radians(lon2 - lon1)
+    a = (
+        math.sin(d_phi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
+    )
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return EARTH_RADIUS_M * c
+
+
+def bounding_box(lat: float, lon: float, radius_m: float) -> tuple:
+    """Equirectangular-approximation bbox: (min_lat, max_lat, min_lon, max_lon)."""
+    lat_delta = math.degrees(radius_m / EARTH_RADIUS_M)
+    # Longitude degrees shrink as |latitude| grows; guard against cos(90)=0 at poles
+    # (not reachable for Bengaluru's ~13°N, but defensive nonetheless).
+    lon_delta = math.degrees(radius_m / EARTH_RADIUS_M / math.cos(math.radians(lat)))
+    return (lat - lat_delta, lat + lat_delta, lon - lon_delta, lon + lon_delta)
+
+
+def _validate_latlon_range(lat: float, lon: float) -> bool:
+    """True if lat in [-90, 90] and lon in [-180, 180]."""
+    return -90 <= lat <= 90 and -180 <= lon <= 180
+
+
 @router.get("/stops", response_model=StopsListResponse)
 async def get_stops(
     bbox: Optional[str] = Query(None),
     route_id: Optional[str] = Query(None),
+    lat: Optional[float] = Query(None),
+    lon: Optional[float] = Query(None),
+    radius_m: Optional[int] = Query(None),
     limit: int = Query(100, le=1000),
     offset: int = Query(0, ge=0),
 ):
     """Discover GTFS stops with filtering and pagination."""
+    radius_params_given = [p is not None for p in (lat, lon, radius_m)]
+    radius_mode = any(radius_params_given)
+
+    # D-13: bbox and lat/lon/radius_m are mutually exclusive.
+    if bbox and radius_mode:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "invalid_request",
+                "message": "bbox and lat/lon/radius_m are mutually exclusive",
+                "details": {"bbox": bbox, "lat": lat, "lon": lon, "radius_m": radius_m}
+            }
+        )
+
+    # D-14: lat/lon/radius_m must be supplied together or not at all.
+    if radius_mode and not all(radius_params_given):
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "invalid_request",
+                "message": "lat, lon, and radius_m must all be supplied together",
+                "details": {"lat": lat, "lon": lon, "radius_m": radius_m}
+            }
+        )
+
+    # D-16: lat/lon range validation for radius search.
+    if radius_mode and not _validate_latlon_range(lat, lon):
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "invalid_request",
+                "message": "lat must be -90 to 90 and lon must be -180 to 180",
+                "details": {"lat": lat, "lon": lon}
+            }
+        )
+
+    # D-15: radius_m cap.
+    if radius_mode and radius_m > MAX_RADIUS_M:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "invalid_request",
+                "message": f"radius_m must not exceed {MAX_RADIUS_M}",
+                "details": {"radius_m": radius_m}
+            }
+        )
+
     settings = get_settings()
     with get_connection(settings.db_path) as conn:
         cursor = conn.cursor()
@@ -500,6 +582,19 @@ async def get_stops(
                 if len(parts) != 4:
                     raise ValueError("Invalid bbox format")
                 min_lat, min_lon, max_lat, max_lon = map(float, parts)
+                # D-17: range-validate bbox coordinates (drive-by fix).
+                if not (
+                    _validate_latlon_range(min_lat, min_lon)
+                    and _validate_latlon_range(max_lat, max_lon)
+                ):
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "error": "invalid_request",
+                            "message": "bbox latitude must be -90 to 90 and longitude must be -180 to 180",
+                            "details": {"bbox": bbox}
+                        }
+                    )
                 where_clauses.append("stop_lat BETWEEN ? AND ? AND stop_lon BETWEEN ? AND ?")
                 params.extend([min_lat, max_lat, min_lon, max_lon])
             except (ValueError, IndexError):
@@ -523,33 +618,71 @@ async def get_stops(
             )""")
             params.append(route_id)
 
+        # Radius search (API-03): SQL bounding-box pre-filter, exact
+        # Haversine second pass applied to candidates after fetch below.
+        if radius_mode:
+            min_lat, max_lat, min_lon, max_lon = bounding_box(lat, lon, radius_m)
+            where_clauses.append("stop_lat BETWEEN ? AND ? AND stop_lon BETWEEN ? AND ?")
+            params.extend([min_lat, max_lat, min_lon, max_lon])
+
         where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
 
-        # Get total count
-        cursor.execute(f"SELECT COUNT(*) FROM stops {where_sql}", params)
-        total = cursor.fetchone()[0]
+        if radius_mode:
+            # Radius mode: fetch bbox-filtered candidates, apply the exact
+            # Haversine distance filter in Python, then paginate in-memory
+            # (RESEARCH.md Pitfall 2 -- never skip the precise second pass).
+            cursor.execute(
+                f"""
+                SELECT stop_id, stop_name, stop_lat, stop_lon, zone_id
+                FROM stops
+                {where_sql}
+                ORDER BY stop_id
+                """,
+                params
+            )
+            candidates = [
+                row for row in cursor.fetchall()
+                if haversine_m(lat, lon, row[2], row[3]) <= radius_m
+            ]
+            total = len(candidates)
+            page = candidates[offset:offset + limit]
 
-        # Get paginated results
-        cursor.execute(
-            f"""
-            SELECT stop_id, stop_name, stop_lat, stop_lon, zone_id
-            FROM stops
-            {where_sql}
-            ORDER BY stop_id
-            LIMIT ? OFFSET ?
-            """,
-            params + [limit, offset]
-        )
+            stops = [
+                StopResponse(
+                    stop_id=row[0],
+                    stop_name=row[1],
+                    stop_lat=row[2],
+                    stop_lon=row[3],
+                    zone_id=row[4]
+                )
+                for row in page
+            ]
+        else:
+            # Get total count
+            cursor.execute(f"SELECT COUNT(*) FROM stops {where_sql}", params)
+            total = cursor.fetchone()[0]
 
-        stops = []
-        for row in cursor.fetchall():
-            stops.append(StopResponse(
-                stop_id=row[0],
-                stop_name=row[1],
-                stop_lat=row[2],
-                stop_lon=row[3],
-                zone_id=row[4]
-            ))
+            # Get paginated results
+            cursor.execute(
+                f"""
+                SELECT stop_id, stop_name, stop_lat, stop_lon, zone_id
+                FROM stops
+                {where_sql}
+                ORDER BY stop_id
+                LIMIT ? OFFSET ?
+                """,
+                params + [limit, offset]
+            )
+
+            stops = []
+            for row in cursor.fetchall():
+                stops.append(StopResponse(
+                    stop_id=row[0],
+                    stop_name=row[1],
+                    stop_lat=row[2],
+                    stop_lon=row[3],
+                    zone_id=row[4]
+                ))
 
     return StopsListResponse(
         stops=stops,
