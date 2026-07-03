@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A crowd-sourced ETA learning system for Bengaluru Metropolitan Transport Corporation (BMTC) buses. The backend API ingests ride observations from a mobile app, learns travel time statistics per segment×time-bin using Welford+EMA algorithms, and returns blended ETAs (incorporating GTFS schedule data). A React Native mobile app provides real-time ETA lookup, stop scheduling, and trip tracking with stop detection.
+A crowd-sourced ETA learning system for Bengaluru Metropolitan Transport Corporation (BMTC) buses. The backend API ingests ride observations from a mobile app, learns travel time statistics per segment×time-bin using Welford + schedule-blend algorithms (EMA removed from the active pipeline, Phase 2 LEARN-01), and returns blended ETAs (incorporating GTFS schedule data). A React Native mobile app provides real-time ETA lookup, stop scheduling, and trip tracking with stop detection.
 
 ## Core Value
 
@@ -36,14 +36,15 @@ These capabilities exist and are working in the current codebase:
 - ✓ **Variance uses sample formula (n-1)** — `compute_variance()` returns Bessel-corrected sample variance, fixing systematically narrow P90 bounds — Phase 2
 - ✓ **All segment writes in a single transaction per ride** — trailing `conn.commit()` calls removed from `update_device_bucket`/`log_rejection`/`update_segment_stats`; one commit per ride in `routes.py` — Phase 2
 - ✓ **EMA dead code removed** — `update_ema`, `compute_time_based_alpha`, `is_stale` deleted; config surface (`ema_alpha`, `half_life_days`) soft-deprecated in `GET /v1/config` (returns null, not 500) — Phase 2
+- ✓ **GET /v1/stops/{stop_id}** — single stop detail (name, coordinates, zone) plus every serving route as a full `RouteResponse` object, ordered by `route_short_name`, not deduplicated — Phase 3
+- ✓ **GET /v1/routes/{route_id}** — route detail plus a per-direction ordered stop list, selecting the most-common `shape_id` branch when a direction has variants; stops-only, no trip/schedule data — Phase 3
+- ✓ **Geospatial radius search on GET /v1/stops** — `lat`/`lon`/`radius_m` params; SQL bounding-box pre-filter + exact Haversine second pass; mutually exclusive with `bbox` — Phase 3
+- ✓ **GET /v1/eta enriched with human-readable names** — `from_stop_name`/`to_stop_name`/`route_short_name` added to the nested segment object via `LEFT JOIN`; orphaned references null just that field, never 500 — Phase 3
 
 ### Active
 
-Current work: complete the API surface and add operational infrastructure. (Backend correctness bugs from Phase 1 and learning algorithm gaps from Phase 2 are resolved — see Validated above.)
+Current work: add operational infrastructure (data management, quality/ops, rate-limit hardening). Backend correctness (Phase 1), learning algorithm gaps (Phase 2), and the API surface (Phase 3) are resolved — see Validated above.
 
-- [ ] GET /v1/stops/{stop_id} and GET /v1/routes/{route_id} endpoints
-- [ ] Geospatial stop search (radius_m parameter)
-- [ ] Stop names returned in /v1/eta response
 - [ ] GTFS update workflow (scripts/update_gtfs.sh)
 - [ ] DB migration framework (versioned SQL scripts replacing empty migrations/)
 - [ ] Rate limit bucket cleanup wired to systemd timer
@@ -63,10 +64,11 @@ Current work: complete the API surface and add operational infrastructure. (Back
 
 ## Context
 
-**Codebase state (as of 2026-07-02):**
-- Backend: FastAPI + SQLite WAL, `uv` package manager, 198 tests (14 test files), systemd deployed
+**Codebase state (as of 2026-07-03):**
+- Backend: FastAPI + SQLite WAL, `uv` package manager, 219 tests (213 passing, 6 pre-existing failures — same baseline since before Phase 2), systemd deployed
 - Mobile: Expo 54 / React Native 0.81, Tamagui, expo-location, expo-router
-- 9 API endpoints, all live; Phase 1 resolved the P0 connection leak, idempotency replay, and CORS bugs; Phase 2 resolved the learning-algorithm correctness bugs (variance formula, first-observation rejection, per-segment commits, EMA dead code) — remaining known issues are API-surface and rate-limit-hardening scoped (see ROADMAP.md Phases 3, 6)
+- 10 API endpoints, all live; Phase 1 resolved the P0 connection leak, idempotency replay, and CORS bugs; Phase 2 resolved the learning-algorithm correctness bugs (variance formula, first-observation rejection, per-segment commits, EMA dead code); Phase 3 completed the API surface (single-resource stop/route detail, geospatial radius search, human-readable ETA enrichment) — remaining known issues are data-management, quality/ops, and rate-limit-hardening scoped (see ROADMAP.md Phases 4-6)
+- 03-REVIEW.md (Phase 3) found 8 critical / 10 warning findings, all traced via `git blame` to pre-Phase-3 commits (`ride_summary` validation-envelope gaps, missing `RequestValidationError` handler, the `/stops/{id}/schedule` time-window filter being unimplemented) — none are Phase 3 regressions; deferred, no blockers for this phase
 - 02-REVIEW.md (Phase 2) found 4 non-blocking warnings — stale `device_bucket` examples in docs/api.md, seed-quality drift on sparse segments, a dead import alias in routes.py — deferred, no blockers
 - 01-REVIEW.md (Phase 1) found 3 pre-existing rate-limit/idempotency-error-shape defects (`rate_limit.py`, error response contract) explicitly deferred to Phase 6 — not phase-1-blocking, 6 tests remain red (same baseline through Phase 2)
 
@@ -121,4 +123,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-02 after Phase 2 (Learning Algorithm Integrity) completion*
+*Last updated: 2026-07-03 after Phase 3 (API Surface Completion) completion*
