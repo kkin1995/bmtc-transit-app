@@ -70,7 +70,6 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 | Phase 02 P03 | 11min | 3 tasks | 10 files |
 | Phase 02 P04 | 5min | 2 tasks | 4 files |
 | Phase 03 P01 | 15min | 3 tasks | 5 files |
-
 | Phase 03 P02 | 10min | 3 tasks | 5 files |
 
 ---
