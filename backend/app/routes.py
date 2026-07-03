@@ -28,6 +28,7 @@ from app.models import (
     HealthResponse,
     StopsListResponse,
     StopResponse,
+    StopDetailResponse,
     RoutesListResponse,
     RouteResponse,
     ScheduleResponse,
@@ -552,6 +553,64 @@ async def get_stops(
         total=total,
         limit=limit,
         offset=offset
+    )
+
+
+@router.get("/stops/{stop_id}", response_model=StopDetailResponse)
+async def get_stop_detail(stop_id: str):
+    """Get single-stop detail plus every route serving that stop (API-01)."""
+    settings = get_settings()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT stop_id, stop_name, stop_lat, stop_lon, zone_id FROM stops WHERE stop_id = ?",
+            (stop_id,),
+        )
+        stop_row = cursor.fetchone()
+
+        if stop_row is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "not_found",
+                    "message": "Stop not found in GTFS data",
+                    "details": {"stop_id": stop_id}
+                }
+            )
+
+        # D-10: empty routes list (no special-casing) -- a stop with zero
+        # serving routes still returns 200, never 404.
+        cursor.execute(
+            """
+            SELECT DISTINCT r.route_id, r.route_short_name, r.route_long_name,
+                   r.route_type, r.agency_id
+            FROM routes r
+            JOIN trips t ON r.route_id = t.route_id
+            JOIN stop_times st ON t.trip_id = st.trip_id
+            WHERE st.stop_id = ?
+            ORDER BY r.route_short_name
+            """,
+            (stop_id,),
+        )
+        routes = [
+            RouteResponse(
+                route_id=row[0],
+                route_short_name=row[1],
+                route_long_name=row[2],
+                route_type=row[3],
+                agency_id=row[4]
+            )
+            for row in cursor.fetchall()
+        ]
+
+    return StopDetailResponse(
+        stop_id=stop_row[0],
+        stop_name=stop_row[1],
+        stop_lat=stop_row[2],
+        stop_lon=stop_row[3],
+        zone_id=stop_row[4],
+        routes=routes
     )
 
 

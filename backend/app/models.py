@@ -197,6 +197,16 @@ class RoutesListResponse(BaseModel):
     offset: int
 
 
+class StopDetailResponse(BaseModel):
+    """GET /v1/stops/{stop_id} response (API-01, D-07)."""
+    stop_id: str
+    stop_name: str
+    stop_lat: float
+    stop_lon: float
+    zone_id: Optional[str] = None
+    routes: List[RouteResponse]
+
+
 class StopInfo(BaseModel):
     """Stop information for schedule response."""
     stop_id: str
