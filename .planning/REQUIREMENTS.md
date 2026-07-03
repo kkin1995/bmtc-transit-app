@@ -47,7 +47,7 @@ The following are built and working. Captured here for traceability; not include
 
 ### API Surface
 
-- [ ] **API-01**: GET /v1/stops/{stop_id} returns single stop detail (coordinates, name, routes serving it)
+- [x] **API-01**: GET /v1/stops/{stop_id} returns single stop detail (coordinates, name, routes serving it)
 - [ ] **API-02**: GET /v1/routes/{route_id} returns single route detail (stops, trips, schedules)
 - [ ] **API-03**: GET /v1/stops?lat=X&lon=Y&radius_m=500 — geospatial stop search (currently only bbox)
 - [ ] **API-04**: GET /v1/eta response includes `from_stop_name`, `to_stop_name`, `route_short_name` (currently only IDs)
