@@ -566,12 +566,13 @@ def destination_point(lat: float, lon: float, bearing_deg: float, distance_m: fl
 
 **If this table is empty:** N/A — see entries above. All three are LOW-to-MEDIUM risk, non-blocking judgment calls, not verified-vs-actual factual disputes.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Should `GET /v1/routes/{route_id}`'s `directions` array include an entry with `stops: []` for a direction that has zero trips (while the other direction has trips), or omit that direction's entry entirely?**
    - What we know: D-05 covers the whole-route zero-trips case (`directions: []`) explicitly. D-02 defines the array-of-objects shape.
    - What's unclear: The per-direction partial case (one direction has service, the other doesn't) isn't explicitly addressed by any of D-01 through D-22.
    - Recommendation: Default to omitting the direction from the array entirely (symmetric with D-05's philosophy of "don't manufacture structure for data that doesn't exist"), but this is a genuine gap the planner should either lock explicitly in PLAN.md or raise as a 1-question confirmation before implementation, since it's a visible API-shape decision a mobile client will need to know about eventually (even though mobile integration itself is out of scope, D-22).
+   - **RESOLVED:** Locked as D-23 (planner-resolved micro-decision) in `03-02-PLAN.md`, following the recommended default — a zero-trip direction is omitted from the `directions` array entirely.
 
 ## Environment Availability
 
