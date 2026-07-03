@@ -624,6 +624,109 @@ def test_get_stop_detail_no_routes(client, db_with_test_stop_routes):
 
 
 # ==============================================================================
+# GET /v1/routes/{route_id} - Route Detail Tests (API-02)
+# ==============================================================================
+#
+# NOTE on error envelope shape: like the stop-detail tests above, the new
+# get_route_detail() handler uses HTTPException(404, detail={"error": ...}).
+# main.py's http_exception_handler unwraps this to a FLAT top-level body
+# (content=exc.detail) -- the same shape as JSONResponse-style 404s. Tests
+# below assert data["error"] (flat), NOT data["detail"]["error"] (nested).
+# See 03-01-SUMMARY.md and 03-02-PLAN.md's <known_correction_from_prior_plan>.
+
+
+def test_get_route_detail_success(client, db_with_test_route_branches):
+    """GET /v1/routes/{route_id} returns route metadata + ordered stops per direction (D-01..D-03)."""
+    response = client.get("/v1/routes/ROUTE_M")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Full RouteResponse field set (D-01)
+    assert data["route_id"] == "ROUTE_M"
+    assert data["route_short_name"] == "M"
+    assert data["route_long_name"] == "Route M Test Line"
+    assert data["route_type"] == 3
+    assert data["agency_id"] == "BMTC"
+
+    # No trip-level or schedule data anywhere in the body (D-01)
+    assert "trip_id" not in data
+    assert "trips" not in data
+    assert "arrival_time" not in data
+    assert "departure_time" not in data
+
+    # directions is an array of {direction_id, stops} objects (D-02)
+    assert "directions" in data
+    assert len(data["directions"]) == 2
+    direction_ids = {d["direction_id"] for d in data["directions"]}
+    assert direction_ids == {0, 1}
+
+    for direction in data["directions"]:
+        assert set(direction.keys()) == {"direction_id", "stops"}
+        for stop in direction["stops"]:
+            assert set(stop.keys()) == {
+                "stop_id",
+                "stop_name",
+                "stop_lat",
+                "stop_lon",
+                "stop_sequence",
+            }
+            assert "trip_id" not in stop
+
+    # Direction 0 ordered M_S1 -> M_S2 -> M_S3 by stop_sequence (D-03)
+    dir0 = next(d for d in data["directions"] if d["direction_id"] == 0)
+    assert [s["stop_id"] for s in dir0["stops"]] == ["M_S1", "M_S2", "M_S3"]
+    assert [s["stop_sequence"] for s in dir0["stops"]] == [1, 2, 3]
+
+    # Direction 1 ordered M_S3 -> M_S2 -> M_S1 by stop_sequence
+    dir1 = next(d for d in data["directions"] if d["direction_id"] == 1)
+    assert [s["stop_id"] for s in dir1["stops"]] == ["M_S3", "M_S2", "M_S1"]
+
+
+def test_get_route_detail_not_found(client):
+    """GET /v1/routes/{route_id} returns 404 not_found for an unknown route_id (D-06)."""
+    response = client.get("/v1/routes/NONEXISTENT_ROUTE")
+
+    assert response.status_code == 404
+    data = response.json()
+
+    # Flat error envelope -- see NOTE above this test group.
+    assert data["error"] == "not_found"
+    assert "message" in data
+    assert "details" in data
+    assert data["details"]["route_id"] == "NONEXISTENT_ROUTE"
+
+
+def test_get_route_detail_no_trips(client, db_with_test_route_branches):
+    """A route with zero trips returns 200 + directions: [], never 404 (D-05)."""
+    response = client.get("/v1/routes/ROUTE_EMPTY")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["route_id"] == "ROUTE_EMPTY"
+    assert data["directions"] == []
+
+
+def test_get_route_detail_branch_selection(client, db_with_test_route_branches):
+    """Most-common shape's trip determines stop order (D-04); zero-trip direction omitted (D-23)."""
+    response = client.get("/v1/routes/ROUTE_BRANCH")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # D-23: direction 1 has zero trips for ROUTE_BRANCH -- omitted entirely,
+    # not included with stops: []. Exactly one direction entry.
+    assert len(data["directions"]) == 1
+    direction = data["directions"][0]
+    assert direction["direction_id"] == 0
+
+    # D-04: shape A (3 trips: M_S1, M_S2, M_S3) is more common than shape B
+    # (1 trip: M_S1, BR_S4) -- shape A's stop sequence wins.
+    assert [s["stop_id"] for s in direction["stops"]] == ["M_S1", "M_S2", "M_S3"]
+
+
+# ==============================================================================
 # GET /v1/eta - New Structured Response Tests (v1.1)
 # ==============================================================================
 
