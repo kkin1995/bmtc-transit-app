@@ -196,7 +196,7 @@ All API errors return a standardized JSON object with three fields:
 This API follows [GTFS Schedule Reference](https://gtfs.org/documentation/schedule/reference/) for all schedule-related data. The API is organized into two clear layers:
 
 ### GTFS Layer (Schedule Data)
-- **Discovery endpoints:** GET /v1/stops, GET /v1/stops/{stop_id}, GET /v1/routes, GET /v1/stops/{stop_id}/schedule
+- **Discovery endpoints:** GET /v1/stops, GET /v1/stops/{stop_id}, GET /v1/routes, GET /v1/routes/{route_id}, GET /v1/stops/{stop_id}/schedule
 - **Field names:** Use exact GTFS specification names (e.g., `stop_id`, `route_short_name`, `stop_lat`)
 - **Data format:** HH:MM:SS for schedule times (per GTFS spec), ISO-8601 UTC for query times
 - **Supported GTFS files:** agency, routes, stops, trips, stop_times, calendar
@@ -600,7 +600,163 @@ Response:
 
 ---
 
-### 4) `GET /v1/routes/search` — Search routes by name *(Unauthenticated)*
+### 4) `GET /v1/routes/{route_id}` — Get route detail *(Unauthenticated)*
+
+Get full detail for a single route, including the ordered list of stops served in each direction. Designed so mobile clients can render a route's stop sequence (per direction) in one call instead of cross-referencing `/v1/stops/{stop_id}/schedule` per stop.
+
+**Scope note:** This endpoint is stops-only. It does **not** return trip-level data — no `trip_id` lists, no schedule/arrival times. For scheduled departures at a specific stop, use `GET /v1/stops/{stop_id}/schedule`.
+
+**Path parameters**
+
+* `route_id` (required): GTFS route identifier (e.g., "4715")
+
+**Response — 200 OK**
+
+```json
+{
+  "route_id": "4715",
+  "route_short_name": "335E",
+  "route_long_name": "Kengeri to Electronic City",
+  "route_type": 3,
+  "agency_id": "BMTC",
+  "directions": [
+    {
+      "direction_id": 0,
+      "stops": [
+        {
+          "stop_id": "20558",
+          "stop_name": "Kengeri Bus Station",
+          "stop_lat": 12.90987,
+          "stop_lon": 77.48285,
+          "stop_sequence": 1
+        },
+        {
+          "stop_id": "29374",
+          "stop_name": "Majestic Bus Station",
+          "stop_lat": 12.97644,
+          "stop_lon": 77.57148,
+          "stop_sequence": 2
+        }
+      ]
+    },
+    {
+      "direction_id": 1,
+      "stops": [
+        {
+          "stop_id": "29374",
+          "stop_name": "Majestic Bus Station",
+          "stop_lat": 12.97644,
+          "stop_lon": 77.57148,
+          "stop_sequence": 1
+        },
+        {
+          "stop_id": "20558",
+          "stop_name": "Kengeri Bus Station",
+          "stop_lat": 12.90987,
+          "stop_lon": 77.48285,
+          "stop_sequence": 2
+        }
+      ]
+    }
+  ]
+}
+```
+
+**GTFS Mapping**
+
+- `route_id` → routes.route_id (TEXT, required)
+- `route_short_name` → routes.route_short_name (TEXT, optional)
+- `route_long_name` → routes.route_long_name (TEXT, optional)
+- `route_type` → routes.route_type (INTEGER, required, 3=bus per GTFS spec)
+- `agency_id` → routes.agency_id (TEXT, optional)
+- `directions[].direction_id` → trips.direction_id (INTEGER)
+- `directions[].stops[]` → joined via `stop_times` → `stops`, ordered by `stop_times.stop_sequence`
+  - `stop_id` → stops.stop_id (TEXT, required)
+  - `stop_name` → stops.stop_name (TEXT, required)
+  - `stop_lat` → stops.stop_lat (REAL, required)
+  - `stop_lon` → stops.stop_lon (REAL, required)
+  - `stop_sequence` → stop_times.stop_sequence (INTEGER, required)
+
+**Representative-shape selection (branch variants)**
+
+* A `(route_id, direction_id)` pair may have multiple `shape_id` branch variants in GTFS data (e.g. a route that occasionally short-turns). The stop list for that direction is taken from the **most-common shape's representative trip** — the shape with the highest trip count for that route+direction. This gives a single, deterministic ordered stop list per direction even when branch variants exist.
+
+**Empty-data edge cases**
+
+* A `route_id` that exists in `routes` but currently has **zero trips** returns `200` with `directions: []` — never `404`. A route existing in GTFS static data with no trips scheduled is valid (e.g. a route pending schedule assignment), not an error.
+* A direction with **zero trips** (while the other direction has trips — e.g. a one-way-only route) is **omitted** from the `directions` array entirely. It does not appear as an entry with `stops: []`. A one-directional route therefore returns a single-element `directions` array.
+
+**Status codes**
+
+* `200` — Success. Includes the zero-trips-per-route case (`directions: []`) and the one-directional-route case (single-element `directions`).
+* `404` — Route not found (`error="not_found"`)
+* `500` — Internal error (`error="server_error"`)
+
+**Error Responses**
+
+**404 not_found** - Route not found in GTFS data:
+```json
+{
+  "error": "not_found",
+  "message": "Route not found in GTFS data",
+  "details": {
+    "route_id": "NONEXISTENT_ROUTE"
+  }
+}
+```
+
+**500 server_error** - Database errors or unexpected failures:
+```json
+{
+  "error": "server_error",
+  "message": "An unexpected error occurred",
+  "details": {}
+}
+```
+
+**cURL examples**
+
+**Route detail with both directions:**
+```bash
+curl "http://localhost:8000/v1/routes/4715"
+```
+
+**Route that exists but currently has no trips (200, empty directions):**
+```bash
+curl "http://localhost:8000/v1/routes/9999"
+```
+
+Response:
+```json
+{
+  "route_id": "9999",
+  "route_short_name": "PLANNED",
+  "route_long_name": "Future Extension Route",
+  "route_type": 3,
+  "agency_id": "BMTC",
+  "directions": []
+}
+```
+
+**Error example — Route not found:**
+```bash
+curl "http://localhost:8000/v1/routes/NONEXISTENT_ROUTE"
+```
+
+Response:
+```json
+{
+  "error": "not_found",
+  "message": "Route not found in GTFS data",
+  "details": {
+    "route_id": "NONEXISTENT_ROUTE"
+  }
+}
+```
+
+---
+
+### 5) `GET /v1/routes/search` — Search routes by name *(Unauthenticated)*
 
 Search GTFS routes using case-insensitive substring matching across `route_short_name` and `route_long_name`. Performs normalization (removes spaces/hyphens, converts to uppercase) for matching only, while preserving original GTFS values in response. Designed to find routes beyond pagination limits of GET /v1/routes.
 
@@ -786,7 +942,7 @@ Response:
 
 ---
 
-### 5) `GET /v1/stops/{stop_id}/schedule` — Get scheduled departures *(Unauthenticated)*
+### 6) `GET /v1/stops/{stop_id}/schedule` — Get scheduled departures *(Unauthenticated)*
 
 Query scheduled departures for a stop from GTFS data. Returns upcoming departures within a time window.
 
@@ -965,7 +1121,7 @@ Response:
 
 ---
 
-### 6) `POST /v1/ride_summary` — Submit ride for learning *(Authenticated, Idempotent)*
+### 7) `POST /v1/ride_summary` — Submit ride for learning *(Authenticated, Idempotent)*
 
 Ingest a single ride consisting of ordered segments. The server updates per-segment×time-bin statistics (Welford mean/variance, EMA) and logs rejections (outliers, low confidence, etc.).
 
@@ -1318,7 +1474,7 @@ Response:
 
 ---
 
-### 7) `GET /v1/eta` — Query ETA with predictions *(Unauthenticated)*
+### 8) `GET /v1/eta` — Query ETA with predictions *(Unauthenticated)*
 
 Return both GTFS scheduled duration and ML-predicted ETA at a given time (defaults to server "now"). Separates schedule data from prediction data.
 
@@ -1504,7 +1660,7 @@ Response:
 
 ---
 
-### 8) `GET /v1/config` — Server configuration *(Unauthenticated)*
+### 9) `GET /v1/config` — Server configuration *(Unauthenticated)*
 
 Returns public configuration and tuning parameters.
 
@@ -1566,7 +1722,7 @@ curl http://localhost:8000/v1/config
 
 ---
 
-### 9) `GET /v1/health` — Health & uptime *(Unauthenticated)*
+### 10) `GET /v1/health` — Health & uptime *(Unauthenticated)*
 
 Liveness/readiness with DB check.
 
@@ -1749,6 +1905,13 @@ curl http://localhost:8000/v1/config | jq .
 ## Changelog (API)
 
 See [`CHANGELOG.md`](./CHANGELOG.md) for detailed version history.
+
+**Unreleased — Route Detail Endpoint (API-02):**
+* **New endpoint:**
+  * GET `/v1/routes/{route_id}` - Single-route detail (metadata) plus a `directions` array, each with an ordered stop list — stops-only, no trip-level or schedule data
+  * For a `(route_id, direction_id)` with multiple `shape_id` branch variants, the most-common shape's representative trip determines the stop order
+  * A route with zero trips returns `200` with `directions: []` (never `404`); a direction with zero trips is omitted from the array entirely (not included with `stops: []`)
+  * Returns `404 not_found` only when `route_id` has no row in GTFS `routes` data at all
 
 **Unreleased — Stop Detail Endpoint (API-01):**
 * **New endpoint:**
