@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 03
 status: executing
-stopped_at: Completed 03-01-PLAN.md (API-01 stop detail endpoint)
-last_updated: "2026-07-03T04:59:43.208Z"
+stopped_at: Completed 03-02-PLAN.md (API-02 route detail endpoint)
+last_updated: "2026-07-03T05:09:40.000Z"
 progress:
   total_phases: 6
   completed_phases: 2
   total_plans: 11
-  completed_plans: 8
-  percent: 73
+  completed_plans: 9
+  percent: 82
 ---
 
 # Project State
@@ -31,8 +31,8 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 | Field | Value |
 |-------|-------|
 | Active phase | Phase 3: API Surface Completion |
-| Active plan | 01 complete (02-04 pending) |
-| Phase status | In progress (1/4 plans complete) |
+| Active plan | 02 complete (03-04 pending) |
+| Phase status | In progress (2/4 plans complete) |
 | Overall progress | 2/6 phases complete (Phase 1 + Phase 2 executed + verified); Phase 3 in progress |
 
 ```
@@ -56,8 +56,8 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 | Metric | Value |
 |--------|-------|
 | Phases complete | 2/6 |
-| Plans complete | 8 |
-| Tests passing | 201/207 (201 passed, 6 pre-existing failures — same baseline as Phase 1/2, no new failures) |
+| Plans complete | 9 |
+| Tests passing | 205/211 (205 passed, 6 pre-existing failures — same baseline as Phase 1/2, no new failures) |
 | Open blockers | 0 |
 
 | Plan | Duration | Tasks | Files |
@@ -70,6 +70,8 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 | Phase 02 P03 | 11min | 3 tasks | 10 files |
 | Phase 02 P04 | 5min | 2 tasks | 4 files |
 | Phase 03 P01 | 15min | 3 tasks | 5 files |
+
+| Phase 03 P02 | 10min | 3 tasks | 5 files |
 
 ---
 
@@ -96,6 +98,7 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 - [Phase 02-04]: Removed trailing `conn.commit()` from `update_device_bucket()` and `log_rejection()` in `learning.py` (D-12); hoisted the `update_device_bucket` call out of the per-segment loop in `routes.py::ride_summary` so it runs once per ride, not once per segment (D-13) — BUGFIX-06 fully resolved, a ride of any size now issues exactly one `conn.commit()`
 - [Phase 02-04]: RESEARCH.md's documented `monkeypatch.setattr(sqlite3.Connection, "commit", ...)` test pattern is incompatible with this Python 3.12.13/sqlite3 3.50.4 build (immutable C type); substituted a `sqlite3.connect`-factory counting wrapper achieving the identical commit-counting assertion
 - [Phase 03-01]: Corrected an incorrect nested-error-envelope assumption in planning artifacts (03-01-PLAN.md/03-RESEARCH.md/03-PATTERNS.md) — new `HTTPException(detail={...})` endpoints produce the same FLAT `{error,message,details}` wire shape as `JSONResponse`-style endpoints, verified via `app/main.py`'s `http_exception_handler` and the existing `test_eta_segment_not_found` precedent
+- [Phase 03-02]: `GET /v1/routes/{route_id}` (API-02) implemented per D-01..D-06 and D-23 — stops-only `directions` array, most-common-shape representative trip for branch variants, zero-trip route returns `200 + directions: []`, zero-trip direction omitted entirely; `get_route_detail()` registered at the end of `routes.py` (after `search_routes()`) to avoid shadowing `/routes/search`; carried forward 03-01's flat-error-envelope correction with no new deviation
 
 ### Active TODOs
 
@@ -109,12 +112,12 @@ None
 
 ## Session Continuity
 
-**Last session:** 2026-07-03T04:59:43.203Z
-**Stopped at:** Completed 03-01-PLAN.md (API-01 stop detail endpoint)
-**Resume file:** .planning/phases/03-api-surface-completion/03-02-PLAN.md
+**Last session:** 2026-07-03T05:09:40.000Z
+**Stopped at:** Completed 03-02-PLAN.md (API-02 route detail endpoint)
+**Resume file:** .planning/phases/03-api-surface-completion/03-03-PLAN.md
 
 **Last updated:** 2026-07-03
-**Next action:** Execute 03-02-PLAN.md (GET /v1/routes/{route_id}, API-02)
+**Next action:** Execute 03-03-PLAN.md (API-03)
 
 ---
 

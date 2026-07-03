@@ -92,7 +92,7 @@ Plans:
   3. GET /v1/stops?lat=12.97&lon=77.59&radius_m=500 returns all stops within 500m of that coordinate — verified by confirming a known stop within range is included and a stop 600m away is excluded
   4. GET /v1/eta response body includes `from_stop_name`, `to_stop_name`, and `route_short_name` fields populated from GTFS data — clients no longer need a separate stop/route lookup to display human-readable ETA results
 
-**Plans:** 1/4 plans executed
+**Plans:** 2/4 plans executed
 Plans:
 **Wave 1**
 
@@ -100,7 +100,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 — shared files: routes.py, models.py, docs/api.md, tests)*
 
-- [ ] 03-02-PLAN.md — API-02: GET /v1/routes/{route_id} route detail, most-common-shape stops per direction (D-01..D-06, D-23)
+- [x] 03-02-PLAN.md — API-02: GET /v1/routes/{route_id} route detail, most-common-shape stops per direction (D-01..D-06, D-23)
 
 **Wave 3** *(blocked on Wave 2 — shared files)*
 
@@ -162,7 +162,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Backend Correctness | 3/3 | Complete    | 2026-07-01 |
 | 2. Learning Algorithm Integrity | 4/4 | Complete    | 2026-07-02 |
-| 3. API Surface Completion | 1/4 | In Progress|  |
+| 3. API Surface Completion | 2/4 | In Progress|  |
 | 4. Data Management | 0/? | Not started | - |
 | 5. Quality & Operations | 0/? | Not started | - |
 | 6. Rate-Limit Hardening & API Docs Completeness | 0/? | Not started | - |
