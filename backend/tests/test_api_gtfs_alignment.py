@@ -863,6 +863,21 @@ def setup_test_segment_for_eta(client):
     with get_connection(settings.db_path) as conn:
         cursor = conn.cursor()
 
+        # Insert parent rows for the ETA-enrichment LEFT JOIN (API-04): a route
+        # and both stops referenced by the segment below. Idempotent so this
+        # helper can be called repeatedly across tests without conflict.
+        cursor.execute(
+            "INSERT OR IGNORE INTO routes (route_id, route_short_name, route_long_name, route_type, agency_id) VALUES (?, ?, ?, ?, ?)",
+            ("ROUTE1", "R1", "Route 1 Test Line", 3, None),
+        )
+        cursor.executemany(
+            "INSERT OR IGNORE INTO stops (stop_id, stop_name, stop_lat, stop_lon, zone_id) VALUES (?, ?, ?, ?, ?)",
+            [
+                ("STOP_A", "Test Origin Stop", 12.9716, 77.5946, None),
+                ("STOP_B", "Test Destination Stop", 12.9800, 77.6100, None),
+            ],
+        )
+
         # Insert segment (idempotent)
         cursor.execute(
             "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
@@ -884,6 +899,58 @@ def setup_test_segment_for_eta(client):
                 VALUES (?, ?, ?)
                 """,
                 (segment_id, bin_id, 300.0),  # 5 min schedule baseline
+            )
+
+        conn.commit()
+
+
+def setup_test_segment_for_eta_orphaned_from_stop(client):
+    """Helper to setup an ETA segment whose from_stop_id has NO matching `stops`
+    row, while to_stop_id and route_id resolve normally (API-04, D-20).
+
+    Reuses ROUTE1/STOP_B from setup_test_segment_for_eta() (must be called
+    first, or independently -- this helper inserts its own route/stop parent
+    rows too so it can also be called standalone). The app's `get_connection()`
+    does not set `PRAGMA foreign_keys = ON` (see backend/app/db.py), so
+    inserting a segment referencing a non-existent stops row does not raise
+    an FK violation here, matching RESEARCH.md's Wave 0 Gaps note.
+    """
+    from app.config import get_settings
+    from app.db import get_connection
+
+    settings = get_settings()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+
+        # Parent rows that DO resolve: route + destination stop.
+        cursor.execute(
+            "INSERT OR IGNORE INTO routes (route_id, route_short_name, route_long_name, route_type, agency_id) VALUES (?, ?, ?, ?, ?)",
+            ("ROUTE1", "R1", "Route 1 Test Line", 3, None),
+        )
+        cursor.execute(
+            "INSERT OR IGNORE INTO stops (stop_id, stop_name, stop_lat, stop_lon, zone_id) VALUES (?, ?, ?, ?, ?)",
+            ("STOP_B", "Test Destination Stop", 12.9800, 77.6100, None),
+        )
+
+        # Segment references STOP_ORPHAN_FROM, which has NO row in `stops`.
+        cursor.execute(
+            "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
+            ("ROUTE1", 0, "STOP_ORPHAN_FROM", "STOP_B"),
+        )
+
+        cursor.execute(
+            "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
+            ("ROUTE1", 0, "STOP_ORPHAN_FROM", "STOP_B"),
+        )
+        segment_id = cursor.fetchone()[0]
+
+        for bin_id in range(192):
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO segment_stats (segment_id, bin_id, schedule_mean)
+                VALUES (?, ?, ?)
+                """,
+                (segment_id, bin_id, 300.0),
             )
 
         conn.commit()
@@ -1226,3 +1293,57 @@ def test_get_eta_new_format_with_when_parameter(client):
     assert "query_time" in data
     assert "scheduled" in data
     assert "prediction" in data
+
+
+# ==============================================================================
+# GET /v1/eta - Segment Name Enrichment Tests (API-04, D-18..D-20)
+# ==============================================================================
+
+
+def test_get_eta_segment_names_populated(client):
+    """segment object includes from_stop_name/to_stop_name/route_short_name
+    resolved from GTFS via LEFT JOIN when all references exist (D-18)."""
+    setup_test_segment_for_eta(client)
+
+    response = client.get(
+        "/v1/eta",
+        params={
+            "route_id": "ROUTE1",
+            "direction_id": 0,
+            "from_stop_id": "STOP_A",
+            "to_stop_id": "STOP_B",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    segment = data["segment"]
+
+    assert segment["from_stop_name"] == "Test Origin Stop"
+    assert segment["to_stop_name"] == "Test Destination Stop"
+    assert segment["route_short_name"] == "R1"
+
+
+def test_get_eta_segment_names_orphaned_null(client):
+    """An orphaned from_stop_id nulls only that field via LEFT JOIN and still
+    returns 200 -- never 500 (D-20). to_stop_name/route_short_name, whose
+    references DO resolve, remain populated."""
+    setup_test_segment_for_eta_orphaned_from_stop(client)
+
+    response = client.get(
+        "/v1/eta",
+        params={
+            "route_id": "ROUTE1",
+            "direction_id": 0,
+            "from_stop_id": "STOP_ORPHAN_FROM",
+            "to_stop_id": "STOP_B",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    segment = data["segment"]
+
+    assert segment["from_stop_name"] is None
+    assert segment["to_stop_name"] == "Test Destination Stop"
+    assert segment["route_short_name"] == "R1"
