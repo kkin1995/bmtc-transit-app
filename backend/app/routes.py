@@ -31,6 +31,9 @@ from app.models import (
     StopDetailResponse,
     RoutesListResponse,
     RouteResponse,
+    RouteDetailResponse,
+    DirectionInfo,
+    DirectionStopInfo,
     ScheduleResponse,
     StopInfo,
     DepartureInfo,
@@ -942,3 +945,105 @@ async def search_routes(
                 "details": {}
             }
         )
+
+
+# NOTE: get_route_detail MUST be registered here, after search_routes(), not
+# near get_routes() -- otherwise a request to GET /v1/routes/search would be
+# captured by this route with route_id="search" (RESEARCH.md Pattern 3).
+@router.get("/routes/{route_id}", response_model=RouteDetailResponse)
+async def get_route_detail(route_id: str):
+    """Get single-route detail plus the ordered stop list per direction (API-02).
+
+    Stops-only response -- no trip-level data or schedule times (D-01). For a
+    (route_id, direction_id) with multiple shape_id branch variants, the
+    most-common shape's representative trip determines the stop order (D-04).
+    """
+    settings = get_settings()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT route_id, route_short_name, route_long_name, route_type, agency_id "
+            "FROM routes WHERE route_id = ?",
+            (route_id,),
+        )
+        route_row = cursor.fetchone()
+
+        if route_row is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "not_found",
+                    "message": "Route not found in GTFS data",
+                    "details": {"route_id": route_id}
+                }
+            )
+
+        directions = []
+        for direction_id in (0, 1):
+            # D-04: pick the most-common shape_id for this (route_id, direction_id)
+            cursor.execute(
+                """
+                SELECT shape_id, COUNT(*) AS cnt
+                FROM trips
+                WHERE route_id = ? AND direction_id = ?
+                GROUP BY shape_id
+                ORDER BY cnt DESC
+                LIMIT 1
+                """,
+                (route_id, direction_id),
+            )
+            shape_row = cursor.fetchone()
+
+            if shape_row is None:
+                # D-23: no trips for this direction -- omit it entirely,
+                # do NOT append an entry with stops: [].
+                continue
+
+            most_common_shape_id = shape_row[0]
+
+            # shape_id IS ? (not = ?) survives a possibly-null shape_id (GTFS
+            # allows shape_id to be optional).
+            cursor.execute(
+                """
+                SELECT trip_id FROM trips
+                WHERE route_id = ? AND direction_id = ? AND shape_id IS ?
+                LIMIT 1
+                """,
+                (route_id, direction_id, most_common_shape_id),
+            )
+            representative_trip_id = cursor.fetchone()[0]
+
+            cursor.execute(
+                """
+                SELECT st.stop_id, s.stop_name, s.stop_lat, s.stop_lon, st.stop_sequence
+                FROM stop_times st
+                JOIN stops s ON st.stop_id = s.stop_id
+                WHERE st.trip_id = ?
+                ORDER BY st.stop_sequence
+                """,
+                (representative_trip_id,),
+            )
+            stops = [
+                DirectionStopInfo(
+                    stop_id=row[0],
+                    stop_name=row[1],
+                    stop_lat=row[2],
+                    stop_lon=row[3],
+                    stop_sequence=row[4],
+                )
+                for row in cursor.fetchall()
+            ]
+
+            directions.append(DirectionInfo(direction_id=direction_id, stops=stops))
+
+    # D-05: if all directions were skipped above, directions stays [] here --
+    # a route with zero trips returns 200, never 404.
+    return RouteDetailResponse(
+        route_id=route_row[0],
+        route_short_name=route_row[1],
+        route_long_name=route_row[2],
+        route_type=route_row[3],
+        agency_id=route_row[4],
+        directions=directions,
+    )

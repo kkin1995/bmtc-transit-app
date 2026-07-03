@@ -207,6 +207,31 @@ class StopDetailResponse(BaseModel):
     routes: List[RouteResponse]
 
 
+class DirectionStopInfo(BaseModel):
+    """Single stop within a route direction's ordered stop list (API-02, D-03)."""
+    stop_id: str
+    stop_name: str
+    stop_lat: float
+    stop_lon: float
+    stop_sequence: int
+
+
+class DirectionInfo(BaseModel):
+    """Ordered stops for one direction of a route (API-02, D-02)."""
+    direction_id: int
+    stops: List[DirectionStopInfo]
+
+
+class RouteDetailResponse(BaseModel):
+    """GET /v1/routes/{route_id} response (API-02, D-01)."""
+    route_id: str
+    route_short_name: Optional[str] = None
+    route_long_name: Optional[str] = None
+    route_type: int
+    agency_id: Optional[str] = None
+    directions: List[DirectionInfo]
+
+
 class StopInfo(BaseModel):
     """Stop information for schedule response."""
     stop_id: str
