@@ -543,6 +543,87 @@ def test_get_schedule_returns_x_api_version(client):
 
 
 # ==============================================================================
+# GET /v1/stops/{stop_id} - Stop Detail Tests (API-01)
+# ==============================================================================
+#
+# NOTE on error envelope shape: get_stop_detail() raises HTTPException(404,
+# detail={"error": ..., "message": ..., "details": {...}}). The project's
+# custom http_exception_handler (backend/app/main.py) unwraps a dict-shaped
+# `detail` that already contains an "error" key and returns it as the FLAT
+# top-level JSON body (content=exc.detail) -- it does NOT nest it under a
+# "detail" key. This is the same wire shape already produced by the existing
+# JSONResponse-style 404s (e.g. test_get_schedule_stop_not_found above) and
+# by GET /v1/eta's existing HTTPException(404, detail={...}) 404, verified
+# against backend/tests/test_api_errors_alignment.py::test_eta_segment_not_found
+# (asserts the flat `data["error"]` shape via assert_error_response()). Tests
+# below assert the flat shape to match this verified, already-passing
+# precedent -- not a nested `data["detail"]["error"]` shape.
+
+
+def test_get_stop_detail_success(client, db_with_test_stop_routes):
+    """GET /v1/stops/{stop_id} returns stop detail + full route objects (D-07/D-08/D-09)."""
+    response = client.get("/v1/stops/STOP_X")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Stop fields
+    assert data["stop_id"] == "STOP_X"
+    assert data["stop_name"] == "Test Junction"
+    assert data["stop_lat"] == 12.9716
+    assert data["stop_lon"] == 77.5946
+    assert data["zone_id"] == "ZONE_A"
+
+    # D-07: routes array present with 2 full RouteResponse-shaped entries
+    assert "routes" in data
+    assert len(data["routes"]) == 2
+    for route in data["routes"]:
+        assert set(route.keys()) == {
+            "route_id",
+            "route_short_name",
+            "route_long_name",
+            "route_type",
+            "agency_id",
+        }
+
+    # D-08: NOT deduplicated by route_short_name -- both distinct route_ids present
+    # even though they share route_short_name "285"
+    route_ids = {route["route_id"] for route in data["routes"]}
+    assert route_ids == {"ROUTE_A1", "ROUTE_A2"}
+    assert all(route["route_short_name"] == "285" for route in data["routes"])
+
+    # D-09: ordered by route_short_name (both share "285", so order is stable
+    # but we still assert the sort key was applied, not left unordered by chance)
+    short_names = [route["route_short_name"] for route in data["routes"]]
+    assert short_names == sorted(short_names)
+
+
+def test_get_stop_detail_not_found(client):
+    """GET /v1/stops/{stop_id} returns 404 not_found for an unknown stop_id (D-11)."""
+    response = client.get("/v1/stops/NONEXISTENT_STOP")
+
+    assert response.status_code == 404
+    data = response.json()
+
+    # Flat error envelope -- see NOTE above this test group.
+    assert data["error"] == "not_found"
+    assert "message" in data
+    assert "details" in data
+    assert data["details"]["stop_id"] == "NONEXISTENT_STOP"
+
+
+def test_get_stop_detail_no_routes(client, db_with_test_stop_routes):
+    """A stop with zero serving routes returns 200 + routes: [], never 404 (D-10)."""
+    response = client.get("/v1/stops/STOP_ORPHAN")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["stop_id"] == "STOP_ORPHAN"
+    assert data["routes"] == []
+
+
+# ==============================================================================
 # GET /v1/eta - New Structured Response Tests (v1.1)
 # ==============================================================================
 

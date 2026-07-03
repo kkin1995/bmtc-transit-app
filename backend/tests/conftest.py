@@ -369,6 +369,80 @@ def db_with_test_routes(temp_db) -> Generator[tuple[str, sqlite3.Connection], No
 
 
 @pytest.fixture
+def db_with_test_stop_routes(temp_db) -> Generator[tuple[str, sqlite3.Connection], None, None]:
+    """Provide database with a served stop, an orphan stop, and 2 routes serving the stop.
+
+    Used for GET /v1/stops/{stop_id} tests (API-01):
+    - STOP_X: served by ROUTE_A1 and ROUTE_A2, which share `route_short_name` ("285")
+      to exercise D-08 (routes list must NOT dedupe by short_name)
+    - STOP_ORPHAN: exists in `stops` but has no trips/stop_times referencing it,
+      to exercise D-10 (200 + routes: [], never 404)
+
+    Use this for testing GET /v1/stops/{stop_id}.
+    """
+    db_path, conn = temp_db
+    cursor = conn.cursor()
+
+    # Insert test agency
+    cursor.execute(
+        "INSERT OR IGNORE INTO agency (agency_id, agency_name, agency_url, agency_timezone) VALUES (?, ?, ?, ?)",
+        ("BMTC", "Bangalore Metropolitan Transport Corporation", "http://mybmtc.com", "Asia/Kolkata")
+    )
+
+    # Insert test calendar (service_id FK required by trips)
+    cursor.execute(
+        """
+        INSERT OR IGNORE INTO calendar
+        (service_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, start_date, end_date)
+        VALUES (?, 1, 1, 1, 1, 1, 0, 0, 20250101, 20261231)
+        """,
+        ("WEEKDAY",)
+    )
+
+    # Insert stops: STOP_X (served) and STOP_ORPHAN (no serving routes)
+    cursor.executemany(
+        "INSERT OR IGNORE INTO stops (stop_id, stop_name, stop_lat, stop_lon, zone_id) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("STOP_X", "Test Junction", 12.9716, 77.5946, "ZONE_A"),
+            ("STOP_ORPHAN", "Orphan Layout Stop", 12.9800, 77.6000, None),
+        ]
+    )
+
+    # Insert 2 routes that share route_short_name "285" (D-08: not unique per route_id)
+    cursor.executemany(
+        "INSERT OR IGNORE INTO routes (route_id, route_short_name, route_long_name, route_type, agency_id) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("ROUTE_A1", "285", "Route A1 Long Name", 3, "BMTC"),
+            ("ROUTE_A2", "285", "Route A2 Variant Long Name", 3, "BMTC"),
+        ]
+    )
+
+    # Insert trips: one per route, both serving STOP_X
+    cursor.executemany(
+        "INSERT OR IGNORE INTO trips (trip_id, route_id, service_id, trip_headsign, direction_id) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("TRIP_A1", "ROUTE_A1", "WEEKDAY", "Headsign A1", 0),
+            ("TRIP_A2", "ROUTE_A2", "WEEKDAY", "Headsign A2", 0),
+        ]
+    )
+
+    # Insert stop_times linking both trips through STOP_X
+    cursor.executemany(
+        "INSERT OR IGNORE INTO stop_times (trip_id, stop_sequence, stop_id, arrival_time, departure_time) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("TRIP_A1", 1, "STOP_X", "10:00:00", "10:00:00"),
+            ("TRIP_A2", 1, "STOP_X", "10:05:00", "10:05:00"),
+        ]
+    )
+
+    conn.commit()
+
+    yield db_path, conn
+
+    # Cleanup handled by temp_db fixture
+
+
+@pytest.fixture
 def client_with_routes(db_with_test_routes, test_settings) -> Generator[TestClient, None, None]:
     """Provide FastAPI TestClient with GTFS route data loaded.
 
