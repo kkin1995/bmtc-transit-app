@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 03
 status: executing
-stopped_at: Completed 03-03-PLAN.md (API-03 radius search)
-last_updated: "2026-07-03T05:20:00.000Z"
+stopped_at: Completed 03-04-PLAN.md (API-04 ETA segment enrichment) — Phase 3 complete, pending verification
+last_updated: "2026-07-03T05:28:16.407Z"
 progress:
   total_phases: 6
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 11
-  completed_plans: 10
-  percent: 91
+  completed_plans: 11
+  percent: 50
 ---
 
 # Project State
@@ -31,13 +31,13 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 | Field | Value |
 |-------|-------|
 | Active phase | Phase 3: API Surface Completion |
-| Active plan | 03 complete (03-04 pending) |
-| Phase status | In progress (3/4 plans complete) |
-| Overall progress | 2/6 phases complete (Phase 1 + Phase 2 executed + verified); Phase 3 in progress |
+| Active plan | 03-04 complete — all 4 plans done |
+| Phase status | All plans complete (4/4) — pending phase verification |
+| Overall progress | 2/6 phases complete + verified (Phase 1 + Phase 2); Phase 3 plans complete, verification pending |
 
 ```
 Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
-           [   Done  ][  Done   ][  Queued ][  Queued ][  Queued ][  Queued ]
+           [   Done  ][  Done   ][  Ready  ][  Queued ][  Queued ][  Queued ]
 ```
 
 ---
@@ -55,9 +55,9 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 
 | Metric | Value |
 |--------|-------|
-| Phases complete | 2/6 |
-| Plans complete | 10 |
-| Tests passing | 211/217 (211 passed, 6 pre-existing failures — same baseline as Phase 1/2, no new failures) |
+| Phases complete | 2/6 verified (Phase 3 plans complete, verification pending) |
+| Plans complete | 11 |
+| Tests passing | 213/219 (213 passed, 6 pre-existing failures — same baseline as Phase 1/2/03-01..03-03, no new failures) |
 | Open blockers | 0 |
 
 | Plan | Duration | Tasks | Files |
@@ -72,6 +72,7 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 | Phase 03 P01 | 15min | 3 tasks | 5 files |
 | Phase 03 P02 | 10min | 3 tasks | 5 files |
 | Phase 03 P03 | 12min | 3 tasks | 3 files |
+| Phase 03 P04 | 8min | 3 tasks | 4 files |
 
 ---
 
@@ -100,6 +101,7 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 - [Phase 03-01]: Corrected an incorrect nested-error-envelope assumption in planning artifacts (03-01-PLAN.md/03-RESEARCH.md/03-PATTERNS.md) — new `HTTPException(detail={...})` endpoints produce the same FLAT `{error,message,details}` wire shape as `JSONResponse`-style endpoints, verified via `app/main.py`'s `http_exception_handler` and the existing `test_eta_segment_not_found` precedent
 - [Phase 03-02]: `GET /v1/routes/{route_id}` (API-02) implemented per D-01..D-06 and D-23 — stops-only `directions` array, most-common-shape representative trip for branch variants, zero-trip route returns `200 + directions: []`, zero-trip direction omitted entirely; `get_route_detail()` registered at the end of `routes.py` (after `search_routes()`) to avoid shadowing `/routes/search`; carried forward 03-01's flat-error-envelope correction with no new deviation
 - [Phase 03-03]: `GET /v1/stops` extended with `lat`/`lon`/`radius_m` radius search (API-03) per D-12..D-17 — `haversine_m()`/`bounding_box()` pure helpers added, SQL bbox pre-filter + exact Haversine second pass excludes bbox-corner false positives; fixed validation order (mutual exclusivity D-13 -> all-or-nothing D-14 -> range D-16 -> cap D-15) returning the canonical `JSONResponse(400, {error,message,details})` envelope; D-17 drive-by closed the gap where `docs/api.md` already claimed bbox range validation but the code did not implement it
+- [Phase 03-04]: `GET /v1/eta`'s nested `SegmentInfo` extended with `from_stop_name`/`to_stop_name`/`route_short_name` (API-04) per D-18..D-21 — resolved via a `LEFT JOIN` (never `INNER JOIN`) keyed on the already-resolved `segment_id`; an orphaned `from_stop_id`/`to_stop_id`/`route_id` nulls only that field and the endpoint still returns 200 (D-20); `route_long_name` intentionally excluded (D-19); flat deprecated ETA fields untouched (D-18); `docs/api.md`'s misleading `"route_id": "335E"` example replaced with a realistic compound `route_id` + separate `route_short_name` (D-21). Phase 3 (API Surface Completion) is now fully complete: 4/4 plans.
 
 ### Active TODOs
 
@@ -113,12 +115,12 @@ None
 
 ## Session Continuity
 
-**Last session:** 2026-07-03T05:20:00.000Z
-**Stopped at:** Completed 03-03-PLAN.md (API-03 radius search)
-**Resume file:** .planning/phases/03-api-surface-completion/03-04-PLAN.md
+**Last session:** 2026-07-03T05:28:16.407Z
+**Stopped at:** Completed 03-04-PLAN.md (API-04 ETA segment enrichment) — Phase 3 complete (4/4 plans)
+**Resume file:** None
 
 **Last updated:** 2026-07-03
-**Next action:** Execute 03-04-PLAN.md (final plan of Phase 3)
+**Next action:** Verify Phase 3 (API Surface Completion), then plan Phase 4
 
 ---
 

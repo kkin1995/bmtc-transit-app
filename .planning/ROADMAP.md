@@ -11,7 +11,7 @@
 
 - [x] **Phase 1: Backend Correctness** — Eliminate P0 connection leaks, broken idempotency replay, CORS misconfiguration, and dead code that undermines production reliability (completed 2026-07-01)
 - [x] **Phase 2: Learning Algorithm Integrity** — Fix variance formula, first-observation bootstrapping, EMA dead code, and per-segment transaction commits so the learning model produces accurate outputs (completed 2026-07-02)
-- [ ] **Phase 3: API Surface Completion** — Add missing single-resource endpoints, geospatial stop search, enriched ETA response, and client-visible deprecation headers
+- [x] **Phase 3: API Surface Completion** — Add missing single-resource endpoints, geospatial stop search, enriched ETA response, and client-visible deprecation headers (completed 2026-07-03)
 - [ ] **Phase 4: Data Management** — Establish a DB migration framework, wire rate-limit cleanup, fix retention orphans, and add a safe GTFS update workflow
 - [ ] **Phase 5: Quality & Operations** — Add performance tests, bootstrap smoke tests, CI pipeline, and structured monitoring so production targets are verifiably met
 - [ ] **Phase 6: Rate-Limit Hardening & API Docs Completeness** — Close the rate-limiting gaps flagged by the STRIDE security review (disabled-by-default, quota-check ordering, idempotency interaction) and fill the remaining privacy/error-model documentation gaps in docs/api.md
@@ -92,7 +92,7 @@ Plans:
   3. GET /v1/stops?lat=12.97&lon=77.59&radius_m=500 returns all stops within 500m of that coordinate — verified by confirming a known stop within range is included and a stop 600m away is excluded
   4. GET /v1/eta response body includes `from_stop_name`, `to_stop_name`, and `route_short_name` fields populated from GTFS data — clients no longer need a separate stop/route lookup to display human-readable ETA results
 
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 Plans:
 **Wave 1**
 
@@ -108,7 +108,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 — shared files)*
 
-- [ ] 03-04-PLAN.md — API-04: enrich GET /v1/eta segment with stop/route names via LEFT JOIN (D-18..D-22)
+- [x] 03-04-PLAN.md — API-04: enrich GET /v1/eta segment with stop/route names via LEFT JOIN (D-18..D-22)
 
 ### Phase 4: Data Management
 
@@ -162,7 +162,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Backend Correctness | 3/3 | Complete    | 2026-07-01 |
 | 2. Learning Algorithm Integrity | 4/4 | Complete    | 2026-07-02 |
-| 3. API Surface Completion | 3/4 | In Progress|  |
+| 3. API Surface Completion | 4/4 | Complete   | 2026-07-03 |
 | 4. Data Management | 0/? | Not started | - |
 | 5. Quality & Operations | 0/? | Not started | - |
 | 6. Rate-Limit Hardening & API Docs Completeness | 0/? | Not started | - |
