@@ -162,7 +162,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Backend Correctness | 3/3 | Complete    | 2026-07-01 |
 | 2. Learning Algorithm Integrity | 4/4 | Complete    | 2026-07-02 |
-| 3. API Surface Completion | 4/4 | Complete   | 2026-07-03 |
+| 3. API Surface Completion | 4/4 | Complete    | 2026-07-03 |
 | 4. Data Management | 0/? | Not started | - |
 | 5. Quality & Operations | 0/? | Not started | - |
 | 6. Rate-Limit Hardening & API Docs Completeness | 0/? | Not started | - |
