@@ -112,7 +112,7 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 
 ### Active TODOs
 
-- None yet
+- `.planning/todos/pending/2026-07-04-confirm-gtfs-update-sudoers.md` — Confirm bmtc sudoers drop-in before first production `update_gtfs.sh` run (deferred by operator 2026-07-04; target host not yet provisioned; not gated on phase completion)
 
 ### Blockers
 
