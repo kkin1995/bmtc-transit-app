@@ -34,6 +34,13 @@ def init_db(db_path: str) -> None:
         existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(idempotency_keys)").fetchall()}
         if "response_body" not in existing_cols:
             conn.execute("ALTER TABLE idempotency_keys ADD COLUMN response_body TEXT")
+        # Same guard for body_hash (added for the H1 tampering fix,
+        # schema.sql). Without this, a DB created before body_hash was
+        # added to schema.sql would never get the column, since
+        # CREATE TABLE IF NOT EXISTS is a no-op against an existing table
+        # (WR-02).
+        if "body_hash" not in existing_cols:
+            conn.execute("ALTER TABLE idempotency_keys ADD COLUMN body_hash TEXT")
 
         # Fresh-bootstrap migration seeding (DATA-01, RESEARCH.md Pitfall 1):
         # schema.sql is the current baseline and already contains every schema
