@@ -6,4 +6,4 @@ Type=oneshot
 User=bmtc
 Group=bmtc
 EnvironmentFile=/etc/bmtc-api/env
-ExecStart=/bin/bash -c 'sqlite3 $BMTC_DB_PATH "DELETE FROM ride_segments WHERE timestamp_utc < strftime(\"%s\", \"now\") - ($BMTC_RETENTION_DAYS * 86400)"'
+ExecStart=/opt/bmtc-api/scripts/retention_cleanup.sh
