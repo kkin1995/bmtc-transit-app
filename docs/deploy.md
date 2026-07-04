@@ -215,14 +215,14 @@ sudo -u bmtc bash -c 'cd /opt/bmtc-api && scripts/update_gtfs.sh /path/to/new-gt
 **What it does:**
 
 1. Validates the new zip is present and well-formed before touching anything (fails closed, no side effects on bad input).
-2. Takes a pre-refresh backup (reuses `backup.sh` verbatim).
-3. Stops `bmtc-api` — see "Granting the bmtc user service-control permission" below; this step requires elevated privilege.
+2. Stops `bmtc-api` — see "Granting the bmtc user service-control permission" below; this step requires elevated privilege.
+3. Takes a pre-refresh backup (reuses `backup.sh` verbatim). Taken *after* the stop so the backup always reflects the exact state a rollback resumes from — no ride submitted between backup and stop can be silently lost on rollback.
 4. Clears the 7 GTFS-source tables only (`agency`, `routes`, `stops`, `trips`, `stop_times`, `calendar`, `gtfs_metadata`). `segments`, `segment_stats`, `rides`, and `ride_segments` — the learning history — are never touched.
 5. Re-runs `python -m app.bootstrap` against the new zip.
 6. Validates row counts on the 7 GTFS tables (fails if a table goes to zero, or changes by more than 50% either direction).
-7. On success, restarts `bmtc-api`. On any failure at steps 4-6, automatically restores the pre-refresh backup from step 2, restarts `bmtc-api` from the restored DB, and exits non-zero.
+7. On success, restarts `bmtc-api`. On any failure at steps 3-6 — including unanticipated ones, via a global error trap, not just the explicit checks — automatically restores the pre-refresh backup from step 3, restarts `bmtc-api` from the restored DB, and exits non-zero.
 
-**Expect a ~30-60 second outage** of `bmtc-api` during the stop -> clear -> re-bootstrap -> restart window (steps 3-7). Schedule refreshes during low-traffic periods.
+**Expect a ~30-60 second outage** of `bmtc-api` during the stop -> backup -> clear -> re-bootstrap -> restart window (steps 2-7). Schedule refreshes during low-traffic periods.
 
 Segment-level learning history (`welford_mean`, `n`, `m2` per segment×bin) is preserved byte-identically across a refresh — only `schedule_mean` is recomputed from the new GTFS schedule.
 

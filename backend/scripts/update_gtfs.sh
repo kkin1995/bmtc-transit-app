@@ -3,11 +3,13 @@
 # Purpose: Safely refresh GTFS static data from an operator-supplied local
 #          zip without losing Welford learning history (DATA-04, D-10..D-15).
 #
-# Pipeline: validate $1 -> pre-refresh backup -> stop bmtc-api -> clear the
+# Pipeline: validate $1 -> stop bmtc-api -> pre-refresh backup -> clear the
 #           7 GTFS-source tables -> re-bootstrap (reuses app.bootstrap
 #           unmodified) -> row-count sanity check -> restart bmtc-api, OR
 #           auto-restore the pre-refresh backup and exit non-zero on any
-#           failure signal along the way (D-14).
+#           failure signal along the way (D-14). The service is stopped
+#           BEFORE the backup (not after) so the backup always reflects
+#           the exact state a rollback resumes from -- see CR-03.
 #
 # `segments`, `segment_stats`, `rides`, `ride_segments` are NEVER touched by
 # the clear step (D-11/D-12) -- re-bootstrap's schedule_mean-only upsert
@@ -105,7 +107,18 @@ rollback_and_exit() {
     exit 1
 }
 
-# --- Step 1: pre-refresh backup (D-14), reusing backup.sh verbatim ---
+# --- Step 1: stop the API BEFORE taking the backup (D-15, CR-03). Backing
+# up while the service is still live would leave a window where a ride
+# accepted between the backup snapshot and the stop is committed to the
+# live DB but absent from the backup -- a validation failure later would
+# restore that backup and silently discard those writes. Stopping first
+# guarantees no further writes can occur, so BACKUP_FILE always reflects
+# the exact state rollback_and_exit resumes from. ---
+echo "$LOG_PREFIX Stopping bmtc-api..."
+service_control stop
+
+# --- Step 2: pre-refresh backup (D-14), reusing backup.sh verbatim. Taken
+# after the stop above, so no writes can land outside it (CR-03). ---
 echo "$LOG_PREFIX Taking pre-refresh backup..."
 BACKUP_OUTPUT=$(BMTC_DB_PATH="$DB_PATH" BMTC_BACKUP_DIR="$BACKUP_DIR" "$SCRIPT_DIR/backup.sh")
 echo "$LOG_PREFIX $BACKUP_OUTPUT"
@@ -113,6 +126,12 @@ BACKUP_FILE=$(echo "$BACKUP_OUTPUT" | grep -oP '(?<=Backup complete: ).*')
 
 if [ -z "$BACKUP_FILE" ] || [ ! -f "$BACKUP_FILE" ]; then
     echo "$LOG_PREFIX ERROR: pre-refresh backup did not produce a usable backup file" >&2
+    # The service was already stopped above but no usable backup exists to
+    # roll back to -- restart it as-is (nothing has been touched yet) rather
+    # than leaving it stopped.
+    if [ "$SKIP_SERVICE_CONTROL" != "1" ]; then
+        sudo systemctl start bmtc-api || true
+    fi
     exit 1
 fi
 
@@ -128,10 +147,6 @@ declare -A BEFORE_COUNTS
 for t in $GTFS_TABLES; do
     BEFORE_COUNTS[$t]=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM $t;")
 done
-
-# --- Step 2: stop the API before the destructive step (D-15) ---
-echo "$LOG_PREFIX Stopping bmtc-api..."
-service_control stop
 
 # --- Step 3: clear ONLY the 7 GTFS-source tables (D-11). Child-before-parent
 # order is defensive style -- FK enforcement is never turned on in this
