@@ -59,10 +59,12 @@ sudo -u bmtc bash -c 'cd /opt/bmtc-api && uv run python -m app.bootstrap'
 sudo cp deploy/bmtc-api.service /etc/systemd/system/
 sudo cp deploy/bmtc-backup.{service,timer} /etc/systemd/system/
 sudo cp deploy/bmtc-retention.{service,timer} /etc/systemd/system/
+sudo cp deploy/bmtc-rate-limit-cleanup.{service,timer} /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now bmtc-api
 sudo systemctl enable --now bmtc-backup.timer
 sudo systemctl enable --now bmtc-retention.timer
+sudo systemctl enable --now bmtc-rate-limit-cleanup.timer
 ```
 
 ### 6. Verify
