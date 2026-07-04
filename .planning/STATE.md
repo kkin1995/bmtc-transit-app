@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 4 — Data Management
+current_phase: 04
 status: executing
-stopped_at: Phase 4 context gathered
-last_updated: "2026-07-03T10:09:23.238Z"
+stopped_at: Completed 04-01-PLAN.md (DATA-01 migration framework)
+last_updated: "2026-07-04T03:27:12.842Z"
 progress:
   total_phases: 6
   completed_phases: 3
-  total_plans: 11
-  completed_plans: 11
-  percent: 50
+  total_plans: 16
+  completed_plans: 12
+  percent: 75
 ---
 
 # Project State
@@ -21,8 +21,8 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-01)
 
 **Core value:** Riders get progressively more accurate bus ETAs as more trips are observed
-**Current phase:** 4 — Data Management
-**Status:** Ready to execute
+**Current phase:** 04
+**Status:** Executing Phase 04
 
 ---
 
@@ -31,13 +31,13 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 | Field | Value |
 |-------|-------|
 | Active phase | Phase 4: Data Management |
-| Active plan | None yet — Phase 4 not planned |
-| Phase status | Not started |
-| Overall progress | 3/6 phases complete + verified (Phase 1 + Phase 2 + Phase 3) |
+| Active plan | 01 complete (04-02 pending) |
+| Phase status | In progress (1/5 plans complete) |
+| Overall progress | 3/6 phases complete + verified (Phase 1 + Phase 2 + Phase 3); Phase 4 in progress |
 
 ```
 Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
-           [   Done  ][  Done   ][  Done   ][  Ready  ][  Queued ][  Queued ]
+           [   Done  ][  Done   ][  Done   ][ Started ][  Queued ][  Queued ]
 ```
 
 ---
@@ -57,8 +57,8 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 | Metric | Value |
 |--------|-------|
 | Phases complete | 3/6 verified |
-| Plans complete | 11 |
-| Tests passing | 213/219 (213 passed, 6 pre-existing failures — same baseline as Phase 1/2/03-01..03-03, no new failures) |
+| Plans complete | 12 |
+| Tests passing | 217/223 (217 passed, 6 pre-existing failures — same baseline as Phase 1/2/3/04-01, no new failures) |
 | Open blockers | 0 |
 
 | Plan | Duration | Tasks | Files |
@@ -74,8 +74,7 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 | Phase 03 P02 | 10min | 3 tasks | 5 files |
 | Phase 03 P03 | 12min | 3 tasks | 3 files |
 | Phase 03 P04 | 8min | 3 tasks | 4 files |
-
----
+| Phase 04 P01 | 18min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -103,6 +102,7 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 - [Phase 03-02]: `GET /v1/routes/{route_id}` (API-02) implemented per D-01..D-06 and D-23 — stops-only `directions` array, most-common-shape representative trip for branch variants, zero-trip route returns `200 + directions: []`, zero-trip direction omitted entirely; `get_route_detail()` registered at the end of `routes.py` (after `search_routes()`) to avoid shadowing `/routes/search`; carried forward 03-01's flat-error-envelope correction with no new deviation
 - [Phase 03-03]: `GET /v1/stops` extended with `lat`/`lon`/`radius_m` radius search (API-03) per D-12..D-17 — `haversine_m()`/`bounding_box()` pure helpers added, SQL bbox pre-filter + exact Haversine second pass excludes bbox-corner false positives; fixed validation order (mutual exclusivity D-13 -> all-or-nothing D-14 -> range D-16 -> cap D-15) returning the canonical `JSONResponse(400, {error,message,details})` envelope; D-17 drive-by closed the gap where `docs/api.md` already claimed bbox range validation but the code did not implement it
 - [Phase 03-04]: `GET /v1/eta`'s nested `SegmentInfo` extended with `from_stop_name`/`to_stop_name`/`route_short_name` (API-04) per D-18..D-21 — resolved via a `LEFT JOIN` (never `INNER JOIN`) keyed on the already-resolved `segment_id`; an orphaned `from_stop_id`/`to_stop_id`/`route_id` nulls only that field and the endpoint still returns 200 (D-20); `route_long_name` intentionally excluded (D-19); flat deprecated ETA fields untouched (D-18); `docs/api.md`'s misleading `"route_id": "335E"` example replaced with a realistic compound `route_id` + separate `route_short_name` (D-21). Phase 3 (API Surface Completion) is now fully complete: 4/4 plans.
+- [Phase 04-01]: `backend/app/migrations/003_rate_limit_*`/`004_idempotency_bodyhash_*` archived to `migrations/archive/` via `git mv` (D-01) — `schema.sql` is now the current baseline; `backend/scripts/apply_migrations.sh` added as the `schema_migrations`-tracked diff-and-apply runner (D-02/D-03), invoked manually only, never from app startup (D-04); `init_db()` seeds `schema_migrations` with every migration filename in the resolved migrations dir immediately after loading `schema.sql`, preventing double-application on a fresh bootstrap (RESEARCH.md Pitfall 1). DATA-01 satisfied.
 
 ### Active TODOs
 
@@ -116,12 +116,12 @@ None
 
 ## Session Continuity
 
-**Last session:** 2026-07-03T09:33:58.353Z
-**Stopped at:** Phase 4 context gathered
-**Resume file:** .planning/phases/04-data-management/04-CONTEXT.md
+**Last session:** 2026-07-04T03:27:12.842Z
+**Stopped at:** Completed 04-01-PLAN.md (DATA-01 migration framework)
+**Resume file:** .planning/phases/04-data-management/04-02-PLAN.md
 
-**Last updated:** 2026-07-03
-**Next action:** Plan Phase 4 (Data Management)
+**Last updated:** 2026-07-04
+**Next action:** Execute Phase 4 Plan 02 (04-02-PLAN.md)
 
 ---
 
