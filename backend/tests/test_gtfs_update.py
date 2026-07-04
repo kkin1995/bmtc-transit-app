@@ -35,6 +35,24 @@ MINI_GTFS_ZIP = Path(__file__).parent / "fixtures" / "mini_gtfs.zip"
 GTFS_TABLES = ["agency", "routes", "stops", "trips", "stop_times", "calendar", "gtfs_metadata"]
 
 
+def _seed_all_time_bins(conn: sqlite3.Connection) -> None:
+    """Seed all 192 time_bins rows (matches app.db.init_db()'s production
+    seeding) so compute_segments_and_baselines()'s segment_stats FK on
+    time_bins(bin_id) is satisfied for any bin a real GTFS parse computes."""
+    bins = []
+    bin_id = 0
+    for weekday_type in (0, 1):
+        for hour in range(24):
+            for minute in (0, 15, 30, 45):
+                bins.append((bin_id, weekday_type, hour, minute))
+                bin_id += 1
+    conn.executemany(
+        "INSERT OR IGNORE INTO time_bins (bin_id, weekday_type, hour_start, minute_start) VALUES (?, ?, ?, ?)",
+        bins,
+    )
+    conn.commit()
+
+
 def _test_path() -> str:
     """PATH including uv's directory so `uv run python -m app.bootstrap`
     resolves inside the subprocess, plus the standard system dirs the other
@@ -107,31 +125,41 @@ def _seed_gtfs_rows(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def _seed_learning_rows(conn: sqlite3.Connection) -> tuple[int, int, int]:
-    """Seed a segment + segment_stats + a ride + ride_segments row.
+def _seed_learning_rows(
+    conn: sqlite3.Connection,
+    route_id: str = "SEED_ROUTE",
+    from_stop: str = "SEED_S1",
+    to_stop: str = "SEED_S2",
+) -> tuple[int, int, int, int]:
+    """Seed a segment + a Welford-history segment_stats row + a ride + a
+    ride_segment referencing an EXISTING (route_id, from_stop, to_stop).
 
-    Returns (segments_count, rides_count, ride_segments_count) captured
-    immediately after seeding — the pre-refresh baseline used to assert
-    D-12 append-only preservation across a GTFS refresh.
+    Returns (segment_id, segments_count, rides_count, ride_segments_count)
+    captured immediately after seeding — the pre-refresh baseline used to
+    assert D-12 append-only preservation across a GTFS refresh.
     """
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, 0, ?, ?)",
-        ("SEED_ROUTE", "SEED_S1", "SEED_S2"),
+        "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, 0, ?, ?)",
+        (route_id, from_stop, to_stop),
     )
     cursor.execute(
         "SELECT segment_id FROM segments WHERE route_id=? AND from_stop_id=? AND to_stop_id=?",
-        ("SEED_ROUTE", "SEED_S1", "SEED_S2"),
+        (route_id, from_stop, to_stop),
     )
     segment_id = cursor.fetchone()[0]
 
+    # bin_id 191 (weekend, 23:45) is unlikely to collide with any bin_id a
+    # real GTFS parse computes from the mini feed's weekday-morning
+    # departures, so this row's presence/values are a clean, unambiguous
+    # signal for "was Welford history touched by the clear+re-bootstrap?"
     cursor.execute(
-        "INSERT OR IGNORE INTO time_bins (bin_id, weekday_type, hour_start, minute_start) VALUES (0, 0, 0, 0)"
+        "INSERT OR IGNORE INTO time_bins (bin_id, weekday_type, hour_start, minute_start) VALUES (191, 1, 23, 45)"
     )
     cursor.execute(
         """
-        INSERT INTO segment_stats (segment_id, bin_id, n, welford_mean, welford_m2, schedule_mean, last_update)
-        VALUES (?, 0, 5, 300.0, 120.0, 280.0, ?)
+        INSERT OR IGNORE INTO segment_stats (segment_id, bin_id, n, welford_mean, welford_m2, schedule_mean, last_update)
+        VALUES (?, 191, 5, 300.0, 120.0, 280.0, ?)
         """,
         (segment_id, int(time.time())),
     )
@@ -153,17 +181,36 @@ def _seed_learning_rows(conn: sqlite3.Connection) -> tuple[int, int, int]:
     segments_count = cursor.execute("SELECT COUNT(*) FROM segments").fetchone()[0]
     rides_count = cursor.execute("SELECT COUNT(*) FROM rides").fetchone()[0]
     ride_segments_count = cursor.execute("SELECT COUNT(*) FROM ride_segments").fetchone()[0]
-    return segments_count, rides_count, ride_segments_count
+    return segment_id, segments_count, rides_count, ride_segments_count
 
 
 def test_update_gtfs_happy_path_preserves_learning_data(temp_db, tmp_path):
     """Test A: a valid GTFS zip repopulates the 7 GTFS tables while leaving
-    segment_stats/rides/ride_segments row counts unchanged (D-11/D-12)."""
+    segment_stats/rides/ride_segments row counts (and the exact Welford
+    values of a previously-learned segment×bin) unchanged (D-11/D-12).
+
+    The pre-refresh GTFS state is seeded by parsing the SAME mini_gtfs.zip
+    the script will re-apply (simulating an operator re-publishing an
+    unchanged feed) so the D-13 row-count delta is 0% — a realistic
+    happy-path scenario that doesn't depend on tuning the >50% threshold
+    against arbitrarily-sized seed data (RESEARCH.md Pitfall 5).
+    """
+    from app.gtfs_bootstrap import parse_gtfs
+
     db_path, conn = temp_db
 
-    _seed_gtfs_rows(conn)
-    before_segments, before_rides, before_ride_segments = _seed_learning_rows(conn)
+    _seed_all_time_bins(conn)
+    parse_gtfs(str(MINI_GTFS_ZIP), conn)
+    conn.commit()
+
+    segment_id, before_segments, before_rides, before_ride_segments = _seed_learning_rows(
+        conn, route_id="MINI_R1", from_stop="MINI_S1", to_stop="MINI_S2"
+    )
     before_segment_stats = conn.execute("SELECT COUNT(*) FROM segment_stats").fetchone()[0]
+    before_welford = conn.execute(
+        "SELECT n, welford_mean, welford_m2 FROM segment_stats WHERE segment_id=? AND bin_id=191",
+        (segment_id,),
+    ).fetchone()
 
     gtfs_path = tmp_path / "gtfs"
     gtfs_path.mkdir()
@@ -182,13 +229,21 @@ def test_update_gtfs_happy_path_preserves_learning_data(temp_db, tmp_path):
     after_ride_segments = conn.execute("SELECT COUNT(*) FROM ride_segments").fetchone()[0]
     after_segments = conn.execute("SELECT COUNT(*) FROM segments").fetchone()[0]
     after_segment_stats = conn.execute("SELECT COUNT(*) FROM segment_stats").fetchone()[0]
+    after_welford = conn.execute(
+        "SELECT n, welford_mean, welford_m2 FROM segment_stats WHERE segment_id=? AND bin_id=191",
+        (segment_id,),
+    ).fetchone()
 
     assert after_rides == before_rides
     assert after_ride_segments == before_ride_segments
-    # Append-only (D-12): the mini feed's own trips add NEW segments/stats,
-    # the pre-existing seeded ones must never be removed.
+    # Append-only (D-12): re-parsing the same feed must not remove the
+    # pre-existing segment/segment_stats rows.
     assert after_segments >= before_segments
     assert after_segment_stats >= before_segment_stats
+    # The exact Welford history for the previously-learned segment×bin must
+    # be byte-for-byte unchanged -- re-bootstrap's upsert only ever writes
+    # schedule_mean, never n/welford_mean/welford_m2 (RESEARCH finding #2).
+    assert after_welford == before_welford
 
     backups = list(backup_dir.glob("*.db.gz"))
     assert len(backups) == 1
