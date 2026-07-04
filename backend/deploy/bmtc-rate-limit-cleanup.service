@@ -1,0 +1,9 @@
+[Unit]
+Description=BMTC API Rate Limit Bucket Cleanup
+
+[Service]
+Type=oneshot
+User=bmtc
+Group=bmtc
+EnvironmentFile=/etc/bmtc-api/env
+ExecStart=/opt/bmtc-api/scripts/rate_limit_cleanup.sh
