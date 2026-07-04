@@ -122,12 +122,12 @@ Plans:
   3. The retention script deletes rows from `rides` that have no remaining `ride_segments` after the segment retention sweep — no orphaned `rides` rows accumulate beyond the retention window
   4. Running `scripts/update_gtfs.sh` on a production-like DB completes a full backup → download → GTFS-table clear → re-bootstrap → row-count validation cycle without deleting any rows from `segment_stats`, `rides`, or `ride_segments`
 
-**Plans:** 1/5 plans executed
+**Plans:** 2/5 plans executed
 Plans:
 **Wave 1** *(all four requirements are file-independent — fully parallel)*
 
 - [x] 04-01-PLAN.md — DATA-01: migration framework — archive orphaned 003/004 files, `apply_migrations.sh` diff-and-apply runner, `schema_migrations` fresh-bootstrap seeding (D-01..D-04)
-- [ ] 04-02-PLAN.md — DATA-02: wire `rate_limit_cleanup.sh` to a new staggered systemd timer + script test (D-07..D-09)
+- [x] 04-02-PLAN.md — DATA-02: wire `rate_limit_cleanup.sh` to a new staggered systemd timer + script test (D-07..D-09)
 - [ ] 04-03-PLAN.md — DATA-03: `retention_cleanup.sh` (ride_segments TTL → orphaned rides → rejection_log TTL), repoint `bmtc-retention.service` (D-05, D-06)
 - [ ] 04-04-PLAN.md — DATA-04: `update_gtfs.sh` backup→stop→clear→re-bootstrap→validate→rollback + synthetic GTFS fixture + tests (D-10..D-15)
 
@@ -174,7 +174,7 @@ Plans:
 | 1. Backend Correctness | 3/3 | Complete    | 2026-07-01 |
 | 2. Learning Algorithm Integrity | 4/4 | Complete    | 2026-07-02 |
 | 3. API Surface Completion | 4/4 | Complete    | 2026-07-03 |
-| 4. Data Management | 1/5 | In Progress|  |
+| 4. Data Management | 2/5 | In Progress|  |
 | 5. Quality & Operations | 0/? | Not started | - |
 | 6. Rate-Limit Hardening & API Docs Completeness | 0/? | Not started | - |
 
