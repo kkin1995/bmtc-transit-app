@@ -9,6 +9,16 @@
 # existing migration filename pre-seeded into schema_migrations by
 # app/db.py's init_db() (RESEARCH.md Pitfall 1), so this script only ever
 # executes migrations that are genuinely missing from an older DB's history.
+#
+# Requirement for every *_up.sql file (WR-03): wrap the entire body in
+# `BEGIN TRANSACTION; ... COMMIT;` (see 003_rate_limit_up.sql for the
+# reference pattern). Without this, a mid-file failure on a later statement
+# leaves earlier statements in that same file already applied but the
+# migration itself unmarked in schema_migrations -- the next invocation
+# re-runs the whole file from the top and a repeated `ALTER TABLE ADD
+# COLUMN` fails with "duplicate column name", permanently wedging the
+# runner for every migration after that point until someone intervenes
+# manually.
 
 set -euo pipefail
 
@@ -35,12 +45,16 @@ for f in "$MIGRATIONS_DIR"/*_up.sql; do
     [ -e "$f" ] || continue  # no migrations found — glob didn't match
 
     name="$(basename "$f")"
-    already=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM schema_migrations WHERE filename = '$name';")
+    # Escape embedded single quotes (SQL-literal doubling) before
+    # interpolating into the query strings below (WR-03) -- a filename
+    # containing a single quote would otherwise break the query or worse.
+    name_escaped="${name//\'/\'\'}"
+    already=$(sqlite3 "$DB_PATH" "SELECT COUNT(*) FROM schema_migrations WHERE filename = '$name_escaped';")
 
     if [ "$already" -eq 0 ]; then
         echo "$LOG_PREFIX Applying $name..."
         sqlite3 "$DB_PATH" < "$f"
-        sqlite3 "$DB_PATH" "INSERT INTO schema_migrations (filename) VALUES ('$name');"
+        sqlite3 "$DB_PATH" "INSERT INTO schema_migrations (filename) VALUES ('$name_escaped');"
         applied_count=$((applied_count + 1))
     fi
 done
