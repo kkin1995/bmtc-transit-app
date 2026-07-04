@@ -40,15 +40,15 @@ These capabilities exist and are working in the current codebase:
 - ✓ **GET /v1/routes/{route_id}** — route detail plus a per-direction ordered stop list, selecting the most-common `shape_id` branch when a direction has variants; stops-only, no trip/schedule data — Phase 3
 - ✓ **Geospatial radius search on GET /v1/stops** — `lat`/`lon`/`radius_m` params; SQL bounding-box pre-filter + exact Haversine second pass; mutually exclusive with `bbox` — Phase 3
 - ✓ **GET /v1/eta enriched with human-readable names** — `from_stop_name`/`to_stop_name`/`route_short_name` added to the nested segment object via `LEFT JOIN`; orphaned references null just that field, never 500 — Phase 3
+- ✓ **Versioned DB migration framework** — `apply_migrations.sh` diff-and-apply runner tracked via `schema_migrations`; `init_db()` seeds the table on fresh bootstrap so a new DB never double-applies changes already in `schema.sql`; four orphaned Oct-2025 migrations archived as historical record — Phase 4
+- ✓ **Rate-limit bucket cleanup on a systemd timer** — `bmtc-rate-limit-cleanup.timer` (00:15) wired to the existing `rate_limit_cleanup.sh`, staggered from `bmtc-retention.timer` (00:00) to avoid simultaneous SQLite writes — Phase 4
+- ✓ **Retention sweep removes orphaned `rides` rows** — `retention_cleanup.sh` runs three ordered TTL deletes (`ride_segments`, orphaned `rides` with zero remaining segments, `rejection_log`) in one pass, replacing the old inline single-table DELETE — Phase 4
+- ✓ **GTFS refresh without losing learning history** — `scripts/update_gtfs.sh <zip>` backs up, stops the service, clears only the 7 GTFS-source tables, re-bootstraps (refreshing `schedule_mean` only), validates row-count deltas, and auto-restores + exits non-zero on failure — Phase 4
 
 ### Active
 
-Current work: add operational infrastructure (data management, quality/ops, rate-limit hardening). Backend correctness (Phase 1), learning algorithm gaps (Phase 2), and the API surface (Phase 3) are resolved — see Validated above.
+Current work: quality/ops hardening (performance tests, monitoring, CI). Backend correctness (Phase 1), learning algorithm gaps (Phase 2), the API surface (Phase 3), and data management (Phase 4) are resolved — see Validated above.
 
-- [ ] GTFS update workflow (scripts/update_gtfs.sh)
-- [ ] DB migration framework (versioned SQL scripts replacing empty migrations/)
-- [ ] Rate limit bucket cleanup wired to systemd timer
-- [ ] Retention script cleans parent `rides` table (not just `ride_segments`)
 - [ ] Performance tests (load tests) verifying POST p99 < 200ms, GET p99 < 100ms
 - [ ] Monitoring/alerting integration
 - [ ] CI pipeline
@@ -64,10 +64,12 @@ Current work: add operational infrastructure (data management, quality/ops, rate
 
 ## Context
 
-**Codebase state (as of 2026-07-03):**
-- Backend: FastAPI + SQLite WAL, `uv` package manager, 219 tests (213 passing, 6 pre-existing failures — same baseline since before Phase 2), systemd deployed
+**Codebase state (as of 2026-07-04):**
+- Backend: FastAPI + SQLite WAL, `uv` package manager, 235 tests (229 passing, 6 pre-existing failures — same baseline since before Phase 2), systemd deployed
 - Mobile: Expo 54 / React Native 0.81, Tamagui, expo-location, expo-router
-- 10 API endpoints, all live; Phase 1 resolved the P0 connection leak, idempotency replay, and CORS bugs; Phase 2 resolved the learning-algorithm correctness bugs (variance formula, first-observation rejection, per-segment commits, EMA dead code); Phase 3 completed the API surface (single-resource stop/route detail, geospatial radius search, human-readable ETA enrichment) — remaining known issues are data-management, quality/ops, and rate-limit-hardening scoped (see ROADMAP.md Phases 4-6)
+- 10 API endpoints, all live; Phase 1 resolved the P0 connection leak, idempotency replay, and CORS bugs; Phase 2 resolved the learning-algorithm correctness bugs (variance formula, first-observation rejection, per-segment commits, EMA dead code); Phase 3 completed the API surface (single-resource stop/route detail, geospatial radius search, human-readable ETA enrichment); Phase 4 added the data-management operational layer (versioned migrations, rate-limit + retention cleanup timers, GTFS refresh) — remaining known issues are quality/ops scoped (see ROADMAP.md Phases 5-6)
+- 04-REVIEW.md (Phase 4) found 3 critical / 7 warning findings in the two scripts touching production data destructively (`update_gtfs.sh` missing a global rollback trap and backing up before stopping the service; `retention_cleanup.sh` accepting unvalidated negative retention-window env vars) — all 10 fixed same-session (04-REVIEW-FIX.md, `status: all_fixed`), verified independently against the full suite (no regressions)
+- The one Phase 4 item requiring a human, off-repo action — confirming the scoped `bmtc` sudoers drop-in for `systemctl stop/start bmtc-api` on the production host — was explicitly deferred (host not yet provisioned) and is tracked as an open pre-production prerequisite, not a phase gap: `.planning/todos/pending/2026-07-04-confirm-gtfs-update-sudoers.md`
 - 03-REVIEW.md (Phase 3) found 8 critical / 10 warning findings, all traced via `git blame` to pre-Phase-3 commits (`ride_summary` validation-envelope gaps, missing `RequestValidationError` handler, the `/stops/{id}/schedule` time-window filter being unimplemented) — none are Phase 3 regressions; deferred, no blockers for this phase
 - 02-REVIEW.md (Phase 2) found 4 non-blocking warnings — stale `device_bucket` examples in docs/api.md, seed-quality drift on sparse segments, a dead import alias in routes.py — deferred, no blockers
 - 01-REVIEW.md (Phase 1) found 3 pre-existing rate-limit/idempotency-error-shape defects (`rate_limit.py`, error response contract) explicitly deferred to Phase 6 — not phase-1-blocking, 6 tests remain red (same baseline through Phase 2)
@@ -79,8 +81,6 @@ Current work: add operational infrastructure (data management, quality/ops, rate
 - Cloudflare Tunnel for external exposure (no direct public port)
 
 **Known gaps driving the active roadmap:**
-- Several CONCERNS.md issues affect data quality and production reliability
-- `migrations/` directory exists but is empty — schema changes are manual
 - No CI pipeline (tests run locally only)
 - No performance or load tests despite stated p99 targets
 
@@ -123,4 +123,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-03 after Phase 3 (API Surface Completion) completion*
+*Last updated: 2026-07-04 after Phase 4 (Data Management) completion*
