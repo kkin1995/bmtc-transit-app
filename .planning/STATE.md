@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 04
 status: executing
-stopped_at: Completed 04-03-PLAN.md (DATA-03 retention cleanup script)
-last_updated: "2026-07-04T03:41:23.903Z"
+stopped_at: Completed 04-04-PLAN.md (DATA-04 GTFS update workflow script)
+last_updated: "2026-07-04T09:29:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 16
-  completed_plans: 14
-  percent: 88
+  completed_plans: 15
+  percent: 50
 ---
 
 # Project State
@@ -31,8 +31,8 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 | Field | Value |
 |-------|-------|
 | Active phase | Phase 4: Data Management |
-| Active plan | 03 complete (04-04 pending) |
-| Phase status | In progress (3/5 plans complete) |
+| Active plan | 04 complete (04-05 pending) |
+| Phase status | In progress (4/5 plans complete) |
 | Overall progress | 3/6 phases complete + verified (Phase 1 + Phase 2 + Phase 3); Phase 4 in progress |
 
 ```
@@ -57,8 +57,8 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 | Metric | Value |
 |--------|-------|
 | Phases complete | 3/6 verified |
-| Plans complete | 14 |
-| Tests passing | 225/231 (225 passed, 6 pre-existing failures — same baseline as Phase 1/2/3/04-01/04-02, no new failures) |
+| Plans complete | 15 |
+| Tests passing | 229/235 (229 passed, 6 pre-existing failures — same baseline as Phase 1/2/3/04-01/04-02/04-03, no new failures) |
 | Open blockers | 0 |
 
 | Plan | Duration | Tasks | Files |
@@ -77,6 +77,7 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 | Phase 04 P01 | 18min | 3 tasks | 7 files |
 | Phase 04 P02 | 15min | 2 tasks | 4 files |
 | Phase 04 P03 | 10min | 3 tasks | 3 files |
+| Phase 04 P04 | 16min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -107,6 +108,7 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 - [Phase 04-01]: `backend/app/migrations/003_rate_limit_*`/`004_idempotency_bodyhash_*` archived to `migrations/archive/` via `git mv` (D-01) — `schema.sql` is now the current baseline; `backend/scripts/apply_migrations.sh` added as the `schema_migrations`-tracked diff-and-apply runner (D-02/D-03), invoked manually only, never from app startup (D-04); `init_db()` seeds `schema_migrations` with every migration filename in the resolved migrations dir immediately after loading `schema.sql`, preventing double-application on a fresh bootstrap (RESEARCH.md Pitfall 1). DATA-01 satisfied.
 - [Phase 04-02]: `rate_limit_cleanup.sh` wired to new `bmtc-rate-limit-cleanup.service`/`.timer` (daily 00:15, D-07); `bmtc-retention.timer` changed from bare `OnCalendar=daily` to explicit `*-*-* 00:00:00`, locking in a 15-minute stagger (D-09) so the two maintenance timers never collide on the single-writer SQLite DB; `rate_limit_cleanup.sh` itself left unmodified per D-08. DATA-02 satisfied.
 - [Phase 04-03]: `retention_cleanup.sh` (D-05/D-06) replaces `bmtc-retention.service`'s inline `sqlite3` DELETE with three ordered deletes — `ride_segments` TTL, orphaned `rides` via `NOT EXISTS` keyed on `rides.ride_id`, `rejection_log` TTL — in one scheduled run; DATA-03 satisfied. Test subprocess path resolved via `Path(__file__).parent.parent` (matching `test_rate_limit_cleanup_script.py`'s 04-02 precedent), correcting RESEARCH.md's repo-root-relative example which breaks under this project's own `cd backend && uv run pytest` invocation convention.
+- [Phase 04-04]: `update_gtfs.sh` (DATA-04) implements backup->stop->clear-7-GTFS-tables->re-bootstrap->row-count-validate->restart-or-rollback (D-10..D-15), reusing `backup.sh`/`restore.sh` verbatim and `uv run python -m app.bootstrap` unmodified; `BACKEND_DIR` resolved from the script's own location, not a hardcoded `/opt/bmtc-api` path. Rule 1 bugfix: added `PRAGMA wal_checkpoint(TRUNCATE)` before `restore.sh`'s file-level swap in the rollback path — under `journal_mode=WAL`, a stale non-empty `-wal` file left by the clear step would otherwise be replayed on the restored file, silently reapplying the destructive deletes and defeating D-14's rollback guarantee. Segment Welford values (`n`/`welford_mean`/`welford_m2`) proven byte-identical across a full refresh cycle in tests. DATA-04 satisfied.
 
 ### Active TODOs
 
@@ -120,12 +122,12 @@ None
 
 ## Session Continuity
 
-**Last session:** 2026-07-04T03:40:54.682Z
-**Stopped at:** Completed 04-03-PLAN.md (DATA-03 retention cleanup script)
-**Resume file:** .planning/phases/04-data-management/04-04-PLAN.md
+**Last session:** 2026-07-04T09:29:00.000Z
+**Stopped at:** Completed 04-04-PLAN.md (DATA-04 GTFS update workflow script)
+**Resume file:** .planning/phases/04-data-management/04-05-PLAN.md
 
 **Last updated:** 2026-07-04
-**Next action:** Execute Phase 4 Plan 04 (04-04-PLAN.md)
+**Next action:** Execute Phase 4 Plan 05 (04-05-PLAN.md)
 
 ---
 

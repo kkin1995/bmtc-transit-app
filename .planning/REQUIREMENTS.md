@@ -58,7 +58,7 @@ The following are built and working. Captured here for traceability; not include
 - [x] **DATA-01**: DB migration framework in place (versioned SQL scripts in `backend/app/migrations/`; currently empty)
 - [x] **DATA-02**: Rate limit bucket cleanup wired to a systemd timer (script exists but is not scheduled)
 - [x] **DATA-03**: Retention script cleans parent `rides` table in addition to `ride_segments` (currently orphans `rides` rows)
-- [ ] **DATA-04**: GTFS update workflow script (`scripts/update_gtfs.sh`) — backup → download → re-bootstrap → validate, without losing learning data
+- [x] **DATA-04**: GTFS update workflow script (`scripts/update_gtfs.sh`) — backup → download → re-bootstrap → validate, without losing learning data
 
 ### Quality & Operations
 
