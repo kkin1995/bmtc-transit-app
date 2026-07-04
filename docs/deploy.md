@@ -183,6 +183,83 @@ sudo -u bmtc /opt/bmtc-api/scripts/restore.sh /var/lib/bmtc-api/backups/bmtc_lat
 
 ---
 
+## Upgrading an Existing Database
+
+`apply_migrations.sh` brings an **existing, already-deployed** database up to date with new versioned SQL migrations added to `backend/app/migrations/`. It is a **manual, post-deploy step** — it is never invoked from `app.main`'s startup lifespan (D-04).
+
+**Fresh install vs. upgrade — these are two distinct paths, do not conflate them:**
+
+- **Fresh install:** `python -m app.bootstrap` loads the current `schema.sql` (already contains every schema change) and `init_db()` auto-seeds `schema_migrations` with every migration filename present in `backend/app/migrations/`, so nothing gets re-applied on first boot. Use this for a brand-new host (see Setup step 4 above).
+- **Upgrade (existing DB):** After a code deploy that adds a new migration file to `backend/app/migrations/`, run `apply_migrations.sh` manually to apply only the migrations missing from that DB's `schema_migrations` table. Do NOT run `python -m app.bootstrap` against an existing DB to "upgrade" it — bootstrap does not apply migrations, it only loads `schema.sql` once.
+
+**Invocation:**
+
+```bash
+sudo -u bmtc bash -c 'cd /opt/bmtc-api && BMTC_DB_PATH=/var/lib/bmtc-api/bmtc.db scripts/apply_migrations.sh'
+```
+
+The script is idempotent — re-running it after all pending migrations are applied is a no-op (`Applied 0 migration(s).`).
+
+---
+
+## Refreshing GTFS Data
+
+`update_gtfs.sh` replaces the static GTFS feed (routes/stops/trips/stop_times/etc.) with a newer operator-supplied zip, without losing any learned Welford statistics (`segment_stats.welford_mean`/`n`/`m2`) or ride history (D-12).
+
+**Invocation:**
+
+```bash
+sudo -u bmtc bash -c 'cd /opt/bmtc-api && scripts/update_gtfs.sh /path/to/new-gtfs.zip'
+```
+
+**What it does:**
+
+1. Validates the new zip is present and well-formed before touching anything (fails closed, no side effects on bad input).
+2. Takes a pre-refresh backup (reuses `backup.sh` verbatim).
+3. Stops `bmtc-api` — see "Granting the bmtc user service-control permission" below; this step requires elevated privilege.
+4. Clears the 7 GTFS-source tables only (`agency`, `routes`, `stops`, `trips`, `stop_times`, `calendar`, `gtfs_metadata`). `segments`, `segment_stats`, `rides`, and `ride_segments` — the learning history — are never touched.
+5. Re-runs `python -m app.bootstrap` against the new zip.
+6. Validates row counts on the 7 GTFS tables (fails if a table goes to zero, or changes by more than 50% either direction).
+7. On success, restarts `bmtc-api`. On any failure at steps 4-6, automatically restores the pre-refresh backup from step 2, restarts `bmtc-api` from the restored DB, and exits non-zero.
+
+**Expect a ~30-60 second outage** of `bmtc-api` during the stop -> clear -> re-bootstrap -> restart window (steps 3-7). Schedule refreshes during low-traffic periods.
+
+Segment-level learning history (`welford_mean`, `n`, `m2` per segment×bin) is preserved byte-identically across a refresh — only `schedule_mean` is recomputed from the new GTFS schedule.
+
+---
+
+## Granting the bmtc User Service-Control Permission
+
+`update_gtfs.sh` (and `restore.sh`) call `systemctl stop bmtc-api` / `systemctl start bmtc-api`. The `bmtc` system user (Setup step 1) has no default permission to control systemd units it doesn't own, so one of the following must be configured on the target host **before the first production run of `update_gtfs.sh`**:
+
+**Option A — scoped sudoers drop-in (recommended):**
+
+Create `/etc/sudoers.d/bmtc-gtfs-update` containing exactly:
+
+```
+bmtc ALL=(root) NOPASSWD: /usr/bin/systemctl stop bmtc-api, /usr/bin/systemctl start bmtc-api
+```
+
+Validate the syntax before relying on it:
+
+```bash
+sudo visudo -c
+```
+
+**Important:** each command+argument pair must be listed explicitly — sudoers does not glob `systemctl * bmtc-api`. Do NOT use a wildcard rule such as `systemctl *`; that would let a compromised `bmtc` account control or stop arbitrary system services (least-privilege).
+
+**Option B — run as root:**
+
+Skip the sudoers drop-in and invoke `update_gtfs.sh` directly as root instead of as the `bmtc` user:
+
+```bash
+sudo bash /opt/bmtc-api/scripts/update_gtfs.sh /path/to/new-gtfs.zip
+```
+
+Either option is acceptable — pick whichever matches the target host's existing privilege-delegation convention. Before the first production run, also confirm no broader pre-existing sudoers rule (e.g. `systemctl *`) already over-grants the `bmtc` user.
+
+---
+
 ## Secret Rotation
 
 Generate new API key monthly:
