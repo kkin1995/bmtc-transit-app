@@ -76,8 +76,19 @@ service_control() {
 # --- Auto-rollback (D-14): restore the pre-refresh backup, ensure the
 # service is back up, and exit non-zero. restore.sh already does its own
 # systemctl stop/start bmtc-api with `|| true`, so this tolerates both a
-# real bmtc-api unit and a test environment with none installed. ---
+# real bmtc-api unit and a test environment with none installed.
+#
+# Disables the ERR trap first (CR-01) so a failure inside restore.sh itself
+# cannot re-enter this function. This is invoked both from the explicit
+# `if` checks below (re-bootstrap failure, empty-table check, delta-
+# threshold check) AND from a global `trap ... ERR` armed right after the
+# pre-refresh backup succeeds, so ANY unanticipated failure in the
+# stop -> clear -> re-bootstrap -> validate window (missing `bc`, a
+# transient `sqlite3 "database is locked"`, disk full during `cp`, etc.)
+# still triggers a restore instead of leaving bmtc-api stopped forever
+# with no rollback and no restart. ---
 rollback_and_exit() {
+    trap - ERR
     echo "$LOG_PREFIX VALIDATION FAILED -- restoring pre-refresh backup from $BACKUP_FILE" >&2
     # Force any WAL frames written by the clear step (D-11) to be applied
     # and the WAL file truncated to zero before restore.sh's raw file-level
@@ -104,6 +115,12 @@ if [ -z "$BACKUP_FILE" ] || [ ! -f "$BACKUP_FILE" ]; then
     echo "$LOG_PREFIX ERROR: pre-refresh backup did not produce a usable backup file" >&2
     exit 1
 fi
+
+# From this point on, a valid pre-refresh backup exists, so ANY
+# unanticipated failure should trigger the same restore path as the
+# explicit checks below rather than exiting via `set -e` with the service
+# potentially left stopped and no rollback attempted (CR-01).
+trap 'rollback_and_exit' ERR
 
 # Snapshot BEFORE row counts on the 7 GTFS tables only (D-13) -- segments/
 # segment_stats/rides/ride_segments are append-only and never validated here.
@@ -160,6 +177,7 @@ for t in $GTFS_TABLES; do
 done
 
 # --- Step 6: validation passed -- restart the API ---
+trap - ERR
 echo "$LOG_PREFIX Validation passed. Restarting bmtc-api..."
 service_control start
 echo "$LOG_PREFIX GTFS refresh complete."
