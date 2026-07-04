@@ -1,5 +1,6 @@
 """Database initialization and connection management."""
 
+import os
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -24,6 +25,28 @@ def init_db(db_path: str) -> None:
     existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(idempotency_keys)").fetchall()}
     if "response_body" not in existing_cols:
         conn.execute("ALTER TABLE idempotency_keys ADD COLUMN response_body TEXT")
+
+    # Fresh-bootstrap migration seeding (DATA-01, RESEARCH.md Pitfall 1):
+    # schema.sql is the current baseline and already contains every schema
+    # change described by migrations/*_up.sql. Seed schema_migrations with
+    # every migration filename found so apply_migrations.sh never re-applies
+    # a change a freshly-created DB already has. Only a DB that predates
+    # this seeding step (i.e. an older DB never bootstrapped this way) will
+    # have a given filename genuinely missing and will execute it for real.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS schema_migrations ("
+        "filename TEXT PRIMARY KEY, "
+        "applied_at TEXT NOT NULL DEFAULT (datetime('now'))"
+        ")"
+    )
+    migrations_dir = Path(os.environ.get("BMTC_MIGRATIONS_DIR", str(Path(__file__).parent / "migrations")))
+    if migrations_dir.is_dir():
+        migration_files = [(f.name,) for f in sorted(migrations_dir.glob("*_up.sql"))]
+        if migration_files:
+            conn.executemany(
+                "INSERT OR IGNORE INTO schema_migrations (filename) VALUES (?)",
+                migration_files,
+            )
 
     # Initialize 192 time bins
     bins = []
