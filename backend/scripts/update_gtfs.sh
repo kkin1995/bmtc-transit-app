@@ -42,11 +42,20 @@ SKIP_SERVICE_CONTROL="${BMTC_SKIP_SERVICE_CONTROL:-0}"
 LOG_PREFIX="[$(date -Iseconds)] [update-gtfs]"
 GTFS_TABLES="agency routes stops trips stop_times calendar gtfs_metadata"
 
-# --- Step 0: validate $1 before ANY side effect (V5, T-04-07) ---
+# --- Step 0: validate $1 and required tools before ANY side effect (V5,
+# T-04-07). `bc` is only otherwise exercised at Step 5 (row-count delta
+# check), after the service has been stopped and the GTFS tables cleared
+# and repopulated -- checking it here, alongside unzip/sqlite3, ensures a
+# missing binary fails fast before any side effect rather than compounding
+# an in-progress outage (WR-07). ---
 if [ $# -ne 1 ]; then
     echo "$LOG_PREFIX ERROR: Usage: $0 <path-to-new-gtfs.zip>" >&2
     exit 1
 fi
+
+for bin in unzip sqlite3 bc; do
+    command -v "$bin" >/dev/null 2>&1 || { echo "$LOG_PREFIX ERROR: required command '$bin' not found" >&2; exit 1; }
+done
 
 NEW_GTFS_ZIP="$1"
 
