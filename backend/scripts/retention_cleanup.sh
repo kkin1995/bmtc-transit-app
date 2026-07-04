@@ -28,6 +28,22 @@ if [[ ! -f "$DB_PATH" ]]; then
     exit 1
 fi
 
+# Validate retention windows are positive integers (CR-02) -- these values
+# are interpolated directly into the DELETE WHERE clauses below. A
+# negative value (a typo, or a sign flip during a config refactor) would
+# shift the cutoff into the future and delete essentially all rows in
+# ride_segments/rejection_log; a non-numeric value (e.g. "90 days") would
+# produce silently-wrong arithmetic instead of a clear failure. This runs
+# unattended, daily, via bmtc-retention.timer, so there is no human in the
+# loop to catch a bad value before data is gone.
+for var_name in RETENTION_DAYS REJECTION_LOG_RETENTION_DAYS; do
+    value="${!var_name}"
+    if ! [[ "$value" =~ ^[0-9]+$ ]] || [ "$value" -lt 1 ]; then
+        echo "$LOG_PREFIX ERROR: $var_name must be a positive integer, got '$value'" >&2
+        exit 1
+    fi
+done
+
 echo "$LOG_PREFIX Starting retention cleanup (ride_segments/rides: ${RETENTION_DAYS}d, rejection_log: ${REJECTION_LOG_RETENTION_DAYS}d)..."
 
 # 1. ride_segments older than retention window
