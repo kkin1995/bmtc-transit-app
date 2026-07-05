@@ -316,9 +316,9 @@ def test_replay_with_different_body_returns_409(setup_segment_for_bodyhash, auth
     # Should return 409 Conflict
     assert response2.status_code == 409
     data = response2.json()
-    assert data["detail"]["error"] == "conflict"
-    assert "different request body" in data["detail"]["message"]
-    assert data["detail"]["details"]["idempotency_key"] == idempotency_key
+    assert data["error"] == "conflict"
+    assert "different request body" in data["message"]
+    assert data["details"]["idempotency_key"] == idempotency_key
 
 
 def test_replay_with_modified_segment_data_returns_409(setup_segment_for_bodyhash, auth_headers):
@@ -355,13 +355,14 @@ def test_replay_with_modified_segment_data_returns_409(setup_segment_for_bodyhas
 
     assert response2.status_code == 409
     data = response2.json()
-    assert data["detail"]["error"] == "conflict"
+    assert data["error"] == "conflict"
 
 
 def test_replay_with_reordered_json_keys_succeeds(setup_segment_for_bodyhash, auth_headers):
     """Test that reordered JSON keys (semantically identical) don't trigger 409."""
     client = setup_segment_for_bodyhash
     idempotency_key = str(uuid4())
+    fixed_timestamp = int(time.time())  # Same value reused in both submissions below
 
     # First submission (key order: route_id, direction_id, device_bucket)
     request_data1 = {
@@ -373,7 +374,7 @@ def test_replay_with_reordered_json_keys_succeeds(setup_segment_for_bodyhash, au
                 "from_stop_id": "STOP1",
                 "to_stop_id": "STOP2",
                 "duration_sec": 300.0,
-                "timestamp_utc": 1729615200,  # Fixed timestamp
+                "timestamp_utc": fixed_timestamp,
                 "mapmatch_conf": 0.9,
             }
         ],
@@ -397,7 +398,7 @@ def test_replay_with_reordered_json_keys_succeeds(setup_segment_for_bodyhash, au
         "segments": [
             {
                 "mapmatch_conf": 0.9,
-                "timestamp_utc": 1729615200,
+                "timestamp_utc": fixed_timestamp,
                 "duration_sec": 300.0,
                 "to_stop_id": "STOP2",
                 "from_stop_id": "STOP1",
@@ -443,7 +444,7 @@ def test_expired_key_allows_new_submission(setup_segment_for_bodyhash, auth_head
         conn.commit()
 
     # Submit with DIFFERENT body - should succeed because key is expired
-    new_request = create_ride_request(device_bucket="new_bucket_" + "x" * 53)
+    new_request = create_ride_request(device_bucket="d" * 64)
 
     response = client.post(
         "/v1/ride_summary",
