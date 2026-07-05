@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 5 — Quality & Operations
+current_phase: 05
 status: executing
 stopped_at: Phase 5 context gathered
-last_updated: "2026-07-05T07:45:48.536Z"
+last_updated: "2026-07-05T08:58:25.499Z"
 progress:
   total_phases: 6
   completed_phases: 4
-  total_plans: 16
-  completed_plans: 16
+  total_plans: 20
+  completed_plans: 17
   percent: 67
 ---
 
@@ -21,8 +21,8 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-01)
 
 **Core value:** Riders get progressively more accurate bus ETAs as more trips are observed
-**Current phase:** 5 — Quality & Operations
-**Status:** Ready to execute
+**Current phase:** 05
+**Status:** Executing Phase 05
 
 ---
 
@@ -30,14 +30,14 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 
 | Field | Value |
 |-------|-------|
-| Active phase | Phase 4: Data Management |
-| Active plan | 05 complete — all plans done |
-| Phase status | All plans complete (5/5); pending phase verification |
-| Overall progress | 3/6 phases complete + verified (Phase 1 + Phase 2 + Phase 3); Phase 4 plans complete, awaiting verification |
+| Active phase | Phase 5: Quality & Operations |
+| Active plan | 01 of 4 complete (OPS-02 bootstrap smoke tests) |
+| Phase status | 1/4 plans complete |
+| Overall progress | 3/6 phases complete + verified (Phase 1 + Phase 2 + Phase 3); Phase 4 plans complete, awaiting verification; Phase 5 in progress (1/4 plans) |
 
 ```
 Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
-           [   Done  ][  Done   ][  Done   ][ Started ][  Queued ][  Queued ]
+           [   Done  ][  Done   ][  Done   ][ Started ][ Started ][  Queued ]
 ```
 
 ---
@@ -79,6 +79,7 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 | Phase 04 P03 | 10min | 3 tasks | 3 files |
 | Phase 04 P04 | 16min | 3 tasks | 4 files |
 | Phase 04 P05 | 22min | 2 tasks | 3 files |
+| Phase 05 P01 | 15min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -123,7 +124,7 @@ None
 
 ## Session Continuity
 
-**Last session:** 2026-07-04T05:01:49.499Z
+**Last session:** 2026-07-05T08:58:10.780Z
 **Stopped at:** Phase 5 context gathered
 **Resume file:** .planning/phases/05-quality-operations/05-CONTEXT.md
 
@@ -150,3 +151,4 @@ Phase 5 depends on Phase 2 (to test corrected algorithms) and Phase 4 (to test m
 ## Decisions
 
 - [Phase 04-05]: Task 2's blocking checkpoint (sudoers/service-control confirmation) was deferred by the operator (target host not yet provisioned), not approved -- tracked via .planning/todos/pending/2026-07-04-confirm-gtfs-update-sudoers.md, gated on first production update_gtfs.sh run rather than phase completion; T-04-08 remains open pending human verification. Phase 4 (Data Management) now complete: 5/5 plans.
+- [Phase 05]: [Phase 05-01]: backend/tests/test_bootstrap.py added (OPS-02) — 3 tests asserting the verified 17-table/3-view literal schema against sqlite_master (not ROADMAP's stale 11-table count), gtfs_metadata population from mini_gtfs.zip, and zero FK violations with PRAGMA foreign_keys=ON explicitly set
