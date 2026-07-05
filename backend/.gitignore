@@ -10,6 +10,3 @@ venv/
 backups/
 .pytest_cache/
 .coverage
-
-# uv
-uv.lock
