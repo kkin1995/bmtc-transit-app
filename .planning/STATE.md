@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 05
-status: executing
-stopped_at: 05-04-PLAN.md complete (CI workflow authored, pushed, verified green on PR #1); Phase 5 plans all complete, pending phase verification
-last_updated: "2026-07-05T16:45:00.000Z"
+current_phase: 6 — Rate-Limit Hardening & API Docs Completeness
+status: planning
+stopped_at: "05-04-PLAN.md fully complete — `.github/workflows/ci.yml` pushed via PR #1, verified green (`Backend test suite: pass`, run 28747654025) after fixing 5 issues surfaced by the first real CI runs (bad action tag, uncommitted lockfile, missing .env fallback, 2 stale tests, 1 real middleware bug). All 4 plans in Phase 5 now complete; full backend suite is 246/246 passing."
+last_updated: "2026-07-05T18:30:58.763Z"
 progress:
   total_phases: 6
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 20
   completed_plans: 20
-  percent: 100
+  percent: 83
 ---
 
 # Project State
@@ -21,8 +21,8 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-01)
 
 **Core value:** Riders get progressively more accurate bus ETAs as more trips are observed
-**Current phase:** 05
-**Status:** Executing Phase 05
+**Current phase:** 6 — Rate-Limit Hardening & API Docs Completeness
+**Status:** Ready to plan
 
 ---
 
@@ -30,14 +30,14 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 
 | Field | Value |
 |-------|-------|
-| Active phase | Phase 5: Quality & Operations |
-| Active plan | 04 of 4 COMPLETE — CI workflow authored, pushed, and verified green on PR #1 (run 28747654025) |
-| Phase status | 4/4 plans fully complete — OPS-01..04 all satisfied. Pending phase-goal verification (gsd-verifier) before Phase 5 is marked complete in ROADMAP |
-| Overall progress | 3/6 phases complete + verified (Phase 1 + Phase 2 + Phase 3); Phase 4 plans complete, awaiting verification; Phase 5 plans complete, awaiting verification |
+| Active phase | Phase 6: Rate-Limit Hardening & API Docs Completeness (not yet planned) |
+| Active plan | none — Phase 5 fully complete and verified; Phase 6 has no plans yet |
+| Phase status | Phase 5: 4/4 plans complete, verified 4/4 must-haves passed (05-VERIFICATION.md) |
+| Overall progress | 4/6 phases complete + verified (Phase 1 + Phase 2 + Phase 3 + Phase 5); Phase 4 plans complete, awaiting verification; Phase 6 not yet started |
 
 ```
 Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
-           [   Done  ][  Done   ][  Done   ][ Started ][ Started ][  Queued ]
+           [   Done  ][  Done   ][  Done   ][ Started ][   Done  ][  Queued ]
 ```
 
 ---
@@ -49,6 +49,7 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 | 1 | Backend Correctness | 3/3 | Passed (6/6 must-haves) | 2026-07-01 |
 | 2 | Learning Algorithm Integrity | 4/4 | Passed (17/17 UAT checks; security threats_open: 0) | 2026-07-02 |
 | 3 | API Surface Completion | 4/4 | Passed (8/8 must-haves) | 2026-07-03 |
+| 5 | Quality & Operations | 4/4 | Passed (4/4 must-haves) | 2026-07-05 |
 
 ---
 
@@ -127,12 +128,12 @@ None
 
 ## Session Continuity
 
-**Last session:** 2026-07-05T16:45:00.000Z
-**Stopped at:** 05-04-PLAN.md fully complete — `.github/workflows/ci.yml` pushed via PR #1, verified green (`Backend test suite: pass`, run 28747654025) after fixing 5 issues surfaced by the first real CI runs (bad action tag, uncommitted lockfile, missing .env fallback, 2 stale tests, 1 real middleware bug). All 4 plans in Phase 5 now complete; full backend suite is 246/246 passing.
-**Resume file:** none — Phase 5 execution complete, phase-goal verification (gsd-verifier) is next
+**Last session:** 2026-07-05T18:30:58.763Z
+**Stopped at:** Phase 5 (Quality & Operations) fully complete and verified — 4/4 plans, 4/4 must-haves passed (05-VERIFICATION.md), code review clean after fixing a critical pre-existing bug (CR-01) found along the way. ROADMAP/STATE/REQUIREMENTS updated; phase marked complete via `phase.complete`.
+**Resume file:** none — Phase 6 (Rate-Limit Hardening & API Docs Completeness) has no plans yet
 
 **Last updated:** 2026-07-05
-**Next action:** Run phase-goal verification for Phase 5 (gsd-verifier), then mark Phase 5 complete in ROADMAP.md. (Phase 4 Data Management verification is still separately pending.)
+**Next action:** `/gsd-discuss-phase 6` or `/gsd-plan-phase 6` to start Phase 6. (Phase 4 Data Management verification is still separately pending.)
 
 ---
 
@@ -158,3 +159,4 @@ Phase 5 depends on Phase 2 (to test corrected algorithms) and Phase 4 (to test m
 - [Phase 05-02]: `backend/app/logging_config.py` (`JsonFormatter` + `configure_logging()`) and `TimingMiddleware` in `main.py` deliver OPS-04 — one JSON access log line per request (`request_latency_ms`/`method`/`path`/`status`); `TimingMiddleware` registered as the LAST `app.add_middleware()` call (after `RateLimitMiddleware`) to be truly outermost, correcting D-17's own "added first" rationale text per RESEARCH.md Pitfall 2; `configure_logging()` called at import time fixes RESEARCH.md Pitfall 3 (root logger previously had no handlers, defaulted to WARNING); `--no-access-log` added to `bmtc-api.service`'s ExecStart to avoid duplicate uvicorn access-log lines. `error_rate` intentionally not emitted as a field — derived by the operator from `status` (D-18).
 - [Phase 05-03]: backend/tests/perf/load_test.py delivers OPS-01 (custom asyncio/httpx load test, zero new deps) - seeds a scratch DB directly (PERF_ROUTE segment + all-192-bin segment_stats, mirroring conftest's db_with_test_segment) instead of reusing generate_sample_data.py's synthetic IDs which 422; each simulated client derives a distinct SHA256 device_bucket exercising the real RateLimitMiddleware path (D-04); POST and GET run separately (D-05) against /tmp/perf.db on 127.0.0.1:8001, never bmtc_dev.db (D-02/T-05-06); results committed to backend/tests/perf/results.txt as manual evidence, intentionally excluded from CI (D-03) - actual run: POST p99=88.29ms (<200ms), GET p99=78.47ms (<100ms), both PASS. Phase 5 now 3/4 plans complete.
 - [Phase 05-04]: `.github/workflows/ci.yml` delivers OPS-03 — backend-only pytest suite on push/PR to main, uv-cached, Python 3.12 pinned, `permissions: contents: read`, `pull_request` (never `pull_request_target`). Pushing the branch was confirmed with the user first (shared-state/remote action), then PR #1 was opened and iterated to green across 4 real CI failures: (1) `astral-sh/setup-uv@v8` doesn't resolve — no rolling `v8` major tag exists yet, pinned exact `v8.3.0`; (2) `backend/uv.lock` was gitignored in both `.gitignore` files and never committed — un-ignored and committed it; (3) 5 extra failures beyond the local baseline, all `Settings` `ValidationError` — several `test_learning.py` tests silently depended on a gitignored local `.env` for `BMTC_API_KEY`, fixed with a process-wide `os.environ.setdefault()` fallback in `conftest.py`; (4) the known "6 pre-existing" local failures, all root-caused as stale test expectations (flat vs nested error envelope, a hardcoded timestamp that aged past the 7-day window, an invalid hex `device_bucket`, an assertion on a field removed by the H3 IP-fallback-removal fix) plus one real bug (`RateLimitMiddleware` let `HTTPException` propagate unhandled instead of returning a `JSONResponse`, since `BaseHTTPMiddleware` sits outside FastAPI's exception-handling middleware) — all fixed per explicit user direction to fix rather than quarantine. PR #1 run 28747654025: `Backend test suite: pass`. Full suite: 246/246 passing. Phase 5 now 4/4 plans complete.
+- [Phase 05]: Post-execution code review (05-REVIEW.md) surfaced a critical, pre-existing, empirically-reproduced bug adjacent to the rate_limit.py fix above: `RateLimitMiddleware`'s idempotent-replay short-circuit fabricated a response body (`{"accepted": True, ...}`, wrong schema vs. `routes.py`'s real `accepted_segments`/`rejected_segments`) and returned before `call_next()`, entirely bypassing `routes.py`'s H1 body-hash tamper check — a key reused with a genuinely different body under `rate_limit_enabled=true` (the production default) silently got a fake 200 instead of the correct 409, with new data never processed. Fixed per explicit user direction (commit `d81b453`): middleware now only computes rate-limit headers and forwards to `call_next()`, letting `routes.py` own body-hash verification and replay as it already does on the non-rate-limited path. Added `test_idempotency_replay_with_rate_limiting_enforces_body_hash_check` (verified it fails against the old code, passes against the fix). WR-01 (CORS middleware ordering drops CORS headers on 429/400 responses), WR-02 (broad `except Exception` in `extract_bucket_id`), and WR-03 (`results.txt` committed as an ever-appending artifact — actually intentional per D-03/05-03-PLAN.md) remain open, out of Phase 5's scope. Phase 5 verified complete: 4/4 must-haves passed (05-VERIFICATION.md).
