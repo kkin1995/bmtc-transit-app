@@ -136,18 +136,36 @@ def test_access_log_path_excludes_query_string_and_secrets(client, caplog):
 
 
 @pytest.fixture
-def rate_limited_access_client(db_with_test_segment, monkeypatch):
-    """TestClient with rate limiting enabled and a 1/hour cap, so a second
-    POST /v1/ride_summary always trips a 429 — used to prove TimingMiddleware
-    is outermost (regression for RESEARCH.md Pitfall 2)."""
+def rate_limited_access_client(temp_db, monkeypatch):
+    """TestClient with rate limiting enabled and a 1/hour cap, plus a valid
+    ROUTE1/STOP_A->STOP_B segment seeded, so a second POST /v1/ride_summary
+    always trips a 429 — used to prove TimingMiddleware is outermost
+    (regression for RESEARCH.md Pitfall 2).
+
+    Mirrors test_rate_limit.py's setup_rate_limit_segment fixture: seeds via
+    app.db.get_connection() (used by the app itself, which does not enforce
+    PRAGMA foreign_keys, unlike the raw sqlite3.connect() in temp_db) rather
+    than db_with_test_segment (which enables FKs and requires routes/stops
+    rows that this test does not need).
+    """
     monkeypatch.setenv("BMTC_RATE_LIMIT_ENABLED", "true")
     monkeypatch.setenv("BMTC_RATE_LIMIT_PER_HOUR", "1")
 
     from app.config import get_settings
+    from app.db import get_connection
     from app.main import app
     from fastapi.testclient import TestClient
 
     get_settings.cache_clear()
+    settings = get_settings()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
+            ("ROUTE1", 0, "STOP_A", "STOP_B"),
+        )
+        conn.commit()
+
     with TestClient(app) as test_client:
         yield test_client
     get_settings.cache_clear()
