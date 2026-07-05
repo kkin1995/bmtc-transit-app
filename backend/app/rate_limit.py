@@ -260,11 +260,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     bucket_id, settings.db_path, settings.rate_limit_per_hour
                 )
 
-                # Return cached response with rate limit headers
-                response = JSONResponse(
-                    status_code=200,
-                    content={"accepted": True, "rejected_count": 0, "rejected_by_reason": {}}
-                )
+                # Do NOT fabricate a response here. A prior version returned a hardcoded
+                # {"accepted": True, ...} body before call_next() ever ran, which (a) used
+                # the wrong response schema (routes.py's real replay uses accepted_segments/
+                # rejected_segments, not accepted/rejected_count) and (b) skipped routes.py's
+                # H1 body-hash tamper check entirely, so a key reused with a genuinely
+                # different body silently got a fabricated 200 instead of the intended 409.
+                # Let the route handler own body-hash verification and cached-response
+                # replay; only attach rate-limit headers here and skip the token spend.
+                response = await call_next(request)
                 response.headers["X-RateLimit-Limit"] = str(settings.rate_limit_per_hour)
                 response.headers["X-RateLimit-Remaining"] = str(remaining)
                 response.headers["X-RateLimit-Reset"] = str(reset_time)

@@ -340,6 +340,64 @@ def test_idempotency_does_not_spend_tokens(setup_rate_limit_segment, auth_header
     assert remaining_after_second >= remaining_after_first
 
 
+def test_idempotency_replay_with_rate_limiting_enforces_body_hash_check(
+    setup_rate_limit_segment, auth_headers
+):
+    """Test that RateLimitMiddleware's idempotent-replay path does not bypass H1
+    tamper detection (regression for a bug found in code review, 05-REVIEW.md CR-01).
+
+    RateLimitMiddleware short-circuits idempotent replays to avoid double-spending a
+    rate-limit token. A prior version fabricated the response itself and returned
+    before call_next(), which skipped routes.py's body-hash mismatch check entirely
+    and always returned a fake 200 -- silently dropping genuinely different resubmitted
+    data instead of the real 409 conflict.
+    """
+    client = setup_rate_limit_segment
+    bucket_id = "e" * 64
+    idempotency_key = "test-idempotency-key-bodyhash-check"
+
+    request_data1 = create_test_request(device_bucket=bucket_id)
+    response1 = client.post(
+        "/v1/ride_summary",
+        json=request_data1,
+        headers={
+            **auth_headers,
+            "Idempotency-Key": idempotency_key,
+        },
+    )
+    assert response1.status_code == 200
+    assert "accepted_segments" in response1.json()
+
+    # Replay the same key with a DIFFERENT body (different duration_sec) — must be
+    # rejected as a tamper attempt (409), not silently accepted with a fabricated 200.
+    request_data2 = create_test_request(device_bucket=bucket_id)
+    request_data2["segments"][0]["duration_sec"] = 999.0
+    response2 = client.post(
+        "/v1/ride_summary",
+        json=request_data2,
+        headers={
+            **auth_headers,
+            "Idempotency-Key": idempotency_key,
+        },
+    )
+    assert response2.status_code == 409
+    assert response2.json()["error"] == "conflict"
+
+    # Replay the same key with the SAME body — must return the real cached response
+    # (accepted_segments schema), not the middleware's old fabricated payload.
+    response3 = client.post(
+        "/v1/ride_summary",
+        json=request_data1,
+        headers={
+            **auth_headers,
+            "Idempotency-Key": idempotency_key,
+        },
+    )
+    assert response3.status_code == 200
+    assert response3.json() == response1.json()
+    assert "X-RateLimit-Remaining" in response3.headers
+
+
 def test_feature_flag_disabled(client, auth_headers):
     """Test rate limiting bypassed when feature flag disabled.
 
