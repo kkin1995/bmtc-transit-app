@@ -65,7 +65,7 @@ The following are built and working. Captured here for traceability; not include
 - [ ] **OPS-01**: Performance tests demonstrating POST /v1/ride_summary p99 < 200ms and GET /v1/eta p99 < 100ms under concurrent load
 - [x] **OPS-02**: Bootstrap smoke tests verify all tables exist, GTFS metadata populated, and foreign keys valid after a fresh bootstrap
 - [ ] **OPS-03**: CI pipeline runs the full 182-test suite on every commit (GitHub Actions or equivalent)
-- [ ] **OPS-04**: Monitoring/alerting integration — structured log fields for request latency + error rate, or Prometheus metrics endpoint
+- [x] **OPS-04**: Monitoring/alerting integration — structured log fields for request latency + error rate, or Prometheus metrics endpoint
 
 ### Rate-Limit Hardening
 
