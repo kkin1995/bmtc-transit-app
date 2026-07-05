@@ -280,8 +280,13 @@ def test_rate_limit_headers_on_429(setup_rate_limit_segment, auth_headers):
     assert data["details"]["limit"] == 5
 
 
-def test_fallback_to_ip_when_no_device_bucket(setup_rate_limit_segment, auth_headers):
-    """Test rate limiting falls back to IP when device_bucket missing."""
+def test_missing_device_bucket_returns_400(setup_rate_limit_segment, auth_headers):
+    """Test requests without device_bucket are rejected with 400 (H3 fix).
+
+    IP-address fallback was intentionally removed (see app.rate_limit.extract_bucket_id,
+    "H3 fix - Eliminates IP address fallback to prevent privacy violations") — a request
+    with no device_bucket must be rejected outright, not silently rate-limited by IP.
+    """
     client = setup_rate_limit_segment
 
     # Request without device_bucket
@@ -293,27 +298,10 @@ def test_fallback_to_ip_when_no_device_bucket(setup_rate_limit_segment, auth_hea
         headers=auth_headers,
     )
 
-    assert response.status_code == 200
-    assert "X-RateLimit-Limit" in response.headers
-
-    # Exhaust IP-based quota
-    for _ in range(4):
-        response = client.post(
-            "/v1/ride_summary",
-            json=request_data,
-            headers=auth_headers,
-        )
-
-    # Should be rate limited now
-    response = client.post(
-        "/v1/ride_summary",
-        json=request_data,
-        headers=auth_headers,
-    )
-
-    assert response.status_code == 429
+    assert response.status_code == 400
     data = response.json()
-    assert data["details"]["bucket_id_type"] == "ip"
+    assert data["error"] == "invalid_request"
+    assert data["details"]["field"] == "device_bucket"
 
 
 def test_idempotency_does_not_spend_tokens(setup_rate_limit_segment, auth_headers):
@@ -503,5 +491,4 @@ def test_rate_limit_error_structure(setup_rate_limit_segment, auth_headers):
     assert "details" in data
     assert "limit" in data["details"]
     assert "reset" in data["details"]
-    assert "bucket_id_type" in data["details"]
-    assert data["details"]["bucket_id_type"] in ["device", "ip"]
+    assert "retry_after_sec" in data["details"]

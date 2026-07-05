@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Tuple, Optional
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -53,7 +53,6 @@ async def extract_bucket_id(request: Request) -> str:
 
     # H3 SECURITY FIX: NO IP FALLBACK (privacy violation)
     # Reject requests without device_bucket to prevent raw IP persistence
-    from fastapi import HTTPException
     raise HTTPException(
         status_code=400,
         detail={
@@ -248,7 +247,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             cached_response = check_idempotency_key(idempotency_key)
             if cached_response:
                 # Get bucket_id for headers
-                bucket_id = await extract_bucket_id(request)
+                try:
+                    bucket_id = await extract_bucket_id(request)
+                except HTTPException as exc:
+                    # extract_bucket_id raises HTTPException, but BaseHTTPMiddleware sits
+                    # outside FastAPI's exception-handling middleware, so it would otherwise
+                    # propagate as an unhandled 500 rather than the intended 4xx response.
+                    return JSONResponse(status_code=exc.status_code, content=exc.detail)
 
                 # Get current limit state (don't spend token)
                 remaining, reset_time = get_current_limit_state(
@@ -268,7 +273,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 return response
 
         # Extract bucket_id from request
-        bucket_id = await extract_bucket_id(request)
+        try:
+            bucket_id = await extract_bucket_id(request)
+        except HTTPException as exc:
+            # See comment above: middleware-raised HTTPExceptions bypass FastAPI's
+            # @app.exception_handler, so convert to a JSONResponse here directly.
+            return JSONResponse(status_code=exc.status_code, content=exc.detail)
 
         # Check and spend token atomically
         allowed, remaining, reset_time = check_and_spend_token(
