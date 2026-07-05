@@ -1,0 +1,2 @@
+2026-07-05T09:10:37.449838+00:00 endpoint=post clients=20 requests=500 p50_ms=31.05 p99_ms=88.29 target_ms=200 PASS=True
+2026-07-05T09:10:42.799037+00:00 endpoint=eta clients=20 requests=500 p50_ms=20.96 p99_ms=78.47 target_ms=100 PASS=True
