@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 05
 status: executing
-stopped_at: 05-04-PLAN.md Task 1/2 complete (CI workflow authored; Task 2 push+verify deferred)
-last_updated: "2026-07-05T09:20:48.356Z"
+stopped_at: 05-04-PLAN.md complete (CI workflow authored, pushed, verified green on PR #1); Phase 5 plans all complete, pending phase verification
+last_updated: "2026-07-05T16:45:00.000Z"
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 20
-  completed_plans: 19
-  percent: 95
+  completed_plans: 20
+  percent: 100
 ---
 
 # Project State
@@ -31,9 +31,9 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 | Field | Value |
 |-------|-------|
 | Active phase | Phase 5: Quality & Operations |
-| Active plan | 04 of 4 IN PROGRESS — Task 1/2 complete (CI workflow authored + YAML-validated); Task 2 (push branch, observe live GitHub Actions run) deliberately NOT started, deferred pending user confirmation before touching the remote |
-| Phase status | 3/4 plans fully complete + Plan 04 partially complete (1/2 tasks) — Phase 5 is NOT complete, OPS-03 not yet fully satisfied |
-| Overall progress | 3/6 phases complete + verified (Phase 1 + Phase 2 + Phase 3); Phase 4 plans complete, awaiting verification; Phase 5 in progress (3/4 plans complete, Plan 04 partial) |
+| Active plan | 04 of 4 COMPLETE — CI workflow authored, pushed, and verified green on PR #1 (run 28747654025) |
+| Phase status | 4/4 plans fully complete — OPS-01..04 all satisfied. Pending phase-goal verification (gsd-verifier) before Phase 5 is marked complete in ROADMAP |
+| Overall progress | 3/6 phases complete + verified (Phase 1 + Phase 2 + Phase 3); Phase 4 plans complete, awaiting verification; Phase 5 plans complete, awaiting verification |
 
 ```
 Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
@@ -127,12 +127,12 @@ None
 
 ## Session Continuity
 
-**Last session:** 2026-07-05T09:20:48.356Z
-**Stopped at:** 05-04-PLAN.md Task 1/2 complete (`.github/workflows/ci.yml` authored, YAML-validated, committed `51cd6fc`). Task 2 NOT started — requires pushing `gsd/phase-05-quality-operations` (or opening a PR to `main`) and observing a live GitHub Actions run via `gh run view`; deferred pending explicit user confirmation before touching the remote.
-**Resume file:** .planning/phases/05-quality-operations/05-04-PLAN.md (Task 2 only)
+**Last session:** 2026-07-05T16:45:00.000Z
+**Stopped at:** 05-04-PLAN.md fully complete — `.github/workflows/ci.yml` pushed via PR #1, verified green (`Backend test suite: pass`, run 28747654025) after fixing 5 issues surfaced by the first real CI runs (bad action tag, uncommitted lockfile, missing .env fallback, 2 stale tests, 1 real middleware bug). All 4 plans in Phase 5 now complete; full backend suite is 246/246 passing.
+**Resume file:** none — Phase 5 execution complete, phase-goal verification (gsd-verifier) is next
 
 **Last updated:** 2026-07-05
-**Next action:** Orchestrator confirms with the user, then pushes the phase branch / opens a PR to `main`, observes the CI run (`gh run list --workflow=ci.yml`, `gh run view`), and confirms a green status to close out Plan 05-04 / OPS-03 and complete Phase 5. (Phase 4 Data Management verification is still separately pending.)
+**Next action:** Run phase-goal verification for Phase 5 (gsd-verifier), then mark Phase 5 complete in ROADMAP.md. (Phase 4 Data Management verification is still separately pending.)
 
 ---
 
@@ -157,4 +157,4 @@ Phase 5 depends on Phase 2 (to test corrected algorithms) and Phase 4 (to test m
 - [Phase 05]: [Phase 05-01]: backend/tests/test_bootstrap.py added (OPS-02) — 3 tests asserting the verified 17-table/3-view literal schema against sqlite_master (not ROADMAP's stale 11-table count), gtfs_metadata population from mini_gtfs.zip, and zero FK violations with PRAGMA foreign_keys=ON explicitly set
 - [Phase 05-02]: `backend/app/logging_config.py` (`JsonFormatter` + `configure_logging()`) and `TimingMiddleware` in `main.py` deliver OPS-04 — one JSON access log line per request (`request_latency_ms`/`method`/`path`/`status`); `TimingMiddleware` registered as the LAST `app.add_middleware()` call (after `RateLimitMiddleware`) to be truly outermost, correcting D-17's own "added first" rationale text per RESEARCH.md Pitfall 2; `configure_logging()` called at import time fixes RESEARCH.md Pitfall 3 (root logger previously had no handlers, defaulted to WARNING); `--no-access-log` added to `bmtc-api.service`'s ExecStart to avoid duplicate uvicorn access-log lines. `error_rate` intentionally not emitted as a field — derived by the operator from `status` (D-18).
 - [Phase 05-03]: backend/tests/perf/load_test.py delivers OPS-01 (custom asyncio/httpx load test, zero new deps) - seeds a scratch DB directly (PERF_ROUTE segment + all-192-bin segment_stats, mirroring conftest's db_with_test_segment) instead of reusing generate_sample_data.py's synthetic IDs which 422; each simulated client derives a distinct SHA256 device_bucket exercising the real RateLimitMiddleware path (D-04); POST and GET run separately (D-05) against /tmp/perf.db on 127.0.0.1:8001, never bmtc_dev.db (D-02/T-05-06); results committed to backend/tests/perf/results.txt as manual evidence, intentionally excluded from CI (D-03) - actual run: POST p99=88.29ms (<200ms), GET p99=78.47ms (<100ms), both PASS. Phase 5 now 3/4 plans complete.
-- [Phase 05-04]: `.github/workflows/ci.yml` authored (Task 1/2 only) — backend-only pytest suite on push/PR to main, uv-cached, Python 3.12 pinned, `permissions: contents: read`, `pull_request` (never `pull_request_target`); `actions/checkout@v7` + `astral-sh/setup-uv@v8` confirmed as latest stable tags via a live GitHub Releases API query. Task 2 (push branch, observe a live GitHub Actions run, confirm green status) deliberately NOT executed this session — pushing to the remote is a shared-state action deferred pending user confirmation; OPS-03 and Plan 05-04 are NOT yet fully satisfied. Progress counters (STATE.md frontmatter, ROADMAP.md plan-progress table) intentionally left at their pre-05-04 values (19/20 plans, Phase 5 not marked complete) rather than run through `state advance-plan` / `roadmap update-plan-progress`, both of which count plan completion purely from `SUMMARY.md` file presence on disk and would have incorrectly marked Plan 05-04 and Phase 5 complete despite Task 2 being outstanding.
+- [Phase 05-04]: `.github/workflows/ci.yml` delivers OPS-03 — backend-only pytest suite on push/PR to main, uv-cached, Python 3.12 pinned, `permissions: contents: read`, `pull_request` (never `pull_request_target`). Pushing the branch was confirmed with the user first (shared-state/remote action), then PR #1 was opened and iterated to green across 4 real CI failures: (1) `astral-sh/setup-uv@v8` doesn't resolve — no rolling `v8` major tag exists yet, pinned exact `v8.3.0`; (2) `backend/uv.lock` was gitignored in both `.gitignore` files and never committed — un-ignored and committed it; (3) 5 extra failures beyond the local baseline, all `Settings` `ValidationError` — several `test_learning.py` tests silently depended on a gitignored local `.env` for `BMTC_API_KEY`, fixed with a process-wide `os.environ.setdefault()` fallback in `conftest.py`; (4) the known "6 pre-existing" local failures, all root-caused as stale test expectations (flat vs nested error envelope, a hardcoded timestamp that aged past the 7-day window, an invalid hex `device_bucket`, an assertion on a field removed by the H3 IP-fallback-removal fix) plus one real bug (`RateLimitMiddleware` let `HTTPException` propagate unhandled instead of returning a `JSONResponse`, since `BaseHTTPMiddleware` sits outside FastAPI's exception-handling middleware) — all fixed per explicit user direction to fix rather than quarantine. PR #1 run 28747654025: `Backend test suite: pass`. Full suite: 246/246 passing. Phase 5 now 4/4 plans complete.
