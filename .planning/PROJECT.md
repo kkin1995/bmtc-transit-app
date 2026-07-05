@@ -44,14 +44,19 @@ These capabilities exist and are working in the current codebase:
 - ✓ **Rate-limit bucket cleanup on a systemd timer** — `bmtc-rate-limit-cleanup.timer` (00:15) wired to the existing `rate_limit_cleanup.sh`, staggered from `bmtc-retention.timer` (00:00) to avoid simultaneous SQLite writes — Phase 4
 - ✓ **Retention sweep removes orphaned `rides` rows** — `retention_cleanup.sh` runs three ordered TTL deletes (`ride_segments`, orphaned `rides` with zero remaining segments, `rejection_log`) in one pass, replacing the old inline single-table DELETE — Phase 4
 - ✓ **GTFS refresh without losing learning history** — `scripts/update_gtfs.sh <zip>` backs up, stops the service, clears only the 7 GTFS-source tables, re-bootstraps (refreshing `schedule_mean` only), validates row-count deltas, and auto-restores + exits non-zero on failure — Phase 4
+- ✓ **Load-tested performance targets** — standalone asyncio/httpx script (`tests/perf/load_test.py`) proves POST p99=88.29ms (<200ms) and GET p99=78.47ms (<100ms) under 20 concurrent clients; results committed as evidence — Phase 5
+- ✓ **Bootstrap smoke tests** — `test_bootstrap.py` asserts the literal 17-table/3-view schema, GTFS metadata population, and zero FK violations on every fresh bootstrap — Phase 5
+- ✓ **CI pipeline** — `.github/workflows/ci.yml` runs the full backend suite on every push/PR to `main`, verified running green against real GitHub Actions infrastructure (not just authored) — Phase 5
+- ✓ **Structured JSON access logging** — `TimingMiddleware` (outermost) + `logging_config.py` emit one `request_latency_ms`/`method`/`path`/`status` line per request, including 429/500 paths — Phase 5
+- ✓ **Idempotent replay under rate limiting no longer bypasses tamper detection** — `RateLimitMiddleware`'s replay short-circuit previously fabricated a response before the route handler's H1 body-hash check ran, silently accepting a modified resubmission instead of returning 409; fixed to forward to the real handler and only attach rate-limit headers — found via Phase 5 code review, fixed same session
 
 ### Active
 
-Current work: quality/ops hardening (performance tests, monitoring, CI). Backend correctness (Phase 1), learning algorithm gaps (Phase 2), the API surface (Phase 3), and data management (Phase 4) are resolved — see Validated above.
+Current work: rate-limit hardening and API docs completeness (Phase 6). Backend correctness (Phase 1), learning algorithm gaps (Phase 2), the API surface (Phase 3), data management (Phase 4), and quality/ops hardening (Phase 5) are resolved — see Validated above.
 
-- [ ] Performance tests (load tests) verifying POST p99 < 200ms, GET p99 < 100ms
-- [ ] Monitoring/alerting integration
-- [ ] CI pipeline
+- [ ] Rate-limit gaps flagged by the STRIDE security review (disabled-by-default, quota-check ordering, idempotency interaction)
+- [ ] Remaining privacy/error-model documentation gaps in docs/api.md
+- [ ] Known follow-ups from Phase 5 code review (out of Phase 5 scope): CORS headers missing on `RateLimitMiddleware`'s 429/400 short-circuit responses (middleware ordering); overly broad `except Exception` in `extract_bucket_id` masking real errors
 
 ### Out of Scope
 
@@ -64,15 +69,17 @@ Current work: quality/ops hardening (performance tests, monitoring, CI). Backend
 
 ## Context
 
-**Codebase state (as of 2026-07-04):**
-- Backend: FastAPI + SQLite WAL, `uv` package manager, 235 tests (229 passing, 6 pre-existing failures — same baseline since before Phase 2), systemd deployed
+**Codebase state (as of 2026-07-05):**
+- Backend: FastAPI + SQLite WAL, `uv` package manager, 247 tests passing (0 pre-existing failures — the prior 6-test baseline was fixed in Phase 5), systemd deployed
 - Mobile: Expo 54 / React Native 0.81, Tamagui, expo-location, expo-router
-- 10 API endpoints, all live; Phase 1 resolved the P0 connection leak, idempotency replay, and CORS bugs; Phase 2 resolved the learning-algorithm correctness bugs (variance formula, first-observation rejection, per-segment commits, EMA dead code); Phase 3 completed the API surface (single-resource stop/route detail, geospatial radius search, human-readable ETA enrichment); Phase 4 added the data-management operational layer (versioned migrations, rate-limit + retention cleanup timers, GTFS refresh) — remaining known issues are quality/ops scoped (see ROADMAP.md Phases 5-6)
+- 10 API endpoints, all live; Phase 1 resolved the P0 connection leak, idempotency replay, and CORS bugs; Phase 2 resolved the learning-algorithm correctness bugs (variance formula, first-observation rejection, per-segment commits, EMA dead code); Phase 3 completed the API surface (single-resource stop/route detail, geospatial radius search, human-readable ETA enrichment); Phase 4 added the data-management operational layer (versioned migrations, rate-limit + retention cleanup timers, GTFS refresh); Phase 5 added load testing, bootstrap smoke tests, a verified-green CI pipeline, and structured access logging — remaining known issues are rate-limit/docs scoped (see ROADMAP.md Phase 6)
+- 05-REVIEW.md (Phase 5) found 1 critical / 3 warning findings: the critical one (`RateLimitMiddleware`'s idempotent-replay short-circuit bypassing H1 tamper detection) was fixed same-session with a regression test; the 3 warnings (CORS header gap on rate-limit short-circuit responses, overly broad exception handling in `extract_bucket_id`, a committed perf-evidence file) remain open, tracked in Active above
+- Standing up real CI (Phase 5, OPS-03) surfaced 4 additional pre-existing issues that had never been exercised outside a developer's local environment: an unpinned/nonexistent `astral-sh/setup-uv@v8` action tag, a gitignored-and-never-committed `backend/uv.lock`, 5 tests silently depending on a gitignored local `.env` for `BMTC_API_KEY`, and the "6 pre-existing failures" baseline tracked since Phase 1 (all traced to stale test expectations plus one real middleware bug) — all fixed, full suite is now 247/247 passing with zero known failures
 - 04-REVIEW.md (Phase 4) found 3 critical / 7 warning findings in the two scripts touching production data destructively (`update_gtfs.sh` missing a global rollback trap and backing up before stopping the service; `retention_cleanup.sh` accepting unvalidated negative retention-window env vars) — all 10 fixed same-session (04-REVIEW-FIX.md, `status: all_fixed`), verified independently against the full suite (no regressions)
 - The one Phase 4 item requiring a human, off-repo action — confirming the scoped `bmtc` sudoers drop-in for `systemctl stop/start bmtc-api` on the production host — was explicitly deferred (host not yet provisioned) and is tracked as an open pre-production prerequisite, not a phase gap: `.planning/todos/pending/2026-07-04-confirm-gtfs-update-sudoers.md`
 - 03-REVIEW.md (Phase 3) found 8 critical / 10 warning findings, all traced via `git blame` to pre-Phase-3 commits (`ride_summary` validation-envelope gaps, missing `RequestValidationError` handler, the `/stops/{id}/schedule` time-window filter being unimplemented) — none are Phase 3 regressions; deferred, no blockers for this phase
 - 02-REVIEW.md (Phase 2) found 4 non-blocking warnings — stale `device_bucket` examples in docs/api.md, seed-quality drift on sparse segments, a dead import alias in routes.py — deferred, no blockers
-- 01-REVIEW.md (Phase 1) found 3 pre-existing rate-limit/idempotency-error-shape defects (`rate_limit.py`, error response contract) explicitly deferred to Phase 6 — not phase-1-blocking, 6 tests remain red (same baseline through Phase 2)
+- 01-REVIEW.md (Phase 1) found 3 pre-existing rate-limit/idempotency-error-shape defects (`rate_limit.py`, error response contract) explicitly deferred to Phase 6 — not phase-1-blocking; the "6 tests remain red" baseline tracked through Phases 1-4 was root-caused and fixed in Phase 5 (stale test expectations plus one real middleware bug), not deferred to Phase 6 as originally planned
 
 **Key technical decisions already made:**
 - SQLite WAL as the sole data store (no PostgreSQL, no Redis)
@@ -81,8 +88,8 @@ Current work: quality/ops hardening (performance tests, monitoring, CI). Backend
 - Cloudflare Tunnel for external exposure (no direct public port)
 
 **Known gaps driving the active roadmap:**
-- No CI pipeline (tests run locally only)
-- No performance or load tests despite stated p99 targets
+- Rate-limit gaps flagged by the Phase 1 STRIDE review (disabled-by-default, quota-check ordering, idempotency interaction) — deferred to Phase 6
+- Remaining privacy/error-model documentation gaps in docs/api.md — deferred to Phase 6
 
 ## Constraints
 
@@ -123,4 +130,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-04 after Phase 4 (Data Management) completion*
+*Last updated: 2026-07-05 after Phase 5 (Quality & Operations) completion*
