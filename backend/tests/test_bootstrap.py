@@ -12,8 +12,12 @@ every commit (D-08) as part of the normal `uv run pytest -n auto` invocation.
 """
 
 import sqlite3
+from pathlib import Path
 
-from app.db import init_db
+from app.db import get_connection, init_db
+from app.gtfs_bootstrap import parse_gtfs
+
+MINI_GTFS_ZIP = Path(__file__).parent / "fixtures" / "mini_gtfs.zip"
 
 # Verified 2026-07-05 by executing schema.sql against an in-memory DB and
 # querying sqlite_master directly (RESEARCH.md Pitfall 1). This is the
@@ -51,5 +55,45 @@ def test_bootstrap_creates_all_tables_and_views(tmp_path):
         actual_views = {name for t, name in rows if t == "view"}
         assert actual_tables == EXPECTED_TABLES
         assert actual_views == EXPECTED_VIEWS
+    finally:
+        conn.close()
+
+
+def test_bootstrap_populates_gtfs_metadata(tmp_path):
+    """A fresh mini-fixture bootstrap populates a gtfs_version row in
+    gtfs_metadata (the mini fixture's feed_info.txt supplies a feed_version)."""
+    db_path = str(tmp_path / "bootstrap_test.db")
+    init_db(db_path)
+
+    with get_connection(db_path) as conn:
+        parse_gtfs(str(MINI_GTFS_ZIP), conn)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT value FROM gtfs_metadata WHERE key = 'gtfs_version'"
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0][0]
+    finally:
+        conn.close()
+
+
+def test_bootstrap_foreign_keys_valid(tmp_path):
+    """A fresh mini-fixture bootstrap has zero foreign-key violations, with
+    FK enforcement explicitly turned on — PRAGMA foreign_key_check is a
+    documented no-op without PRAGMA foreign_keys = ON first (RESEARCH.md
+    Pitfall 7; app.db.get_connection() never sets it)."""
+    db_path = str(tmp_path / "bootstrap_test.db")
+    init_db(db_path)
+
+    with get_connection(db_path) as conn:
+        parse_gtfs(str(MINI_GTFS_ZIP), conn)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")  # REQUIRED — no-op without this line
+        violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+        assert violations == []
     finally:
         conn.close()
