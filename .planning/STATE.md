@@ -5,13 +5,13 @@ milestone_name: milestone
 current_phase: 05
 status: executing
 stopped_at: Phase 5 context gathered
-last_updated: "2026-07-05T09:07:00.000Z"
+last_updated: "2026-07-05T09:13:40.288Z"
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 20
-  completed_plans: 18
-  percent: 90
+  completed_plans: 19
+  percent: 95
 ---
 
 # Project State
@@ -31,9 +31,9 @@ See: .planning/PROJECT.md (updated 2026-07-01)
 | Field | Value |
 |-------|-------|
 | Active phase | Phase 5: Quality & Operations |
-| Active plan | 02 of 4 complete (OPS-04 structured JSON access logging) |
-| Phase status | 2/4 plans complete |
-| Overall progress | 3/6 phases complete + verified (Phase 1 + Phase 2 + Phase 3); Phase 4 plans complete, awaiting verification; Phase 5 in progress (2/4 plans) |
+| Active plan | 03 of 4 complete (OPS-01 load testing) |
+| Phase status | 3/4 plans complete |
+| Overall progress | 3/6 phases complete + verified (Phase 1 + Phase 2 + Phase 3); Phase 4 plans complete, awaiting verification; Phase 5 in progress (3/4 plans) |
 
 ```
 Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
@@ -57,8 +57,8 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 | Metric | Value |
 |--------|-------|
 | Phases complete | 3/6 verified (Phase 4 plans complete, pending verification) |
-| Plans complete | 18 |
-| Tests passing | 240/246 (240 passed, 6 pre-existing failures — same baseline as Phase 1/2/3/04-01/04-02/04-03/04-05/05-01, no new failures) |
+| Plans complete | 19 |
+| Tests passing | 240/246 (240 passed, 6 pre-existing failures — same baseline as Phase 1/2/3/04-01/04-02/04-03/04-05/05-01/05-02/05-03, no new failures) |
 | Open blockers | 0 |
 
 | Plan | Duration | Tasks | Files |
@@ -81,6 +81,7 @@ Progress: [ Phase 1 ][ Phase 2 ][ Phase 3 ][ Phase 4 ][ Phase 5 ][ Phase 6 ]
 | Phase 04 P05 | 22min | 2 tasks | 3 files |
 | Phase 05 P01 | 15min | 2 tasks | 1 files |
 | Phase 05 P02 | 12min | 3 tasks | 4 files |
+| Phase 05 P03 | 8min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -125,12 +126,12 @@ None
 
 ## Session Continuity
 
-**Last session:** 2026-07-05T09:07:00.000Z
-**Stopped at:** Completed 05-02-PLAN.md (OPS-04 structured JSON access logging)
-**Resume file:** .planning/phases/05-quality-operations/05-03-PLAN.md
+**Last session:** 2026-07-05T09:13:40.288Z
+**Stopped at:** Completed 05-03-PLAN.md (OPS-01 load testing)
+**Resume file:** .planning/phases/05-quality-operations/05-04-PLAN.md
 
 **Last updated:** 2026-07-05
-**Next action:** Execute 05-03-PLAN.md (or verify Phase 4 Data Management, still pending).
+**Next action:** Execute 05-04-PLAN.md (OPS-03 CI pipeline) (or verify Phase 4 Data Management, still pending).
 
 ---
 
@@ -154,3 +155,4 @@ Phase 5 depends on Phase 2 (to test corrected algorithms) and Phase 4 (to test m
 - [Phase 04-05]: Task 2's blocking checkpoint (sudoers/service-control confirmation) was deferred by the operator (target host not yet provisioned), not approved -- tracked via .planning/todos/pending/2026-07-04-confirm-gtfs-update-sudoers.md, gated on first production update_gtfs.sh run rather than phase completion; T-04-08 remains open pending human verification. Phase 4 (Data Management) now complete: 5/5 plans.
 - [Phase 05]: [Phase 05-01]: backend/tests/test_bootstrap.py added (OPS-02) — 3 tests asserting the verified 17-table/3-view literal schema against sqlite_master (not ROADMAP's stale 11-table count), gtfs_metadata population from mini_gtfs.zip, and zero FK violations with PRAGMA foreign_keys=ON explicitly set
 - [Phase 05-02]: `backend/app/logging_config.py` (`JsonFormatter` + `configure_logging()`) and `TimingMiddleware` in `main.py` deliver OPS-04 — one JSON access log line per request (`request_latency_ms`/`method`/`path`/`status`); `TimingMiddleware` registered as the LAST `app.add_middleware()` call (after `RateLimitMiddleware`) to be truly outermost, correcting D-17's own "added first" rationale text per RESEARCH.md Pitfall 2; `configure_logging()` called at import time fixes RESEARCH.md Pitfall 3 (root logger previously had no handlers, defaulted to WARNING); `--no-access-log` added to `bmtc-api.service`'s ExecStart to avoid duplicate uvicorn access-log lines. `error_rate` intentionally not emitted as a field — derived by the operator from `status` (D-18).
+- [Phase 05-03]: backend/tests/perf/load_test.py delivers OPS-01 (custom asyncio/httpx load test, zero new deps) - seeds a scratch DB directly (PERF_ROUTE segment + all-192-bin segment_stats, mirroring conftest's db_with_test_segment) instead of reusing generate_sample_data.py's synthetic IDs which 422; each simulated client derives a distinct SHA256 device_bucket exercising the real RateLimitMiddleware path (D-04); POST and GET run separately (D-05) against /tmp/perf.db on 127.0.0.1:8001, never bmtc_dev.db (D-02/T-05-06); results committed to backend/tests/perf/results.txt as manual evidence, intentionally excluded from CI (D-03) - actual run: POST p99=88.29ms (<200ms), GET p99=78.47ms (<100ms), both PASS. Phase 5 now 3/4 plans complete.

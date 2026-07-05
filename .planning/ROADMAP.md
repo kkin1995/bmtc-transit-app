@@ -147,13 +147,13 @@ Plans:
   3. A GitHub Actions (or equivalent) CI workflow file exists that runs the full test suite (`uv run pytest -n auto`) on every push and pull request to `main` — the badge/status is visible
   4. Structured log fields `request_latency_ms` and `error_rate` are emitted on every request, OR a `/metrics` Prometheus endpoint exists — an operator can observe p95 latency and error counts without instrumenting the process externally
 
-**Plans:** 2/4 plans executed
+**Plans:** 3/4 plans executed
 Plans:
 **Wave 1** *(all four OPS requirements touch disjoint files — no shared-file conflicts, fully parallel)*
 
 - [x] 05-01-PLAN.md — OPS-02: bootstrap smoke test (`test_bootstrap.py`) — 17-table/3-view literal assertion, GTFS metadata, FK integrity (D-07..D-10)
 - [x] 05-02-PLAN.md — OPS-04: structured JSON request logging — `logging_config.py` (`JsonFormatter`/`configure_logging`) + `TimingMiddleware` added outermost in `main.py` (D-15..D-18)
-- [ ] 05-03-PLAN.md — OPS-01: manual asyncio/httpx load test (`tests/perf/load_test.py`) + committed `results.txt` evidence (D-01..D-06)
+- [x] 05-03-PLAN.md — OPS-01: manual asyncio/httpx load test (`tests/perf/load_test.py`) + committed `results.txt` evidence (D-01..D-06)
 - [ ] 05-04-PLAN.md — OPS-03: GitHub Actions CI running the full backend suite on push/PR to main (D-11..D-14)
 
 ### Phase 6: Rate-Limit Hardening & API Docs Completeness
@@ -182,7 +182,7 @@ Plans:
 | 2. Learning Algorithm Integrity | 4/4 | Complete    | 2026-07-02 |
 | 3. API Surface Completion | 4/4 | Complete    | 2026-07-03 |
 | 4. Data Management | 5/5 | Complete    | 2026-07-04 |
-| 5. Quality & Operations | 2/4 | In Progress|  |
+| 5. Quality & Operations | 3/4 | In Progress|  |
 | 6. Rate-Limit Hardening & API Docs Completeness | 0/? | Not started | - |
 
 ---
