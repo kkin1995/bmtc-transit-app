@@ -9,6 +9,14 @@ from typing import Generator
 import pytest
 from fastapi.testclient import TestClient
 
+# `Settings.api_key` has no default (BMTC_API_KEY is required). Tests that don't
+# request the `test_env`/`test_settings` fixtures were silently relying on a
+# developer's local, gitignored `backend/.env` to supply it — passing locally but
+# failing in CI, which has no `.env` (surfaced by adding CI in OPS-03). Set a
+# process-wide fallback once, before any test imports Settings; monkeypatch-based
+# per-test overrides in `test_env` still take precedence and unwind to this value.
+os.environ.setdefault("BMTC_API_KEY", "test-key-conftest-default-00000000000000")
+
 
 # ==============================================================================
 # Settings Isolation Fixtures
