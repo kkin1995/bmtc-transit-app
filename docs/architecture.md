@@ -6,7 +6,7 @@
 - **Tech:** FastAPI (Python), SQLite (WAL), `uv` package manager, systemd services
 - **APIs:** `POST /v1/ride_summary` (auth + idempotent), `GET /v1/eta`, `GET /v1/config`, `GET /v1/health`
 - **Privacy:** No PII, device tracking via salted client-side hash (`device_bucket`), anonymous GETs
-- **Learning:** Welford (online mean/variance), EMA (half-life), schedule blending `w = n/(n+n0)`, outlier rejection
+- **Learning:** Welford (online mean/variance), schedule blending `w = n/(n+n0)`, outlier rejection — EMA (half-life) was removed from the active pipeline in Phase 2 (LEARN-01); `ema_mean`/`ema_var` columns remain in the schema but are inert, deferred to v2 research (LEARN-V2-01)
 
 ---
 
@@ -54,7 +54,7 @@ flowchart LR
 * **HTTP:** Uvicorn (async), JSON only
 * **Routers:** `routes.py`
 * **Models:** `models.py` (Pydantic)
-* **Learning:** `learning.py` (Welford/EMA/outlier)
+* **Learning:** `learning.py` (Welford/outlier/schedule-blend — EMA removed from active pipeline, LEARN-01)
 * **Storage:** `db.py` (SQLite conn + time-bin mapper)
 * **Config:** `config.py` (env-backed)
 * **Auth:** `auth.py` (Bearer on POST), `idempotency.py`
@@ -65,7 +65,7 @@ flowchart LR
 * **Schema:** `app/schema.sql`
 * **Tables (key):** `segments`, `segment_stats`, `rides`, `ride_segments`, GTFS core (`stops`, `routes`, `trips`, `stop_times`, `calendar`, `gtfs_metadata`)
 * **Ops tables:** `idempotency_keys`, `device_buckets`, `rejection_log`
-* **Indices:** covering `(segment_id, bin_id, n, mean, m2, ema, schedule_mean, last_update)` for fast GETs
+* **Indices:** covering `(segment_id, bin_id, n, mean, m2, ema, schedule_mean, last_update)` for fast GETs — the `ema` column is retained but not written by the active pipeline (LEARN-01)
 
 ### 2.3 Background Ops (systemd)
 
@@ -100,7 +100,7 @@ flowchart LR
 3. **Rate limit**: token bucket per `device_bucket` (fallback: client IP) → `429` on exceed
 4. **Validate** segments: GTFS adjacency, duration bounds, `observed_at_utc` window (±7d), `mapmatch_conf ≥ threshold`
 5. **Outliers**: reject if `|x−μ| > σ·k` (k=3) and `n > 5`
-6. **Update** `segment_stats` (Welford/EMA) in a single transaction
+6. **Update** `segment_stats` (Welford + schedule blend; EMA removed from active pipeline, LEARN-01) in a single transaction
 7. **Return** ingest summary + rate-limit headers
 
 ---
@@ -109,14 +109,14 @@ flowchart LR
 
 * **Segments:** unique `(route_id, direction_id, from_stop_id, to_stop_id)`
 * **Time bins:** 192 (`0..191`): weekday(0)/weekend(1) × 96 slots (00:00..23:45)
-* **Stats per (segment × bin):** `n, welford_mean, welford_m2, ema_mean, ema_var, schedule_mean, last_update`
+* **Stats per (segment × bin):** `n, welford_mean, welford_m2, ema_mean, ema_var, schedule_mean, last_update` — `ema_mean`/`ema_var` are retained but inert (EMA removed from active pipeline, LEARN-01; deferred to v2 research, LEARN-V2-01)
 * **Rides:** `rides`, `ride_segments` (retained ~90 days, configurable)
 * **Ops tables:** `idempotency_keys`, `device_buckets`, `rejection_log`
 
 **Indexes (minimum)**
 
 * `segment_stats(segment_id, bin_id)` **PK**
-* Covering index for GET: `(segment_id, bin_id, n, welford_mean, welford_m2, ema_mean, schedule_mean, last_update)`
+* Covering index for GET: `(segment_id, bin_id, n, welford_mean, welford_m2, ema_mean, schedule_mean, last_update)` (`ema_mean` inert — see above)
 * `segments(route_id, direction_id, from_stop_id, to_stop_id)` **UNIQUE** + lookup index
 * `idempotency_keys(key)` **PK**
 * `rejection_log(created_at)` for retention
@@ -169,12 +169,12 @@ flowchart LR
 | `BMTC_GTFS_PATH`             | `/var/lib/bmtc-api/gtfs/bmtc.zip` | Static feed       |
 | `BMTC_API_KEY`               | *(required)*                      | Bearer for POST   |
 | `BMTC_N0`                    | `20`                              | Blend denominator |
-| `BMTC_EMA_ALPHA`             | `0.1`                             | EMA smoothing     |
-| `BMTC_HALF_LIFE_DAYS`        | `30`                              | EMA time-decay    |
 | `BMTC_OUTLIER_SIGMA`         | `3.0`                             | Outlier k-sigma   |
 | `BMTC_MAPMATCH_MIN_CONF`     | `0.7`                             | Reject below      |
 | `BMTC_MAX_SEGMENTS_PER_RIDE` | `50`                              | Validation        |
 | `BMTC_RATE_LIMIT_PER_HOUR`   | `500`                             | per device_bucket |
+
+**Note:** `BMTC_EMA_ALPHA`/`BMTC_HALF_LIFE_DAYS` were removed (LEARN-01) — EMA is not part of the active pipeline. `GET /v1/config` still returns `ema_alpha`/`half_life_days` as soft-deprecated `null` fields for backward compatibility.
 
 ---
 

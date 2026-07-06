@@ -1,45 +1,102 @@
 """Database initialization and connection management."""
 
+import os
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 
 
 def init_db(db_path: str) -> None:
-    """Initialize database with schema and enable WAL mode."""
+    """Initialize database with schema and enable WAL mode.
+
+    Guarantees `conn.close()` on every exit path (normal return or raised
+    exception) via try/finally, matching the pattern `get_connection()`
+    already applies to the request path (BUGFIX-01, WR-01). Without this,
+    a failure in `executescript()`/the guarded ALTERs/migration-seeding
+    below would leak the sqlite3 connection object and its underlying
+    WAL/journal file handles.
+    """
     conn = sqlite3.connect(db_path)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
-    conn.execute("PRAGMA synchronous=NORMAL")
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+        conn.execute("PRAGMA synchronous=NORMAL")
 
-    # Read and execute schema
-    schema_path = Path(__file__).parent / "schema.sql"
-    with open(schema_path) as f:
-        schema = f.read()
-    conn.executescript(schema)
+        # Read and execute schema
+        schema_path = Path(__file__).parent / "schema.sql"
+        with open(schema_path) as f:
+            schema = f.read()
+        conn.executescript(schema)
 
-    # Initialize 192 time bins
-    bins = []
-    bin_id = 0
-    for weekday_type in [0, 1]:  # 0=weekday, 1=weekend
-        for hour in range(24):
-            for minute in [0, 15, 30, 45]:
-                bins.append((bin_id, weekday_type, hour, minute))
-                bin_id += 1
+        # Guarded ALTER TABLE: add response_body column for existing DBs whose
+        # CREATE TABLE IF NOT EXISTS was a no-op (BUGFIX-03, D-06). Idempotent —
+        # safe to run on every startup since it checks PRAGMA table_info first.
+        existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(idempotency_keys)").fetchall()}
+        if "response_body" not in existing_cols:
+            conn.execute("ALTER TABLE idempotency_keys ADD COLUMN response_body TEXT")
+        # Same guard for body_hash (added for the H1 tampering fix,
+        # schema.sql). Without this, a DB created before body_hash was
+        # added to schema.sql would never get the column, since
+        # CREATE TABLE IF NOT EXISTS is a no-op against an existing table
+        # (WR-02).
+        if "body_hash" not in existing_cols:
+            conn.execute("ALTER TABLE idempotency_keys ADD COLUMN body_hash TEXT")
 
-    conn.executemany(
-        "INSERT OR IGNORE INTO time_bins (bin_id, weekday_type, hour_start, minute_start) VALUES (?, ?, ?, ?)",
-        bins,
-    )
-    conn.commit()
-    conn.close()
+        # Fresh-bootstrap migration seeding (DATA-01, RESEARCH.md Pitfall 1):
+        # schema.sql is the current baseline and already contains every schema
+        # change described by migrations/*_up.sql. Seed schema_migrations with
+        # every migration filename found so apply_migrations.sh never re-applies
+        # a change a freshly-created DB already has. Only a DB that predates
+        # this seeding step (i.e. an older DB never bootstrapped this way) will
+        # have a given filename genuinely missing and will execute it for real.
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS schema_migrations ("
+            "filename TEXT PRIMARY KEY, "
+            "applied_at TEXT NOT NULL DEFAULT (datetime('now'))"
+            ")"
+        )
+        migrations_dir = Path(os.environ.get("BMTC_MIGRATIONS_DIR", str(Path(__file__).parent / "migrations")))
+        if migrations_dir.is_dir():
+            migration_files = [(f.name,) for f in sorted(migrations_dir.glob("*_up.sql"))]
+            if migration_files:
+                conn.executemany(
+                    "INSERT OR IGNORE INTO schema_migrations (filename) VALUES (?)",
+                    migration_files,
+                )
+
+        # Initialize 192 time bins
+        bins = []
+        bin_id = 0
+        for weekday_type in [0, 1]:  # 0=weekday, 1=weekend
+            for hour in range(24):
+                for minute in [0, 15, 30, 45]:
+                    bins.append((bin_id, weekday_type, hour, minute))
+                    bin_id += 1
+
+        conn.executemany(
+            "INSERT OR IGNORE INTO time_bins (bin_id, weekday_type, hour_start, minute_start) VALUES (?, ?, ?, ?)",
+            bins,
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
-def get_connection(db_path: str) -> sqlite3.Connection:
-    """Get database connection with WAL enabled."""
+@contextmanager
+def get_connection(db_path: str):
+    """Get database connection with WAL enabled.
+
+    Guarantees `conn.close()` on every exit path (normal return, raised
+    HTTPException, or unhandled exception) via try/finally wrapping the
+    yield. Usage: `with get_connection(db_path) as conn: ...` (BUGFIX-01).
+    """
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA busy_timeout=5000")
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def compute_bin_id(timestamp_utc: int, is_holiday: bool = False) -> int:

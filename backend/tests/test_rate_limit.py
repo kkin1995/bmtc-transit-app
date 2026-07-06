@@ -53,34 +53,33 @@ def setup_rate_limit_segment(rate_limit_client):
     from app.db import get_connection
 
     settings = get_settings()
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
 
-    # Insert test segment
-    cursor.execute(
-        "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
-        ("ROUTE1", 0, "STOP_A", "STOP_B"),
-    )
-    conn.commit()
+        # Insert test segment
+        cursor.execute(
+            "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
+            ("ROUTE1", 0, "STOP_A", "STOP_B"),
+        )
+        conn.commit()
 
-    # Get segment_id and insert baseline stats
-    cursor.execute(
-        "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
-        ("ROUTE1", 0, "STOP_A", "STOP_B"),
-    )
-    segment_id = cursor.fetchone()[0]
+        # Get segment_id and insert baseline stats
+        cursor.execute(
+            "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
+            ("ROUTE1", 0, "STOP_A", "STOP_B"),
+        )
+        segment_id = cursor.fetchone()[0]
 
-    # Insert baseline stats for bin 0
-    cursor.execute(
-        """
-        INSERT OR IGNORE INTO segment_stats
-        (segment_id, bin_id, n, welford_mean, welford_m2, ema_mean, schedule_mean, last_update)
-        VALUES (?, 0, 0, 0, 0, 0, 300, ?)
-        """,
-        (segment_id, int(time.time())),
-    )
-    conn.commit()
-    conn.close()
+        # Insert baseline stats for bin 0
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO segment_stats
+            (segment_id, bin_id, n, welford_mean, welford_m2, ema_mean, schedule_mean, last_update)
+            VALUES (?, 0, 0, 0, 0, 0, 300, ?)
+            """,
+            (segment_id, int(time.time())),
+        )
+        conn.commit()
 
     yield rate_limit_client
 
@@ -199,18 +198,17 @@ def test_refill_bucket_after_hour(temp_db):
     assert remaining == 0
 
     # Simulate hour passing by manipulating last_refill
-    conn = get_connection(db_path)
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        UPDATE rate_limit_buckets
-        SET last_refill = datetime('now', '-2 hours')
-        WHERE bucket_id = ?
-        """,
-        (bucket_id,),
-    )
-    conn.commit()
-    conn.close()
+    with get_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE rate_limit_buckets
+            SET last_refill = datetime('now', '-2 hours')
+            WHERE bucket_id = ?
+            """,
+            (bucket_id,),
+        )
+        conn.commit()
 
     # Next request should refill and allow
     allowed, remaining, _ = check_and_spend_token(bucket_id, db_path, limit=5)
@@ -282,8 +280,13 @@ def test_rate_limit_headers_on_429(setup_rate_limit_segment, auth_headers):
     assert data["details"]["limit"] == 5
 
 
-def test_fallback_to_ip_when_no_device_bucket(setup_rate_limit_segment, auth_headers):
-    """Test rate limiting falls back to IP when device_bucket missing."""
+def test_missing_device_bucket_returns_400(setup_rate_limit_segment, auth_headers):
+    """Test requests without device_bucket are rejected with 400 (H3 fix).
+
+    IP-address fallback was intentionally removed (see app.rate_limit.extract_bucket_id,
+    "H3 fix - Eliminates IP address fallback to prevent privacy violations") — a request
+    with no device_bucket must be rejected outright, not silently rate-limited by IP.
+    """
     client = setup_rate_limit_segment
 
     # Request without device_bucket
@@ -295,27 +298,10 @@ def test_fallback_to_ip_when_no_device_bucket(setup_rate_limit_segment, auth_hea
         headers=auth_headers,
     )
 
-    assert response.status_code == 200
-    assert "X-RateLimit-Limit" in response.headers
-
-    # Exhaust IP-based quota
-    for _ in range(4):
-        response = client.post(
-            "/v1/ride_summary",
-            json=request_data,
-            headers=auth_headers,
-        )
-
-    # Should be rate limited now
-    response = client.post(
-        "/v1/ride_summary",
-        json=request_data,
-        headers=auth_headers,
-    )
-
-    assert response.status_code == 429
+    assert response.status_code == 400
     data = response.json()
-    assert data["details"]["bucket_id_type"] == "ip"
+    assert data["error"] == "invalid_request"
+    assert data["details"]["field"] == "device_bucket"
 
 
 def test_idempotency_does_not_spend_tokens(setup_rate_limit_segment, auth_headers):
@@ -354,6 +340,64 @@ def test_idempotency_does_not_spend_tokens(setup_rate_limit_segment, auth_header
     assert remaining_after_second >= remaining_after_first
 
 
+def test_idempotency_replay_with_rate_limiting_enforces_body_hash_check(
+    setup_rate_limit_segment, auth_headers
+):
+    """Test that RateLimitMiddleware's idempotent-replay path does not bypass H1
+    tamper detection (regression for a bug found in code review, 05-REVIEW.md CR-01).
+
+    RateLimitMiddleware short-circuits idempotent replays to avoid double-spending a
+    rate-limit token. A prior version fabricated the response itself and returned
+    before call_next(), which skipped routes.py's body-hash mismatch check entirely
+    and always returned a fake 200 -- silently dropping genuinely different resubmitted
+    data instead of the real 409 conflict.
+    """
+    client = setup_rate_limit_segment
+    bucket_id = "e" * 64
+    idempotency_key = "test-idempotency-key-bodyhash-check"
+
+    request_data1 = create_test_request(device_bucket=bucket_id)
+    response1 = client.post(
+        "/v1/ride_summary",
+        json=request_data1,
+        headers={
+            **auth_headers,
+            "Idempotency-Key": idempotency_key,
+        },
+    )
+    assert response1.status_code == 200
+    assert "accepted_segments" in response1.json()
+
+    # Replay the same key with a DIFFERENT body (different duration_sec) — must be
+    # rejected as a tamper attempt (409), not silently accepted with a fabricated 200.
+    request_data2 = create_test_request(device_bucket=bucket_id)
+    request_data2["segments"][0]["duration_sec"] = 999.0
+    response2 = client.post(
+        "/v1/ride_summary",
+        json=request_data2,
+        headers={
+            **auth_headers,
+            "Idempotency-Key": idempotency_key,
+        },
+    )
+    assert response2.status_code == 409
+    assert response2.json()["error"] == "conflict"
+
+    # Replay the same key with the SAME body — must return the real cached response
+    # (accepted_segments schema), not the middleware's old fabricated payload.
+    response3 = client.post(
+        "/v1/ride_summary",
+        json=request_data1,
+        headers={
+            **auth_headers,
+            "Idempotency-Key": idempotency_key,
+        },
+    )
+    assert response3.status_code == 200
+    assert response3.json() == response1.json()
+    assert "X-RateLimit-Remaining" in response3.headers
+
+
 def test_feature_flag_disabled(client, auth_headers):
     """Test rate limiting bypassed when feature flag disabled.
 
@@ -367,23 +411,22 @@ def test_feature_flag_disabled(client, auth_headers):
 
     # Setup segment
     from app.db import get_connection
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
-        ("ROUTE1", 0, "STOP_A", "STOP_B"),
-    )
-    cursor.execute(
-        "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
-        ("ROUTE1", 0, "STOP_A", "STOP_B"),
-    )
-    segment_id = cursor.fetchone()[0]
-    cursor.execute(
-        "INSERT OR IGNORE INTO segment_stats (segment_id, bin_id, schedule_mean) VALUES (?, 0, 300.0)",
-        (segment_id,),
-    )
-    conn.commit()
-    conn.close()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
+            ("ROUTE1", 0, "STOP_A", "STOP_B"),
+        )
+        cursor.execute(
+            "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
+            ("ROUTE1", 0, "STOP_A", "STOP_B"),
+        )
+        segment_id = cursor.fetchone()[0]
+        cursor.execute(
+            "INSERT OR IGNORE INTO segment_stats (segment_id, bin_id, schedule_mean) VALUES (?, 0, 300.0)",
+            (segment_id,),
+        )
+        conn.commit()
 
     bucket_id = "d" * 64
     request_data = create_test_request(device_bucket=bucket_id)
@@ -506,5 +549,4 @@ def test_rate_limit_error_structure(setup_rate_limit_segment, auth_headers):
     assert "details" in data
     assert "limit" in data["details"]
     assert "reset" in data["details"]
-    assert "bucket_id_type" in data["details"]
-    assert data["details"]["bucket_id_type"] in ["device", "ip"]
+    assert "retry_after_sec" in data["details"]

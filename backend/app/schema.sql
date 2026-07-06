@@ -207,7 +207,8 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
     key TEXT PRIMARY KEY,                -- UUID provided by client
     submitted_at INTEGER NOT NULL,       -- Unix timestamp
     response_hash TEXT NOT NULL,         -- SHA256 of response for verification
-    body_hash TEXT                       -- SHA256 of request body (H1 security fix)
+    body_hash TEXT,                      -- SHA256 of request body (H1 security fix)
+    response_body TEXT                   -- Serialized JSON response for byte-for-byte replay (BUGFIX-03)
 );
 
 CREATE INDEX IF NOT EXISTS idx_idempotency_submitted ON idempotency_keys(submitted_at);

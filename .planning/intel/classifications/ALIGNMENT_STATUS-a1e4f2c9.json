@@ -1,0 +1,13 @@
+{
+  "source_path": "/home/karankinariwala/KARAN/1-Projects/Active/bmtc-transit-app/docs/ALIGNMENT_STATUS.md",
+  "type": "DOC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "API v1 Alignment Status",
+  "summary": "Change-log report documenting completed backend schema alignment with docs/api.md v1 spec, including tests and deprecation timeline.",
+  "scope": ["ride_summary endpoint", "eta endpoint", "device_bucket field", "observed_at_utc timestamp", "backward compatibility", "test coverage"],
+  "cross_refs": ["docs/api.md", "backend/app/models.py", "backend/app/routes.py", "backend/app/rate_limit.py", "backend/tests/test_api_v1_alignment.py", "backend/tests/conftest.py", "backend/tests/test_integration.py"],
+  "locked": false,
+  "precedence": null,
+  "notes": "Contains SPEC-like schema tables (request/response field renames) but overall structure is a status/change-log report, not a forward-looking implementation contract or ADR decision record. Classified as DOC since it reports completed work rather than defining requirements or locking a decision."
+}

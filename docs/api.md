@@ -196,7 +196,7 @@ All API errors return a standardized JSON object with three fields:
 This API follows [GTFS Schedule Reference](https://gtfs.org/documentation/schedule/reference/) for all schedule-related data. The API is organized into two clear layers:
 
 ### GTFS Layer (Schedule Data)
-- **Discovery endpoints:** GET /v1/stops, GET /v1/routes, GET /v1/stops/{stop_id}/schedule
+- **Discovery endpoints:** GET /v1/stops, GET /v1/stops/{stop_id}, GET /v1/routes, GET /v1/routes/{route_id}, GET /v1/stops/{stop_id}/schedule
 - **Field names:** Use exact GTFS specification names (e.g., `stop_id`, `route_short_name`, `stop_lat`)
 - **Data format:** HH:MM:SS for schedule times (per GTFS spec), ISO-8601 UTC for query times
 - **Supported GTFS files:** agency, routes, stops, trips, stop_times, calendar
@@ -257,10 +257,17 @@ Query GTFS stops with filtering and pagination. Returns stops in GTFS-compliant 
 
 **Query parameters**
 
-* `bbox` (optional): Bounding box filter as `min_lat,min_lon,max_lat,max_lon` (e.g., `12.9,77.5,13.1,77.7`)
+* `bbox` (optional): Bounding box filter as `min_lat,min_lon,max_lat,max_lon` (e.g., `12.9,77.5,13.1,77.7`). All four coordinates are range-validated (latitude -90 to 90, longitude -180 to 180). Mutually exclusive with `lat`/`lon`/`radius_m`.
 * `route_id` (optional): Filter stops served by this route
+* `lat` (optional): Latitude of a radius-search origin point, -90 to 90. Must be supplied together with `lon` and `radius_m`; mutually exclusive with `bbox`.
+* `lon` (optional): Longitude of a radius-search origin point, -180 to 180. Must be supplied together with `lat` and `radius_m`; mutually exclusive with `bbox`.
+* `radius_m` (optional): Search radius in meters from `(lat, lon)`, maximum `2000`. Must be supplied together with `lat` and `lon`; mutually exclusive with `bbox`.
 * `limit` (optional): Maximum results per page (default 100, max 1000)
 * `offset` (optional): Pagination offset (default 0)
+
+**Radius search (`lat`/`lon`/`radius_m`)**
+
+Returns all stops within `radius_m` meters of `(lat, lon)`, measured as great-circle (Haversine) distance — not a rectangular bounding-box approximation. All three params must be supplied together (partial sets are rejected), and the trio is mutually exclusive with `bbox` (use one geospatial filter or the other, never both). `radius_m` is capped at 2000 meters.
 
 **Response — 200 OK**
 
@@ -308,6 +315,10 @@ All response fields map directly to GTFS stops.txt:
 **400 invalid_request** - Query parameter validation failures:
 * Invalid bbox format (must be `min_lat,min_lon,max_lat,max_lon`)
 * Invalid bbox range (latitude must be -90 to 90, longitude must be -180 to 180)
+* `bbox` supplied together with any of `lat`/`lon`/`radius_m` (mutually exclusive geospatial filters)
+* Only some of `lat`/`lon`/`radius_m` supplied (must be all-or-nothing)
+* `radius_m` exceeds the 2000m cap
+* Invalid `lat`/`lon` range for radius search (latitude must be -90 to 90, longitude must be -180 to 180)
 * Invalid limit (must be 1 to 1000)
 * Invalid offset (must be ≥ 0)
 
@@ -348,6 +359,29 @@ curl "http://localhost:8000/v1/stops?bbox=12.9,77.5,13.1,77.7&limit=50"
 curl "http://localhost:8000/v1/stops?route_id=335E"
 ```
 
+**Stops within 500m of a point (radius search):**
+```bash
+curl "http://localhost:8000/v1/stops?lat=12.97&lon=77.59&radius_m=500"
+```
+
+Response:
+```json
+{
+  "stops": [
+    {
+      "stop_id": "20558",
+      "stop_name": "Majestic Bus Station",
+      "stop_lat": 12.97644,
+      "stop_lon": 77.57148,
+      "zone_id": "ZONE_A"
+    }
+  ],
+  "total": 1,
+  "limit": 100,
+  "offset": 0
+}
+```
+
 **Error example — Invalid bbox format:**
 ```bash
 curl "http://localhost:8000/v1/stops?bbox=invalid"
@@ -364,9 +398,145 @@ Response:
 }
 ```
 
+**Error example — radius_m exceeds the 2000m cap:**
+```bash
+curl "http://localhost:8000/v1/stops?lat=12.97&lon=77.59&radius_m=5000"
+```
+
+Response:
+```json
+{
+  "error": "invalid_request",
+  "message": "radius_m must not exceed 2000",
+  "details": {
+    "radius_m": 5000
+  }
+}
+```
+
 ---
 
-### 2) `GET /v1/routes` — Discover routes *(Unauthenticated)*
+### 2) `GET /v1/stops/{stop_id}` — Get stop detail *(Unauthenticated)*
+
+Get full detail for a single stop, including every route that serves it. Designed so mobile clients can render a stop screen (name, position, serving routes) in one call instead of cross-referencing `/v1/routes`.
+
+**Path parameters**
+
+* `stop_id` (required): GTFS stop identifier (e.g., "20558")
+
+**Response — 200 OK**
+
+```json
+{
+  "stop_id": "20558",
+  "stop_name": "Majestic Bus Station",
+  "stop_lat": 12.97644,
+  "stop_lon": 77.57148,
+  "zone_id": "ZONE_A",
+  "routes": [
+    {
+      "route_id": "4715",
+      "route_short_name": "285",
+      "route_long_name": "Kengeri to Electronic City",
+      "route_type": 3,
+      "agency_id": "BMTC"
+    },
+    {
+      "route_id": "4716",
+      "route_short_name": "285",
+      "route_long_name": "Kengeri to Banashankari (via Ring Road)",
+      "route_type": 3,
+      "agency_id": "BMTC"
+    }
+  ]
+}
+```
+
+**GTFS Mapping**
+
+- `stop_id` → stops.stop_id (TEXT, required)
+- `stop_name` → stops.stop_name (TEXT, required)
+- `stop_lat` → stops.stop_lat (REAL, required)
+- `stop_lon` → stops.stop_lon (REAL, required)
+- `zone_id` → stops.zone_id (TEXT, optional)
+- `routes[]` → full route objects (same shape as `GET /v1/routes` items) for every route serving this stop, joined via `stop_times` → `trips` → `routes`
+
+**Ordering and deduplication**
+
+* `routes` is ordered by `route_short_name` (matches the existing `GET /v1/routes` sort convention)
+* `routes` is **not** deduplicated by `route_short_name` — `route_short_name` is not guaranteed unique per `route_id` in GTFS data (e.g. two distinct `route_id`s may both display as "285"); every distinct `route_id` serving the stop appears as its own entry
+
+**Status codes**
+
+* `200` — Success. A stop that exists but currently has zero serving routes still returns `200` with `routes: []` — never `404` for this case.
+* `404` — Stop not found (`error="not_found"`)
+* `500` — Internal error (`error="server_error"`)
+
+**Error Responses**
+
+**404 not_found** - Stop not found in GTFS data:
+```json
+{
+  "error": "not_found",
+  "message": "Stop not found in GTFS data",
+  "details": {
+    "stop_id": "99999"
+  }
+}
+```
+
+**500 server_error** - Database errors or unexpected failures:
+```json
+{
+  "error": "server_error",
+  "message": "An unexpected error occurred",
+  "details": {}
+}
+```
+
+**cURL examples**
+
+**Stop detail with serving routes:**
+```bash
+curl "http://localhost:8000/v1/stops/20558"
+```
+
+**Stop that exists but currently has no serving routes (200, empty array):**
+```bash
+curl "http://localhost:8000/v1/stops/30001"
+```
+
+Response:
+```json
+{
+  "stop_id": "30001",
+  "stop_name": "Under-Construction Layout Stop",
+  "stop_lat": 12.9,
+  "stop_lon": 77.6,
+  "zone_id": null,
+  "routes": []
+}
+```
+
+**Error example — Stop not found:**
+```bash
+curl "http://localhost:8000/v1/stops/99999"
+```
+
+Response:
+```json
+{
+  "error": "not_found",
+  "message": "Stop not found in GTFS data",
+  "details": {
+    "stop_id": "99999"
+  }
+}
+```
+
+---
+
+### 3) `GET /v1/routes` — Discover routes *(Unauthenticated)*
 
 Query GTFS routes with filtering and pagination. Returns routes in GTFS-compliant format.
 
@@ -480,7 +650,163 @@ Response:
 
 ---
 
-### 3) `GET /v1/routes/search` — Search routes by name *(Unauthenticated)*
+### 4) `GET /v1/routes/{route_id}` — Get route detail *(Unauthenticated)*
+
+Get full detail for a single route, including the ordered list of stops served in each direction. Designed so mobile clients can render a route's stop sequence (per direction) in one call instead of cross-referencing `/v1/stops/{stop_id}/schedule` per stop.
+
+**Scope note:** This endpoint is stops-only. It does **not** return trip-level data — no `trip_id` lists, no schedule/arrival times. For scheduled departures at a specific stop, use `GET /v1/stops/{stop_id}/schedule`.
+
+**Path parameters**
+
+* `route_id` (required): GTFS route identifier (e.g., "4715")
+
+**Response — 200 OK**
+
+```json
+{
+  "route_id": "4715",
+  "route_short_name": "335E",
+  "route_long_name": "Kengeri to Electronic City",
+  "route_type": 3,
+  "agency_id": "BMTC",
+  "directions": [
+    {
+      "direction_id": 0,
+      "stops": [
+        {
+          "stop_id": "20558",
+          "stop_name": "Kengeri Bus Station",
+          "stop_lat": 12.90987,
+          "stop_lon": 77.48285,
+          "stop_sequence": 1
+        },
+        {
+          "stop_id": "29374",
+          "stop_name": "Majestic Bus Station",
+          "stop_lat": 12.97644,
+          "stop_lon": 77.57148,
+          "stop_sequence": 2
+        }
+      ]
+    },
+    {
+      "direction_id": 1,
+      "stops": [
+        {
+          "stop_id": "29374",
+          "stop_name": "Majestic Bus Station",
+          "stop_lat": 12.97644,
+          "stop_lon": 77.57148,
+          "stop_sequence": 1
+        },
+        {
+          "stop_id": "20558",
+          "stop_name": "Kengeri Bus Station",
+          "stop_lat": 12.90987,
+          "stop_lon": 77.48285,
+          "stop_sequence": 2
+        }
+      ]
+    }
+  ]
+}
+```
+
+**GTFS Mapping**
+
+- `route_id` → routes.route_id (TEXT, required)
+- `route_short_name` → routes.route_short_name (TEXT, optional)
+- `route_long_name` → routes.route_long_name (TEXT, optional)
+- `route_type` → routes.route_type (INTEGER, required, 3=bus per GTFS spec)
+- `agency_id` → routes.agency_id (TEXT, optional)
+- `directions[].direction_id` → trips.direction_id (INTEGER)
+- `directions[].stops[]` → joined via `stop_times` → `stops`, ordered by `stop_times.stop_sequence`
+  - `stop_id` → stops.stop_id (TEXT, required)
+  - `stop_name` → stops.stop_name (TEXT, required)
+  - `stop_lat` → stops.stop_lat (REAL, required)
+  - `stop_lon` → stops.stop_lon (REAL, required)
+  - `stop_sequence` → stop_times.stop_sequence (INTEGER, required)
+
+**Representative-shape selection (branch variants)**
+
+* A `(route_id, direction_id)` pair may have multiple `shape_id` branch variants in GTFS data (e.g. a route that occasionally short-turns). The stop list for that direction is taken from the **most-common shape's representative trip** — the shape with the highest trip count for that route+direction. This gives a single, deterministic ordered stop list per direction even when branch variants exist.
+
+**Empty-data edge cases**
+
+* A `route_id` that exists in `routes` but currently has **zero trips** returns `200` with `directions: []` — never `404`. A route existing in GTFS static data with no trips scheduled is valid (e.g. a route pending schedule assignment), not an error.
+* A direction with **zero trips** (while the other direction has trips — e.g. a one-way-only route) is **omitted** from the `directions` array entirely. It does not appear as an entry with `stops: []`. A one-directional route therefore returns a single-element `directions` array.
+
+**Status codes**
+
+* `200` — Success. Includes the zero-trips-per-route case (`directions: []`) and the one-directional-route case (single-element `directions`).
+* `404` — Route not found (`error="not_found"`)
+* `500` — Internal error (`error="server_error"`)
+
+**Error Responses**
+
+**404 not_found** - Route not found in GTFS data:
+```json
+{
+  "error": "not_found",
+  "message": "Route not found in GTFS data",
+  "details": {
+    "route_id": "NONEXISTENT_ROUTE"
+  }
+}
+```
+
+**500 server_error** - Database errors or unexpected failures:
+```json
+{
+  "error": "server_error",
+  "message": "An unexpected error occurred",
+  "details": {}
+}
+```
+
+**cURL examples**
+
+**Route detail with both directions:**
+```bash
+curl "http://localhost:8000/v1/routes/4715"
+```
+
+**Route that exists but currently has no trips (200, empty directions):**
+```bash
+curl "http://localhost:8000/v1/routes/9999"
+```
+
+Response:
+```json
+{
+  "route_id": "9999",
+  "route_short_name": "PLANNED",
+  "route_long_name": "Future Extension Route",
+  "route_type": 3,
+  "agency_id": "BMTC",
+  "directions": []
+}
+```
+
+**Error example — Route not found:**
+```bash
+curl "http://localhost:8000/v1/routes/NONEXISTENT_ROUTE"
+```
+
+Response:
+```json
+{
+  "error": "not_found",
+  "message": "Route not found in GTFS data",
+  "details": {
+    "route_id": "NONEXISTENT_ROUTE"
+  }
+}
+```
+
+---
+
+### 5) `GET /v1/routes/search` — Search routes by name *(Unauthenticated)*
 
 Search GTFS routes using case-insensitive substring matching across `route_short_name` and `route_long_name`. Performs normalization (removes spaces/hyphens, converts to uppercase) for matching only, while preserving original GTFS values in response. Designed to find routes beyond pagination limits of GET /v1/routes.
 
@@ -666,7 +992,7 @@ Response:
 
 ---
 
-### 4) `GET /v1/stops/{stop_id}/schedule` — Get scheduled departures *(Unauthenticated)*
+### 6) `GET /v1/stops/{stop_id}/schedule` — Get scheduled departures *(Unauthenticated)*
 
 Query scheduled departures for a stop from GTFS data. Returns upcoming departures within a time window.
 
@@ -845,7 +1171,7 @@ Response:
 
 ---
 
-### 5) `POST /v1/ride_summary` — Submit ride for learning *(Authenticated, Idempotent)*
+### 7) `POST /v1/ride_summary` — Submit ride for learning *(Authenticated, Idempotent)*
 
 Ingest a single ride consisting of ordered segments. The server updates per-segment×time-bin statistics (Welford mean/variance, EMA) and logs rejections (outliers, low confidence, etc.).
 
@@ -913,7 +1239,10 @@ X-RateLimit-Limit: 500
 X-RateLimit-Remaining: 499
 X-RateLimit-Reset: 1761136800
 X-API-Version: 1
+X-Deprecation-Warning: timestamp_utc is deprecated, use observed_at_utc (ISO-8601). Will be removed in v0.3.0 (2025-11-30)
 ```
+
+`X-Deprecation-Warning` is present **only** when a request segment used the deprecated per-segment `timestamp_utc` field instead of `observed_at_utc`; the header is absent entirely when `observed_at_utc` is used. Value is the exact deprecation message text shown above (not paraphrased). See "Deprecation Header (API-05)" note below and the Changelog entry for details.
 
 **Status codes**
 
@@ -1195,7 +1524,7 @@ Response:
 
 ---
 
-### 6) `GET /v1/eta` — Query ETA with predictions *(Unauthenticated)*
+### 8) `GET /v1/eta` — Query ETA with predictions *(Unauthenticated)*
 
 Return both GTFS scheduled duration and ML-predicted ETA at a given time (defaults to server "now"). Separates schedule data from prediction data.
 
@@ -1208,15 +1537,28 @@ Return both GTFS scheduled duration and ML-predicted ETA at a given time (defaul
 * `when` — optional ISO-8601 UTC timestamp string (e.g., `2025-10-22T10:41:00Z`); defaults to server "now"
 * `timestamp_utc` — **DEPRECATED** (use `when` instead); optional Unix epoch timestamp (integer); maintained for backward compatibility
 
+**Deprecation Header (API-05)**
+
+When the deprecated `timestamp_utc` query parameter is used (instead of `when`), the response includes:
+
+```
+X-Deprecation-Warning: timestamp_utc is deprecated, use observed_at_utc (ISO-8601). Will be removed in v0.3.0 (2025-11-30)
+```
+
+The header is absent when `when` is used (or when neither timestamp parameter is provided). Value is the exact deprecation message text shown above.
+
 **Response — 200 OK**
 
 ```json
 {
   "segment": {
-    "route_id": "335E",
+    "route_id": "215-NE ANP11-KMT-VSD",
     "direction_id": 0,
     "from_stop_id": "20558",
-    "to_stop_id": "29374"
+    "to_stop_id": "29374",
+    "from_stop_name": "Majestic Bus Station",
+    "to_stop_name": "Silk Board Junction",
+    "route_short_name": "335E"
   },
   "query_time": "2025-11-18T10:41:00Z",
   "scheduled": {
@@ -1241,10 +1583,15 @@ Return both GTFS scheduled duration and ML-predicted ETA at a given time (defaul
 **Field descriptions**
 
 **segment object:**
-* `route_id`: GTFS route identifier
+* `route_id`: GTFS route identifier (the full GTFS `route_id`, e.g. `215-NE ANP11-KMT-VSD` — a compound string, distinct from the short rider-facing code)
 * `direction_id`: GTFS direction (0 or 1)
 * `from_stop_id`: GTFS origin stop identifier
 * `to_stop_id`: GTFS destination stop identifier
+* `from_stop_name` (string, nullable, API-04): Human-readable name of `from_stop_id`, resolved via GTFS `stops.stop_name`. `null` if `from_stop_id` has no matching `stops` row (orphaned reference); the response still returns `200` in that case (D-20)
+* `to_stop_name` (string, nullable, API-04): Human-readable name of `to_stop_id`, resolved via GTFS `stops.stop_name`. `null` under the same orphaned-reference conditions as `from_stop_name`
+* `route_short_name` (string, nullable, API-04): Rider-facing short route code (e.g. `335E`), resolved via GTFS `routes.route_short_name`. `null` if `route_id` has no matching `routes` row
+
+These 3 fields are added only to this nested `segment` object (the v1.1 structured shape); they are **not** added to the flat deprecated top-level ETA fields described below. `route_long_name` is intentionally not included here — only the 3 fields above are provided.
 
 **scheduled object (GTFS data):**
 * `duration_sec`: Scheduled duration from GTFS stop_times (seconds)
@@ -1371,7 +1718,7 @@ Response:
 
 ---
 
-### 7) `GET /v1/config` — Server configuration *(Unauthenticated)*
+### 9) `GET /v1/config` — Server configuration *(Unauthenticated)*
 
 Returns public configuration and tuning parameters.
 
@@ -1381,8 +1728,8 @@ Returns public configuration and tuning parameters.
 {
   "n0": 20,
   "time_bin_minutes": 15,
-  "half_life_days": 30,
-  "ema_alpha": 0.1,
+  "half_life_days": null,
+  "ema_alpha": null,
   "outlier_sigma": 3.0,
   "mapmatch_min_conf": 0.7,
   "max_segments_per_ride": 50,
@@ -1397,8 +1744,8 @@ Returns public configuration and tuning parameters.
 
 * `n0`: Blend weight denominator; `blend_weight = n / (n + n0)`
 * `time_bin_minutes`: Time bin granularity (15 minutes)
-* `half_life_days`: EMA half-life for time-based decay
-* `ema_alpha`: EMA smoothing parameter
+* `half_life_days`: DEPRECATED — always `null`. EMA was removed from the active learning pipeline in Phase 2 (LEARN-01); this field is retained for backward compatibility and may be reintroduced with a different meaning in a future v2 research effort (LEARN-V2-01)
+* `ema_alpha`: DEPRECATED — always `null`. EMA was removed from the active learning pipeline in Phase 2 (LEARN-01); this field is retained for backward compatibility and may be reintroduced with a different meaning in a future v2 research effort (LEARN-V2-01)
 * `outlier_sigma`: Outlier rejection threshold (standard deviations)
 * `mapmatch_min_conf`: Minimum map-matching confidence to accept observations
 * `max_segments_per_ride`: Maximum segments per ride submission
@@ -1433,7 +1780,7 @@ curl http://localhost:8000/v1/config
 
 ---
 
-### 8) `GET /v1/health` — Health & uptime *(Unauthenticated)*
+### 10) `GET /v1/health` — Health & uptime *(Unauthenticated)*
 
 Liveness/readiness with DB check.
 
@@ -1507,7 +1854,7 @@ curl http://localhost:8000/v1/health
 * `mapmatch_min_conf = 0.7`
 * `outlier_sigma = 3.0` (reject if `|x−μ| > 3σ` and `n > 5`)
 * `n0 = 20` (schedule blend denominator)
-* `half_life_days = 30` (EMA recency)
+* `half_life_days` — DEPRECATED, always `null` (EMA removed from active pipeline, see LEARN-01; deferred to v2 research LEARN-V2-01)
 * **Timestamp window:** `observed_at_utc` must be within the past **7 days** and not in the future.
 * **Duration bounds:** `duration_sec` must be in (0, 7200] seconds (0 to 2 hours).
 
@@ -1616,6 +1963,26 @@ curl http://localhost:8000/v1/config | jq .
 ## Changelog (API)
 
 See [`CHANGELOG.md`](./CHANGELOG.md) for detailed version history.
+
+**Unreleased — Route Detail Endpoint (API-02):**
+* **New endpoint:**
+  * GET `/v1/routes/{route_id}` - Single-route detail (metadata) plus a `directions` array, each with an ordered stop list — stops-only, no trip-level or schedule data
+  * For a `(route_id, direction_id)` with multiple `shape_id` branch variants, the most-common shape's representative trip determines the stop order
+  * A route with zero trips returns `200` with `directions: []` (never `404`); a direction with zero trips is omitted from the array entirely (not included with `stops: []`)
+  * Returns `404 not_found` only when `route_id` has no row in GTFS `routes` data at all
+
+**Unreleased — Stop Detail Endpoint (API-01):**
+* **New endpoint:**
+  * GET `/v1/stops/{stop_id}` - Single-stop detail (name, coordinates, zone) plus the full list of routes serving that stop
+  * Each entry in `routes` is a full route object (same shape as `GET /v1/routes` items) — not deduplicated by `route_short_name`, since a short name is not guaranteed unique per `route_id`
+  * `routes` is ordered by `route_short_name`; a stop with no serving routes returns `200` with `routes: []` (never `404` for that case)
+  * Returns `404 not_found` only when `stop_id` has no row in GTFS `stops` data at all
+
+**Unreleased — Deprecation Header (API-05):**
+* `POST /v1/ride_summary` and `GET /v1/eta` now emit an `X-Deprecation-Warning` response header when the deprecated `timestamp_utc` field is used (per-segment field on POST; query parameter on GET).
+* Header value: `timestamp_utc is deprecated, use observed_at_utc (ISO-8601). Will be removed in v0.3.0 (2025-11-30)`.
+* Header is absent when the current field (`observed_at_utc` for POST, `when` for GET) is used.
+* Previously this deprecation was only logged server-side; clients had no way to detect deprecated-field usage without inspecting server logs.
 
 **v1.2 — 2026-02-16 (Server-Side Route Search):**
 * **New endpoint:**

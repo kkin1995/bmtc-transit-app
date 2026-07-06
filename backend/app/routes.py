@@ -1,13 +1,13 @@
 """API route handlers."""
 
+import json
 import logging
+import math
 import time
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Header
 from fastapi.responses import JSONResponse
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from app.auth import verify_token
 from app.config import get_settings
@@ -29,8 +29,12 @@ from app.models import (
     HealthResponse,
     StopsListResponse,
     StopResponse,
+    StopDetailResponse,
     RoutesListResponse,
     RouteResponse,
+    RouteDetailResponse,
+    DirectionInfo,
+    DirectionStopInfo,
     ScheduleResponse,
     StopInfo,
     DepartureInfo,
@@ -46,7 +50,6 @@ from app.state import get_startup_time
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/ride_summary", response_model=RideSummaryResponse)
@@ -91,12 +94,21 @@ async def ride_summary(
                 )
 
             # Body hash matches or not verified (backward compat) - return cached response
-            logger.info(f"Idempotent replay detected: {idempotency_key}")
-            # For now, return success with zero rejected count (client should cache response)
-            response = RideSummaryResponse(
-                accepted_segments=0, rejected_segments=0, rejected_by_reason={}
-            )
-            return response
+            response_body = cached_response.get("response_body")
+            if response_body is not None:
+                # Genuine replay — return the ORIGINAL response byte-for-byte (D-08)
+                logger.info(f"Idempotent replay detected: {idempotency_key}")
+                cached_data = json.loads(response_body)
+                response = RideSummaryResponse(**cached_data)
+                if deprecation_warning:
+                    return JSONResponse(
+                        content=response.model_dump(),
+                        headers={"X-Deprecation-Warning": deprecation_warning},
+                    )
+                return response
+            # else: response_body IS NULL (legacy row, D-09) — treat as a cache
+            # miss and fall through to reprocess the request fresh, exactly as
+            # if no idempotency key existed at all.
 
     # Validate max segments
     if len(ride.segments) > settings.max_segments_per_ride:
@@ -105,104 +117,102 @@ async def ride_summary(
             detail=f"Too many segments ({len(ride.segments)}), max is {settings.max_segments_per_ride}",
         )
 
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
 
-    accepted_count = 0
-    rejected_count = 0
-    rejected_by_reason: dict[str, int] = {}
+        accepted_count = 0
+        rejected_count = 0
+        rejected_by_reason: dict[str, int] = {}
 
-    # Insert ride metadata
-    cursor.execute(
-        "INSERT INTO rides (submitted_at, segment_count) VALUES (?, ?)",
-        (int(time.time()), len(ride.segments)),
-    )
-    ride_id = cursor.lastrowid
+        # Insert ride metadata
+        cursor.execute(
+            "INSERT INTO rides (submitted_at, segment_count) VALUES (?, ?)",
+            (int(time.time()), len(ride.segments)),
+        )
+        ride_id = cursor.lastrowid
 
-    # Extract device_bucket from top-level (not from segments)
-    device_bucket = ride.device_bucket
+        # Extract device_bucket from top-level (not from segments)
+        device_bucket = ride.device_bucket
 
-    for seq, segment in enumerate(ride.segments):
-        # Update device bucket tracking (if provided at top level)
+        # Update device bucket tracking once per ride (not per segment, D-13)
         if device_bucket:
             update_device_bucket(conn, device_bucket)
 
-        # Validate segment exists
-        cursor.execute(
-            """
-            SELECT segment_id FROM segments
-            WHERE route_id = ? AND direction_id = ? AND from_stop_id = ? AND to_stop_id = ?
-            """,
-            (
-                ride.route_id,
-                ride.direction_id,
-                segment.from_stop_id,
-                segment.to_stop_id,
-            ),
-        )
-        row = cursor.fetchone()
-        if row is None:
-            # Unknown segment - reject with 422
-            conn.close()
-            raise HTTPException(
-                status_code=422,
-                detail=f"Unknown segment: {segment.from_stop_id} -> {segment.to_stop_id}",
+        for seq, segment in enumerate(ride.segments):
+            # Validate segment exists
+            cursor.execute(
+                """
+                SELECT segment_id FROM segments
+                WHERE route_id = ? AND direction_id = ? AND from_stop_id = ? AND to_stop_id = ?
+                """,
+                (
+                    ride.route_id,
+                    ride.direction_id,
+                    segment.from_stop_id,
+                    segment.to_stop_id,
+                ),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                # Unknown segment - reject with 422
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Unknown segment: {segment.from_stop_id} -> {segment.to_stop_id}",
+                )
+
+            segment_id = row[0]
+
+            # Get timestamp epoch from segment (handles both ISO-8601 and deprecated epoch)
+            timestamp_epoch = segment.get_timestamp_epoch()
+
+            # Compute time bin (with optional holiday routing)
+            bin_id = compute_bin_id(timestamp_epoch, is_holiday=segment.is_holiday)
+
+            # Update statistics (with mapmatch_conf check)
+            accepted, rejection_reason = update_segment_stats(
+                conn, segment_id, bin_id, segment.duration_sec, segment.mapmatch_conf
             )
 
-        segment_id = row[0]
+            if accepted:
+                accepted_count += 1
+            else:
+                rejected_count += 1
+                rejected_by_reason[rejection_reason] = (
+                    rejected_by_reason.get(rejection_reason, 0) + 1
+                )
 
-        # Get timestamp epoch from segment (handles both ISO-8601 and deprecated epoch)
-        timestamp_epoch = segment.get_timestamp_epoch()
+                # Log rejection (use top-level device_bucket)
+                log_rejection(
+                    conn,
+                    segment_id,
+                    bin_id,
+                    rejection_reason,
+                    segment.duration_sec,
+                    segment.mapmatch_conf,
+                    device_bucket,
+                )
 
-        # Compute time bin (with optional holiday routing)
-        bin_id = compute_bin_id(timestamp_epoch, is_holiday=segment.is_holiday)
-
-        # Update statistics (with mapmatch_conf check)
-        accepted, rejection_reason = update_segment_stats(
-            conn, segment_id, bin_id, segment.duration_sec, segment.mapmatch_conf
-        )
-
-        if accepted:
-            accepted_count += 1
-        else:
-            rejected_count += 1
-            rejected_by_reason[rejection_reason] = (
-                rejected_by_reason.get(rejection_reason, 0) + 1
+            # Record ride_segment (use top-level device_bucket)
+            cursor.execute(
+                """
+                INSERT INTO ride_segments (ride_id, seq, segment_id, duration_sec, dwell_sec, timestamp_utc, accepted, device_bucket, mapmatch_conf, rejection_reason)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    ride_id,
+                    seq,
+                    segment_id,
+                    segment.duration_sec,
+                    segment.dwell_sec,
+                    timestamp_epoch,
+                    int(accepted),
+                    device_bucket,
+                    segment.mapmatch_conf,
+                    rejection_reason,
+                ),
             )
 
-            # Log rejection (use top-level device_bucket)
-            log_rejection(
-                conn,
-                segment_id,
-                bin_id,
-                rejection_reason,
-                segment.duration_sec,
-                segment.mapmatch_conf,
-                device_bucket,
-            )
-
-        # Record ride_segment (use top-level device_bucket)
-        cursor.execute(
-            """
-            INSERT INTO ride_segments (ride_id, seq, segment_id, duration_sec, dwell_sec, timestamp_utc, accepted, device_bucket, mapmatch_conf, rejection_reason)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                ride_id,
-                seq,
-                segment_id,
-                segment.duration_sec,
-                segment.dwell_sec,
-                timestamp_epoch,
-                int(accepted),
-                device_bucket,
-                segment.mapmatch_conf,
-                rejection_reason,
-            ),
-        )
-
-    conn.commit()
-    conn.close()
+        conn.commit()
 
     response_data = {
         "accepted_segments": accepted_count,
@@ -217,12 +227,12 @@ async def ride_summary(
 
     response = RideSummaryResponse(**response_data)
 
-    # Add deprecation header if needed
+    # Deliver deprecation signal to the client via response header (API-05, D-10..D-12)
     if deprecation_warning:
-        # Note: FastAPI doesn't easily allow adding headers to response_model responses
-        # This will be handled in middleware or by returning Response object
-        # For now, log the warning
-        logger.warning(f"Deprecated field used: {deprecation_warning}")
+        return JSONResponse(
+            content=response.model_dump(),
+            headers={"X-Deprecation-Warning": deprecation_warning},
+        )
 
     return response
 
@@ -262,75 +272,95 @@ async def get_eta(
             }
         )
 
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
 
-    # Resolve segment
-    cursor.execute(
-        """
-        SELECT segment_id FROM segments
-        WHERE route_id = ? AND direction_id = ? AND from_stop_id = ? AND to_stop_id = ?
-        """,
-        (route_id, direction_id, from_stop_id, to_stop_id),
-    )
-    row = cursor.fetchone()
-    if row is None:
-        conn.close()
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "error": "not_found",
-                "message": "Segment not found in GTFS data",
-                "details": {
-                    "route_id": route_id,
-                    "direction_id": direction_id,
-                    "from_stop_id": from_stop_id,
-                    "to_stop_id": to_stop_id
-                }
-            }
+        # Resolve segment
+        cursor.execute(
+            """
+            SELECT segment_id FROM segments
+            WHERE route_id = ? AND direction_id = ? AND from_stop_id = ? AND to_stop_id = ?
+            """,
+            (route_id, direction_id, from_stop_id, to_stop_id),
         )
-
-    segment_id = row[0]
-
-    # Determine timestamp epoch (Priority: when > timestamp_utc > now)
-    timestamp_epoch = None
-    if when is not None:
-        # Parse ISO-8601 timestamp string
-        try:
-            dt = datetime.fromisoformat(when.replace("Z", "+00:00"))
-            timestamp_epoch = int(dt.timestamp())
-        except (ValueError, AttributeError) as e:
-            conn.close()
+        row = cursor.fetchone()
+        if row is None:
             raise HTTPException(
-                status_code=400,
+                status_code=404,
                 detail={
-                    "error": "invalid_request",
-                    "message": "when must be ISO-8601 UTC timestamp (e.g., '2025-10-22T10:41:00Z')",
-                    "details": {"when": when}
+                    "error": "not_found",
+                    "message": "Segment not found in GTFS data",
+                    "details": {
+                        "route_id": route_id,
+                        "direction_id": direction_id,
+                        "from_stop_id": from_stop_id,
+                        "to_stop_id": to_stop_id
+                    }
                 }
             )
-    elif timestamp_utc is not None:
-        # Backward compatibility: use deprecated timestamp_utc
-        logger.warning(f"timestamp_utc parameter is deprecated, use 'when' instead (route={route_id})")
-        timestamp_epoch = timestamp_utc
-    else:
-        # Default to server "now"
-        timestamp_epoch = int(time.time())
 
-    # Compute time bin
-    bin_id = compute_bin_id(timestamp_epoch)
+        segment_id = row[0]
 
-    # Fetch stats
-    cursor.execute(
-        """
-        SELECT n, welford_mean, welford_m2, schedule_mean, last_update
-        FROM segment_stats
-        WHERE segment_id = ? AND bin_id = ?
-        """,
-        (segment_id, bin_id),
-    )
-    row = cursor.fetchone()
-    conn.close()
+        # Enrich segment with human-readable GTFS names (API-04, D-18).
+        # MUST be LEFT JOIN, never INNER JOIN: an orphaned from_stop_id,
+        # to_stop_id, or route_id must null only that one field, not drop
+        # the whole enrichment row (D-20).
+        cursor.execute(
+            """
+            SELECT
+                seg.segment_id,
+                fs.stop_name AS from_stop_name,
+                ts.stop_name AS to_stop_name,
+                r.route_short_name
+            FROM segments seg
+            LEFT JOIN stops fs ON seg.from_stop_id = fs.stop_id
+            LEFT JOIN stops ts ON seg.to_stop_id = ts.stop_id
+            LEFT JOIN routes r ON seg.route_id = r.route_id
+            WHERE seg.segment_id = ?
+            """,
+            (segment_id,),
+        )
+        enrichment_row = cursor.fetchone()
+
+        # Determine timestamp epoch (Priority: when > timestamp_utc > now)
+        timestamp_epoch = None
+        deprecation_warning = None
+        if when is not None:
+            # Parse ISO-8601 timestamp string
+            try:
+                dt = datetime.fromisoformat(when.replace("Z", "+00:00"))
+                timestamp_epoch = int(dt.timestamp())
+            except (ValueError, AttributeError) as e:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "invalid_request",
+                        "message": "when must be ISO-8601 UTC timestamp (e.g., '2025-10-22T10:41:00Z')",
+                        "details": {"when": when}
+                    }
+                )
+        elif timestamp_utc is not None:
+            # Backward compatibility: use deprecated timestamp_utc
+            logger.warning(f"timestamp_utc parameter is deprecated, use 'when' instead (route={route_id})")
+            timestamp_epoch = timestamp_utc
+            deprecation_warning = "timestamp_utc is deprecated, use observed_at_utc (ISO-8601). Will be removed in v0.3.0 (2025-11-30)"
+        else:
+            # Default to server "now"
+            timestamp_epoch = int(time.time())
+
+        # Compute time bin
+        bin_id = compute_bin_id(timestamp_epoch)
+
+        # Fetch stats
+        cursor.execute(
+            """
+            SELECT n, welford_mean, welford_m2, schedule_mean, last_update
+            FROM segment_stats
+            WHERE segment_id = ? AND bin_id = ?
+            """,
+            (segment_id, bin_id),
+        )
+        row = cursor.fetchone()
 
     if row is None:
         raise HTTPException(status_code=404, detail="Stats not found for segment×bin")
@@ -363,13 +393,16 @@ async def get_eta(
     query_time_iso = datetime.fromtimestamp(timestamp_epoch, tz=timezone.utc).isoformat().replace("+00:00", "Z")
     confidence = _compute_confidence(n)
 
-    return ETAResponseV11(
+    model = ETAResponseV11(
         # New v1.1 structured format
         segment=SegmentInfo(
             route_id=route_id,
             direction_id=direction_id,
             from_stop_id=from_stop_id,
-            to_stop_id=to_stop_id
+            to_stop_id=to_stop_id,
+            from_stop_name=enrichment_row["from_stop_name"],
+            to_stop_name=enrichment_row["to_stop_name"],
+            route_short_name=enrichment_row["route_short_name"]
         ),
         query_time=query_time_iso,
         scheduled=ScheduledInfo(
@@ -400,6 +433,15 @@ async def get_eta(
         last_updated=last_updated_iso
     )
 
+    # Deliver deprecation signal to the client via response header (API-05, D-10..D-12)
+    if deprecation_warning:
+        return JSONResponse(
+            content=model.model_dump(),
+            headers={"X-Deprecation-Warning": deprecation_warning},
+        )
+
+    return model
+
 
 @router.get("/config", response_model=ConfigResponse)
 async def get_config():
@@ -409,21 +451,20 @@ async def get_config():
     # Fetch GTFS version from DB
     gtfs_version = "unknown"
     try:
-        conn = get_connection(settings.db_path)
-        cursor = conn.cursor()
-        cursor.execute("SELECT value FROM gtfs_metadata WHERE key='gtfs_version'")
-        row = cursor.fetchone()
-        if row:
-            gtfs_version = row[0]
-        conn.close()
+        with get_connection(settings.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT value FROM gtfs_metadata WHERE key='gtfs_version'")
+            row = cursor.fetchone()
+            if row:
+                gtfs_version = row[0]
     except Exception:
         pass
 
     return ConfigResponse(
         n0=settings.n0,
         time_bin_minutes=15,
-        half_life_days=settings.half_life_days,
-        ema_alpha=settings.ema_alpha,
+        half_life_days=None,  # DEPRECATED: EMA removed from active pipeline, see LEARN-01
+        ema_alpha=None,  # DEPRECATED: EMA removed from active pipeline, see LEARN-01
         outlier_sigma=settings.outlier_sigma,
         mapmatch_min_conf=settings.mapmatch_min_conf,
         max_segments_per_ride=settings.max_segments_per_ride,
@@ -442,11 +483,10 @@ async def health_check():
     # Try DB read
     db_ok = False
     try:
-        conn = get_connection(settings.db_path)
-        cursor = conn.cursor()
-        cursor.execute("SELECT 1")
-        cursor.fetchone()
-        conn.close()
+        with get_connection(settings.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
         db_ok = True
     except Exception as e:
         logger.error(f"Health check DB error: {e}")
@@ -462,88 +502,275 @@ async def health_check():
 
 # GTFS-aligned endpoints (Phase 0)
 
+EARTH_RADIUS_M = 6_371_000.0
+MAX_RADIUS_M = 2000  # D-15 cap
+
+
+def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance between two lat/lon points, in meters."""
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    d_phi = math.radians(lat2 - lat1)
+    d_lambda = math.radians(lon2 - lon1)
+    a = (
+        math.sin(d_phi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
+    )
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return EARTH_RADIUS_M * c
+
+
+def bounding_box(lat: float, lon: float, radius_m: float) -> tuple:
+    """Equirectangular-approximation bbox: (min_lat, max_lat, min_lon, max_lon)."""
+    lat_delta = math.degrees(radius_m / EARTH_RADIUS_M)
+    # Longitude degrees shrink as |latitude| grows; guard against cos(90)=0 at poles
+    # (not reachable for Bengaluru's ~13°N, but defensive nonetheless).
+    lon_delta = math.degrees(radius_m / EARTH_RADIUS_M / math.cos(math.radians(lat)))
+    return (lat - lat_delta, lat + lat_delta, lon - lon_delta, lon + lon_delta)
+
+
+def _validate_latlon_range(lat: float, lon: float) -> bool:
+    """True if lat in [-90, 90] and lon in [-180, 180]."""
+    return -90 <= lat <= 90 and -180 <= lon <= 180
+
+
 @router.get("/stops", response_model=StopsListResponse)
 async def get_stops(
     bbox: Optional[str] = Query(None),
     route_id: Optional[str] = Query(None),
+    lat: Optional[float] = Query(None),
+    lon: Optional[float] = Query(None),
+    radius_m: Optional[int] = Query(None),
     limit: int = Query(100, le=1000),
     offset: int = Query(0, ge=0),
 ):
     """Discover GTFS stops with filtering and pagination."""
+    radius_params_given = [p is not None for p in (lat, lon, radius_m)]
+    radius_mode = any(radius_params_given)
+
+    # D-13: bbox and lat/lon/radius_m are mutually exclusive.
+    if bbox and radius_mode:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "invalid_request",
+                "message": "bbox and lat/lon/radius_m are mutually exclusive",
+                "details": {"bbox": bbox, "lat": lat, "lon": lon, "radius_m": radius_m}
+            }
+        )
+
+    # D-14: lat/lon/radius_m must be supplied together or not at all.
+    if radius_mode and not all(radius_params_given):
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "invalid_request",
+                "message": "lat, lon, and radius_m must all be supplied together",
+                "details": {"lat": lat, "lon": lon, "radius_m": radius_m}
+            }
+        )
+
+    # D-16: lat/lon range validation for radius search.
+    if radius_mode and not _validate_latlon_range(lat, lon):
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "invalid_request",
+                "message": "lat must be -90 to 90 and lon must be -180 to 180",
+                "details": {"lat": lat, "lon": lon}
+            }
+        )
+
+    # D-15: radius_m cap.
+    if radius_mode and radius_m > MAX_RADIUS_M:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "invalid_request",
+                "message": f"radius_m must not exceed {MAX_RADIUS_M}",
+                "details": {"radius_m": radius_m}
+            }
+        )
+
     settings = get_settings()
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
 
-    # Build WHERE clauses
-    where_clauses = []
-    params = []
+        # Build WHERE clauses
+        where_clauses = []
+        params = []
 
-    # Parse bbox if provided
-    if bbox:
-        try:
-            parts = bbox.split(",")
-            if len(parts) != 4:
-                raise ValueError("Invalid bbox format")
-            min_lat, min_lon, max_lat, max_lon = map(float, parts)
+        # Parse bbox if provided
+        if bbox:
+            try:
+                parts = bbox.split(",")
+                if len(parts) != 4:
+                    raise ValueError("Invalid bbox format")
+                min_lat, min_lon, max_lat, max_lon = map(float, parts)
+                # D-17: range-validate bbox coordinates (drive-by fix).
+                if not (
+                    _validate_latlon_range(min_lat, min_lon)
+                    and _validate_latlon_range(max_lat, max_lon)
+                ):
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "error": "invalid_request",
+                            "message": "bbox latitude must be -90 to 90 and longitude must be -180 to 180",
+                            "details": {"bbox": bbox}
+                        }
+                    )
+                where_clauses.append("stop_lat BETWEEN ? AND ? AND stop_lon BETWEEN ? AND ?")
+                params.extend([min_lat, max_lat, min_lon, max_lon])
+            except (ValueError, IndexError):
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": "invalid_request",
+                        "message": "bbox must be in format: min_lat,min_lon,max_lat,max_lon",
+                        "details": {"bbox": bbox}
+                    }
+                )
+
+        # Filter by route_id if provided
+        if route_id:
+            # Stops served by this route (via trips and stop_times)
+            where_clauses.append("""stop_id IN (
+                SELECT DISTINCT st.stop_id
+                FROM stop_times st
+                JOIN trips t ON st.trip_id = t.trip_id
+                WHERE t.route_id = ?
+            )""")
+            params.append(route_id)
+
+        # Radius search (API-03): SQL bounding-box pre-filter, exact
+        # Haversine second pass applied to candidates after fetch below.
+        if radius_mode:
+            min_lat, max_lat, min_lon, max_lon = bounding_box(lat, lon, radius_m)
             where_clauses.append("stop_lat BETWEEN ? AND ? AND stop_lon BETWEEN ? AND ?")
             params.extend([min_lat, max_lat, min_lon, max_lon])
-        except (ValueError, IndexError):
-            conn.close()
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "error": "invalid_request",
-                    "message": "bbox must be in format: min_lat,min_lon,max_lat,max_lon",
-                    "details": {"bbox": bbox}
-                }
+
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
+        if radius_mode:
+            # Radius mode: fetch bbox-filtered candidates, apply the exact
+            # Haversine distance filter in Python, then paginate in-memory
+            # (RESEARCH.md Pitfall 2 -- never skip the precise second pass).
+            cursor.execute(
+                f"""
+                SELECT stop_id, stop_name, stop_lat, stop_lon, zone_id
+                FROM stops
+                {where_sql}
+                ORDER BY stop_id
+                """,
+                params
+            )
+            candidates = [
+                row for row in cursor.fetchall()
+                if haversine_m(lat, lon, row[2], row[3]) <= radius_m
+            ]
+            total = len(candidates)
+            page = candidates[offset:offset + limit]
+
+            stops = [
+                StopResponse(
+                    stop_id=row[0],
+                    stop_name=row[1],
+                    stop_lat=row[2],
+                    stop_lon=row[3],
+                    zone_id=row[4]
+                )
+                for row in page
+            ]
+        else:
+            # Get total count
+            cursor.execute(f"SELECT COUNT(*) FROM stops {where_sql}", params)
+            total = cursor.fetchone()[0]
+
+            # Get paginated results
+            cursor.execute(
+                f"""
+                SELECT stop_id, stop_name, stop_lat, stop_lon, zone_id
+                FROM stops
+                {where_sql}
+                ORDER BY stop_id
+                LIMIT ? OFFSET ?
+                """,
+                params + [limit, offset]
             )
 
-    # Filter by route_id if provided
-    if route_id:
-        # Stops served by this route (via trips and stop_times)
-        where_clauses.append("""stop_id IN (
-            SELECT DISTINCT st.stop_id
-            FROM stop_times st
-            JOIN trips t ON st.trip_id = t.trip_id
-            WHERE t.route_id = ?
-        )""")
-        params.append(route_id)
-
-    where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
-
-    # Get total count
-    cursor.execute(f"SELECT COUNT(*) FROM stops {where_sql}", params)
-    total = cursor.fetchone()[0]
-
-    # Get paginated results
-    cursor.execute(
-        f"""
-        SELECT stop_id, stop_name, stop_lat, stop_lon, zone_id
-        FROM stops
-        {where_sql}
-        ORDER BY stop_id
-        LIMIT ? OFFSET ?
-        """,
-        params + [limit, offset]
-    )
-
-    stops = []
-    for row in cursor.fetchall():
-        stops.append(StopResponse(
-            stop_id=row[0],
-            stop_name=row[1],
-            stop_lat=row[2],
-            stop_lon=row[3],
-            zone_id=row[4]
-        ))
-
-    conn.close()
+            stops = []
+            for row in cursor.fetchall():
+                stops.append(StopResponse(
+                    stop_id=row[0],
+                    stop_name=row[1],
+                    stop_lat=row[2],
+                    stop_lon=row[3],
+                    zone_id=row[4]
+                ))
 
     return StopsListResponse(
         stops=stops,
         total=total,
         limit=limit,
         offset=offset
+    )
+
+
+@router.get("/stops/{stop_id}", response_model=StopDetailResponse)
+async def get_stop_detail(stop_id: str):
+    """Get single-stop detail plus every route serving that stop (API-01)."""
+    settings = get_settings()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT stop_id, stop_name, stop_lat, stop_lon, zone_id FROM stops WHERE stop_id = ?",
+            (stop_id,),
+        )
+        stop_row = cursor.fetchone()
+
+        if stop_row is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "not_found",
+                    "message": "Stop not found in GTFS data",
+                    "details": {"stop_id": stop_id}
+                }
+            )
+
+        # D-10: empty routes list (no special-casing) -- a stop with zero
+        # serving routes still returns 200, never 404.
+        cursor.execute(
+            """
+            SELECT DISTINCT r.route_id, r.route_short_name, r.route_long_name,
+                   r.route_type, r.agency_id
+            FROM routes r
+            JOIN trips t ON r.route_id = t.route_id
+            JOIN stop_times st ON t.trip_id = st.trip_id
+            WHERE st.stop_id = ?
+            ORDER BY r.route_short_name
+            """,
+            (stop_id,),
+        )
+        routes = [
+            RouteResponse(
+                route_id=row[0],
+                route_short_name=row[1],
+                route_long_name=row[2],
+                route_type=row[3],
+                agency_id=row[4]
+            )
+            for row in cursor.fetchall()
+        ]
+
+    return StopDetailResponse(
+        stop_id=stop_row[0],
+        stop_name=stop_row[1],
+        stop_lat=stop_row[2],
+        stop_lon=stop_row[3],
+        zone_id=stop_row[4],
+        routes=routes
     )
 
 
@@ -556,68 +783,65 @@ async def get_routes(
 ):
     """Discover GTFS routes with filtering and pagination."""
     settings = get_settings()
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
 
-    # Validate route_type
-    if route_type is not None and route_type not in range(8):
-        conn.close()
-        return JSONResponse(
-            status_code=400,
-            content={
-                "error": "invalid_request",
-                "message": "route_type must be a valid GTFS route type (0-7)",
-                "details": {"route_type": route_type}
-            }
+        # Validate route_type
+        if route_type is not None and route_type not in range(8):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": "invalid_request",
+                    "message": "route_type must be a valid GTFS route type (0-7)",
+                    "details": {"route_type": route_type}
+                }
+            )
+
+        # Build WHERE clauses
+        where_clauses = []
+        params = []
+
+        if route_type is not None:
+            where_clauses.append("route_type = ?")
+            params.append(route_type)
+
+        if stop_id:
+            # Routes serving this stop
+            where_clauses.append("""route_id IN (
+                SELECT DISTINCT t.route_id
+                FROM trips t
+                JOIN stop_times st ON t.trip_id = st.trip_id
+                WHERE st.stop_id = ?
+            )""")
+            params.append(stop_id)
+
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
+        # Get total count
+        cursor.execute(f"SELECT COUNT(*) FROM routes {where_sql}", params)
+        total = cursor.fetchone()[0]
+
+        # Get paginated results
+        cursor.execute(
+            f"""
+            SELECT route_id, route_short_name, route_long_name, route_type, agency_id
+            FROM routes
+            {where_sql}
+            ORDER BY route_id
+            LIMIT ? OFFSET ?
+            """,
+            params + [limit, offset]
         )
 
-    # Build WHERE clauses
-    where_clauses = []
-    params = []
-
-    if route_type is not None:
-        where_clauses.append("route_type = ?")
-        params.append(route_type)
-
-    if stop_id:
-        # Routes serving this stop
-        where_clauses.append("""route_id IN (
-            SELECT DISTINCT t.route_id
-            FROM trips t
-            JOIN stop_times st ON t.trip_id = st.trip_id
-            WHERE st.stop_id = ?
-        )""")
-        params.append(stop_id)
-
-    where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
-
-    # Get total count
-    cursor.execute(f"SELECT COUNT(*) FROM routes {where_sql}", params)
-    total = cursor.fetchone()[0]
-
-    # Get paginated results
-    cursor.execute(
-        f"""
-        SELECT route_id, route_short_name, route_long_name, route_type, agency_id
-        FROM routes
-        {where_sql}
-        ORDER BY route_id
-        LIMIT ? OFFSET ?
-        """,
-        params + [limit, offset]
-    )
-
-    routes = []
-    for row in cursor.fetchall():
-        routes.append(RouteResponse(
-            route_id=row[0],
-            route_short_name=row[1],
-            route_long_name=row[2],
-            route_type=row[3],
-            agency_id=row[4]
-        ))
-
-    conn.close()
+        routes = []
+        for row in cursor.fetchall():
+            routes.append(RouteResponse(
+                route_id=row[0],
+                route_short_name=row[1],
+                route_long_name=row[2],
+                route_type=row[3],
+                agency_id=row[4]
+            ))
 
     return RoutesListResponse(
         routes=routes,
@@ -650,85 +874,81 @@ async def get_stop_schedule(
             }
         )
 
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
 
-    # Verify stop exists
-    cursor.execute("SELECT stop_id, stop_name, stop_lat, stop_lon FROM stops WHERE stop_id = ?", (stop_id,))
-    stop_row = cursor.fetchone()
+        # Verify stop exists
+        cursor.execute("SELECT stop_id, stop_name, stop_lat, stop_lon FROM stops WHERE stop_id = ?", (stop_id,))
+        stop_row = cursor.fetchone()
 
-    if stop_row is None:
-        conn.close()
-        return JSONResponse(
-            status_code=404,
-            content={
-                "error": "not_found",
-                "message": "Stop not found in GTFS data",
-                "details": {"stop_id": stop_id}
-            }
-        )
-
-    # Parse when parameter
-    if when:
-        try:
-            dt = datetime.fromisoformat(when.replace("Z", "+00:00"))
-        except (ValueError, AttributeError):
-            conn.close()
+        if stop_row is None:
             return JSONResponse(
-                status_code=400,
+                status_code=404,
                 content={
-                    "error": "invalid_request",
-                    "message": "when must be ISO-8601 UTC timestamp",
-                    "details": {"when": when}
+                    "error": "not_found",
+                    "message": "Stop not found in GTFS data",
+                    "details": {"stop_id": stop_id}
                 }
             )
-    else:
-        dt = datetime.now(timezone.utc)
 
-    query_time_iso = dt.isoformat().replace("+00:00", "Z")
+        # Parse when parameter
+        if when:
+            try:
+                dt = datetime.fromisoformat(when.replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": "invalid_request",
+                        "message": "when must be ISO-8601 UTC timestamp",
+                        "details": {"when": when}
+                    }
+                )
+        else:
+            dt = datetime.now(timezone.utc)
 
-    # For simplicity, get all departures and filter in Python
-    # (GTFS time handling is complex due to 24h+ times)
-    where_clause = "st.stop_id = ?"
-    params = [stop_id]
+        query_time_iso = dt.isoformat().replace("+00:00", "Z")
 
-    if route_id:
-        where_clause += " AND t.route_id = ?"
-        params.append(route_id)
+        # For simplicity, get all departures and filter in Python
+        # (GTFS time handling is complex due to 24h+ times)
+        where_clause = "st.stop_id = ?"
+        params = [stop_id]
 
-    cursor.execute(
-        f"""
-        SELECT t.trip_id, t.route_id, t.service_id, t.trip_headsign, t.direction_id,
-               st.arrival_time, st.departure_time, st.stop_sequence
-        FROM stop_times st
-        JOIN trips t ON st.trip_id = t.trip_id
-        WHERE {where_clause}
-        ORDER BY st.departure_time
-        LIMIT 100
-        """,
-        params
-    )
+        if route_id:
+            where_clause += " AND t.route_id = ?"
+            params.append(route_id)
 
-    departures = []
-    for row in cursor.fetchall():
-        departures.append(DepartureInfo(
-            trip=TripInfo(
-                trip_id=row[0],
-                route_id=row[1],
-                service_id=row[2],
-                trip_headsign=row[3],
-                direction_id=row[4]
-            ),
-            stop_time=StopTimeInfo(
-                arrival_time=row[5],
-                departure_time=row[6],
-                stop_sequence=row[7],
-                pickup_type=None,
-                drop_off_type=None
-            )
-        ))
+        cursor.execute(
+            f"""
+            SELECT t.trip_id, t.route_id, t.service_id, t.trip_headsign, t.direction_id,
+                   st.arrival_time, st.departure_time, st.stop_sequence
+            FROM stop_times st
+            JOIN trips t ON st.trip_id = t.trip_id
+            WHERE {where_clause}
+            ORDER BY st.departure_time
+            LIMIT 100
+            """,
+            params
+        )
 
-    conn.close()
+        departures = []
+        for row in cursor.fetchall():
+            departures.append(DepartureInfo(
+                trip=TripInfo(
+                    trip_id=row[0],
+                    route_id=row[1],
+                    service_id=row[2],
+                    trip_headsign=row[3],
+                    direction_id=row[4]
+                ),
+                stop_time=StopTimeInfo(
+                    arrival_time=row[5],
+                    departure_time=row[6],
+                    stop_sequence=row[7],
+                    pickup_type=None,
+                    drop_off_type=None
+                )
+            ))
 
     return ScheduleResponse(
         stop=StopInfo(
@@ -821,41 +1041,39 @@ async def search_routes(
         )
 
     try:
-        conn = get_connection(settings.db_path)
-        cursor = conn.cursor()
+        with get_connection(settings.db_path) as conn:
+            cursor = conn.cursor()
 
-        # Normalize search query
-        normalized_query = normalize_for_search(q)
+            # Normalize search query
+            normalized_query = normalize_for_search(q)
 
-        # Fetch all routes and filter in Python (normalization cannot be done in SQLite easily)
-        cursor.execute("""
-            SELECT route_id, route_short_name, route_long_name, route_type, agency_id
-            FROM routes
-            ORDER BY route_short_name
-        """)
+            # Fetch all routes and filter in Python (normalization cannot be done in SQLite easily)
+            cursor.execute("""
+                SELECT route_id, route_short_name, route_long_name, route_type, agency_id
+                FROM routes
+                ORDER BY route_short_name
+            """)
 
-        all_routes = cursor.fetchall()
+            all_routes = cursor.fetchall()
 
-        # Filter routes using normalized matching
-        matching_routes = []
-        for row in all_routes:
-            route_id, route_short_name, route_long_name, route_type, agency_id = row
+            # Filter routes using normalized matching
+            matching_routes = []
+            for row in all_routes:
+                route_id, route_short_name, route_long_name, route_type, agency_id = row
 
-            # Normalize database values for matching
-            normalized_short = normalize_for_search(route_short_name or "")
-            normalized_long = normalize_for_search(route_long_name or "")
+                # Normalize database values for matching
+                normalized_short = normalize_for_search(route_short_name or "")
+                normalized_long = normalize_for_search(route_long_name or "")
 
-            # Check if normalized query is substring of either field
-            if normalized_query in normalized_short or normalized_query in normalized_long:
-                matching_routes.append({
-                    "route_id": route_id,
-                    "route_short_name": route_short_name,
-                    "route_long_name": route_long_name,
-                    "route_type": route_type,
-                    "agency_id": agency_id
-                })
-
-        conn.close()
+                # Check if normalized query is substring of either field
+                if normalized_query in normalized_short or normalized_query in normalized_long:
+                    matching_routes.append({
+                        "route_id": route_id,
+                        "route_short_name": route_short_name,
+                        "route_long_name": route_long_name,
+                        "route_type": route_type,
+                        "agency_id": agency_id
+                    })
 
         # Calculate total and apply pagination
         total = len(matching_routes)
@@ -884,3 +1102,105 @@ async def search_routes(
                 "details": {}
             }
         )
+
+
+# NOTE: get_route_detail MUST be registered here, after search_routes(), not
+# near get_routes() -- otherwise a request to GET /v1/routes/search would be
+# captured by this route with route_id="search" (RESEARCH.md Pattern 3).
+@router.get("/routes/{route_id}", response_model=RouteDetailResponse)
+async def get_route_detail(route_id: str):
+    """Get single-route detail plus the ordered stop list per direction (API-02).
+
+    Stops-only response -- no trip-level data or schedule times (D-01). For a
+    (route_id, direction_id) with multiple shape_id branch variants, the
+    most-common shape's representative trip determines the stop order (D-04).
+    """
+    settings = get_settings()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT route_id, route_short_name, route_long_name, route_type, agency_id "
+            "FROM routes WHERE route_id = ?",
+            (route_id,),
+        )
+        route_row = cursor.fetchone()
+
+        if route_row is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "not_found",
+                    "message": "Route not found in GTFS data",
+                    "details": {"route_id": route_id}
+                }
+            )
+
+        directions = []
+        for direction_id in (0, 1):
+            # D-04: pick the most-common shape_id for this (route_id, direction_id)
+            cursor.execute(
+                """
+                SELECT shape_id, COUNT(*) AS cnt
+                FROM trips
+                WHERE route_id = ? AND direction_id = ?
+                GROUP BY shape_id
+                ORDER BY cnt DESC
+                LIMIT 1
+                """,
+                (route_id, direction_id),
+            )
+            shape_row = cursor.fetchone()
+
+            if shape_row is None:
+                # D-23: no trips for this direction -- omit it entirely,
+                # do NOT append an entry with stops: [].
+                continue
+
+            most_common_shape_id = shape_row[0]
+
+            # shape_id IS ? (not = ?) survives a possibly-null shape_id (GTFS
+            # allows shape_id to be optional).
+            cursor.execute(
+                """
+                SELECT trip_id FROM trips
+                WHERE route_id = ? AND direction_id = ? AND shape_id IS ?
+                LIMIT 1
+                """,
+                (route_id, direction_id, most_common_shape_id),
+            )
+            representative_trip_id = cursor.fetchone()[0]
+
+            cursor.execute(
+                """
+                SELECT st.stop_id, s.stop_name, s.stop_lat, s.stop_lon, st.stop_sequence
+                FROM stop_times st
+                JOIN stops s ON st.stop_id = s.stop_id
+                WHERE st.trip_id = ?
+                ORDER BY st.stop_sequence
+                """,
+                (representative_trip_id,),
+            )
+            stops = [
+                DirectionStopInfo(
+                    stop_id=row[0],
+                    stop_name=row[1],
+                    stop_lat=row[2],
+                    stop_lon=row[3],
+                    stop_sequence=row[4],
+                )
+                for row in cursor.fetchall()
+            ]
+
+            directions.append(DirectionInfo(direction_id=direction_id, stops=stops))
+
+    # D-05: if all directions were skipped above, directions stays [] here --
+    # a route with zero trips returns 200, never 404.
+    return RouteDetailResponse(
+        route_id=route_row[0],
+        route_short_name=route_row[1],
+        route_long_name=route_row[2],
+        route_type=route_row[3],
+        agency_id=route_row[4],
+        directions=directions,
+    )

@@ -1,6 +1,6 @@
 # CLAUDE.md - BMTC Transit API Context
 
-**Project:** ETA learning system for Bengaluru buses using Welford+EMA algorithms
+**Project:** ETA learning system for Bengaluru buses using Welford + schedule-blend algorithms (EMA removed from the active pipeline in Phase 2 / LEARN-01; deferred to v2 research, see LEARN-V2-01)
 **Stack:** FastAPI, SQLite WAL, uv package manager
 **Working Dir:** `/home/karan-kinariwala/Dropbox/KARAN/1-Projects/bmtc-transit-app`
 
@@ -96,7 +96,7 @@ A1 → A2 → (A3 if needed) → A4 → A5 → A6 → A7 → A8
 
 ### Performance & Ops Notes
 - Use SQLite WAL; wrap POST updates in one transaction; use UPSERT.  
-- Maintain indices for `(segment_id, bin_id, n, welford_mean, welford_m2, ema_mean, schedule_mean, last_update)`.  
+- Maintain indices for `(segment_id, bin_id, n, welford_mean, welford_m2, ema_mean, schedule_mean, last_update)` — `ema_mean`/`ema_var` columns are retained in the schema but not written by the active pipeline (LEARN-01).  
 - Backups hourly via systemd; retention sweeps daily.  
 - Observe p95 of `GET /v1/eta` < 200 ms (CF Tunnel).
 
@@ -169,7 +169,7 @@ bmtc-transit-app/
 │   ├── main.py           # FastAPI app + lifespan
 │   ├── routes.py         # 4 endpoints: ride_summary, eta, config, health
 │   ├── models.py         # Pydantic schemas
-│   ├── learning.py       # Welford/EMA algorithms + outlier detection
+│   ├── learning.py       # Welford + schedule-blend algorithms + outlier detection (EMA removed from active pipeline, LEARN-01)
 │   ├── config.py         # Settings (BMTC_ env vars)
 │   ├── db.py             # SQLite connection + bin computation
 │   ├── auth.py           # Bearer token middleware
@@ -178,7 +178,7 @@ bmtc-transit-app/
 │   ├── schema.sql        # Full DB schema (11 tables)
 │   └── state.py          # App startup time tracking
 ├── backend/tests/        # pytest suite
-│   ├── test_learning.py           # Welford/EMA unit tests
+│   ├── test_learning.py           # Welford/blend unit tests
 │   ├── test_integration.py        # End-to-end API tests
 │   ├── test_idempotency.py        # Idempotency tests
 │   └── test_global_aggregation.py # Outlier/mapmatch tests
@@ -226,7 +226,7 @@ bmtc-transit-app/
 
 **Learning Tables (5):**
 - `segments` - unique route+direction+from_stop+to_stop (110k rows)
-- `segment_stats` - Welford/EMA stats per segment×bin (3-5M rows, sparse)
+- `segment_stats` - Welford stats per segment×bin (3-5M rows, sparse); `ema_mean`/`ema_var` columns retained but inert — EMA removed from the active pipeline (LEARN-01), deferred to v2 research (LEARN-V2-01)
 - `rides` - ride metadata
 - `ride_segments` - individual observations
 - `time_bins` - 192 bins (96/day × weekday/weekend)
@@ -266,7 +266,7 @@ bmtc-transit-app/
 
 **Statistics Updates (per segment×bin):**
 - **Welford:** Online mean + variance (stable, no overflow)
-- **EMA:** Exponential moving average with time-based alpha (half-life=30d)
+- **EMA:** removed from the active pipeline in Phase 2 (LEARN-01) — `update_ema`/`compute_time_based_alpha` deleted; `ema_mean`/`ema_var` columns remain in the schema but are no longer read or written; deferred to v2 research into the most effective algorithm for predicting bus schedules from mobile-submitted data (LEARN-V2-01)
 - **Blend:** `w·learned + (1-w)·schedule` where `w = n/(n+20)` (n0=20)
 
 **Outlier Rejection:**
@@ -292,10 +292,10 @@ bmtc-transit-app/
 
 **Learning params:**
 - `BMTC_N0` = 20 (blend weight denominator)
-- `BMTC_EMA_ALPHA` = 0.1 (EMA smoothing)
-- `BMTC_HALF_LIFE_DAYS` = 30 (time-based alpha decay)
 - `BMTC_OUTLIER_SIGMA` = 3.0 (outlier threshold)
 - `BMTC_MAPMATCH_MIN_CONF` = 0.7 (map-matching confidence threshold)
+
+**Note:** `BMTC_EMA_ALPHA`/`BMTC_HALF_LIFE_DAYS` env vars were removed along with the `Settings.ema_alpha`/`Settings.half_life_days` fields (LEARN-01) — EMA is not in the active pipeline; `GET /v1/config` still returns `ema_alpha`/`half_life_days` as soft-deprecated `null` fields for backward compatibility.
 
 **See:** `backend/app/config.py` for all settings
 
@@ -311,7 +311,7 @@ uv run pytest -n auto --dist loadfile -q  # All 47 tests in parallel (~9-10s)
 
 **Test Modules:**
 ```bash
-uv run pytest tests/test_learning.py -v             # 9 unit tests (Welford/EMA algorithms)
+uv run pytest tests/test_learning.py -v             # unit tests (Welford/blend algorithms; EMA removed, LEARN-01)
 uv run pytest tests/test_integration.py -v          # 8 integration tests (POST→GET flow)
 uv run pytest tests/test_idempotency.py -v          # 6 tests (idempotency keys)
 uv run pytest tests/test_global_aggregation.py -v   # 10 tests (outlier rejection)

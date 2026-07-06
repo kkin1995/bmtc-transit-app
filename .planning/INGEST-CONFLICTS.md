@@ -1,0 +1,31 @@
+## Conflict Detection Report
+
+### BLOCKERS (0)
+
+_None outstanding. The blocker below was resolved during this ingest run and moved to INFO._
+
+### WARNINGS (2)
+
+[WARNING] Same-precedence-tier SPEC contradiction on GET /v1/eta response shape
+  Found: docs/architecture.md (SPEC) §3.1 and §7 describe GET /v1/eta returning a flat response (`eta_sec`, `p50/p90`, `n`, `blend_weight`, `schedule_sec`, `bin_window`, `low_confidence`, `cache_ttl_sec`).
+  Impact: docs/api.md (SPEC, same precedence tier, internally versioned to v1.2 via its own changelog) has since restructured this into nested `segment{}` / `scheduled{}` / `prediction{}` objects, and backend/app/models.py's `ETAResponseV11` matches api.md, not architecture.md. Because both files are classified SPEC, default precedence rules give no automatic winner — synthesis cannot silently pick one without risking loss of architecture.md's other still-valid content (deployment topology, security checklist, SLOs, which are unaffected by this specific drift).
+  → User should confirm docs/architecture.md §3.1/§7 is stale and should be updated to reference the current nested response shape (or explicitly deprioritized below docs/api.md for this ingest via --manifest precedence override). Downstream roadmap/requirements synthesis should treat docs/api.md as authoritative for the GET /v1/eta response shape until this is resolved.
+
+[WARNING] PRD schema contract does not match implemented schema for the same feature
+  Found: docs/prd/device-bucket-rate-limit.md (PRD, FR-1) specifies a `rate_limit_buckets` table with columns `bucket_id TEXT PRIMARY KEY, quota_remaining INT, reset_utc INT`.
+  Impact: The already-implemented `rate_limit_buckets` table (backend/app/schema.sql:248-254, documented in docs/DB_NOTES.md — SPEC) uses different columns: `bucket_id TEXT PRIMARY KEY, tokens INTEGER, last_refill TEXT`, with a binary-reset refill strategy rather than the PRD's `reset_utc`-based window model. Both describe the same 500-req/hour token-bucket feature but with incompatible column contracts. The PRD's other requirements (FR-2 device_bucket extraction, FR-3 quota-check-before-ingest, FR-6 idempotency interop, FR-8 feature flag) are still largely unimplemented per CONCERNS.md and the security review (H2: "rate limiting disabled by default"), so this PRD is not simply describing already-shipped work — it is a forward-looking spec that conflicts with the schema SPEC already in place.
+  → User must choose: (a) treat docs/DB_NOTES.md's `tokens`/`last_refill` schema as authoritative and rewrite the PRD's FR-1 to match before it drives any roadmap work, or (b) treat the PRD as the target and plan a migration renaming `tokens`→`quota_remaining`, `last_refill`→ a derived `reset_utc`. Do not silently merge the two column sets.
+
+### INFO (3)
+
+[INFO] Auto-resolved: current api.md/models.py treated as ground truth over stale API Docs v1 Refresh PRD acceptance criteria
+  Note: docs/prd/api-docs-v1-refresh.md (PRD) AC3–AC5 describe target field names (`timestamp_utc` int, POST response `{accepted: bool, rejected_count: int}`, GET /eta `mean_sec`/`sample_count`/`low_n_warning`) that match neither the current implementation nor the current docs/api.md (both already use `observed_at_utc`/`accepted_segments`/`rejected_segments`, and the nested `prediction{}` object rather than `mean_sec`/`low_n_warning`). This PRD appears to have been drafted against an earlier intermediate state (same day as the 2025-10-22 alignment work in docs/ALIGNMENT_STATUS.md) and was superseded by that alignment before its acceptance criteria were ever implemented. No precedence conflict is recorded here (PRD < SPEC by default, so SPEC/implementation already wins) — flagged as INFO so the roadmapper does not accidentally schedule work to "fix" api.md into a shape it has already moved past. Recommend re-scoping or closing this PRD rather than carrying its AC3–AC5 into REQUIREMENTS.md verbatim.
+
+[INFO] Auto-resolved: Test Isolation PRD problem statement is already fixed in the current codebase
+  Note: docs/prd/test-isolation-xdist.md (PRD) describes a 33-test suite that fails when run together due to settings-cache contamination, proposing pytest-xdist + pytest-randomly + fixture refactor as the fix. CLAUDE.md (project instructions) and backend/tests/TEST_ISOLATION.md (referenced, not separately classified) state this work is complete: 47 tests now pass reliably in parallel with `-n auto --dist loadfile`, using exactly the fixture/cache-clearing approach the PRD proposed. No contradiction — the PRD's proposed solution and the shipped solution agree; only the test count differs (33 at PRD-authoring time vs. 47 now, consistent with organic test-suite growth). No roadmap action needed; PRD can be marked complete/historical rather than carried into active REQUIREMENTS.md.
+
+[INFO] No LOCKED-decision conflicts found against existing .planning/ context
+  Note: Checked .planning/PROJECT.md (Key Decisions table), .planning/STATE.md, and .planning/phases/01-backend-correctness/01-CONTEXT.md (<decisions> block, D-01 through D-15) for any `locked: true` markers that could contradict the ingested LOCKED ADRs (ADR-0001, ADR-0002 in docs/PLAN.md). None of the existing planning artifacts declare hard-locked decisions in the sense used by this ingest's precedence rules; Phase 1's CORS/idempotency/deprecation-header decisions do not overlap in scope with the ingested ADRs. No merge-mode BLOCKER of this type.
+
+[INFO] Resolved: LOCKED ADR field-name contract marked Superseded in source
+  Note: The BLOCKER originally raised here (docs/PLAN.md's embedded ADR-0001/ADR-0002 "API Contract" section specifying `accepted`/`rejected_count`/`timestamp_utc` vs. current docs/api.md SPEC and backend/app/models.py using `accepted_segments`/`rejected_segments`/`observed_at_utc`) was resolved by user decision: docs/PLAN.md's "## API Contract" section now carries an explicit "⚠ SUPERSEDED (2025-10-22)" note pointing to docs/ALIGNMENT_STATUS.md/ALIGNMENT_SUMMARY.md and declaring docs/api.md canonical. The ADR's stack/architecture/aggregation decisions (ADR-0001, ADR-0002 proper) remain locked and unaffected; only the embedded, now-stale field-name contract section was annotated. No further roadmap action needed on this item.

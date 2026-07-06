@@ -11,7 +11,7 @@ bmtc-transit-app/
 │   │   ├── main.py         # FastAPI entry point & lifespan
 │   │   ├── routes.py       # API endpoint handlers
 │   │   ├── models.py       # Pydantic request/response models
-│   │   ├── learning.py     # Welford/EMA algorithms
+│   │   ├── learning.py     # Welford + schedule-blend algorithms (EMA removed from active pipeline, LEARN-01)
 │   │   ├── gtfs_bootstrap.py  # GTFS parser & seeding
 │   │   ├── db.py           # SQLite connection & schema
 │   │   ├── schema.sql      # Database schema (6 tables)
@@ -144,7 +144,7 @@ bmtc-transit-app/
    ↓ POST /v1/ride_summary (with ride segments)
 [FastAPI]
    ↓ Validate against GTFS segments
-   ↓ Update Welford + EMA statistics
+   ↓ Update Welford statistics + schedule blend (EMA removed from active pipeline, LEARN-01; deferred to v2 research, LEARN-V2-01)
 [SQLite]
    ↓ Store in ride_segments + update segment_stats
 [Client]

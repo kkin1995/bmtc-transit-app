@@ -1,0 +1,39 @@
+{
+  "source_path": "/home/karankinariwala/KARAN/1-Projects/Active/bmtc-transit-app/docs/architecture.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "BMTC Transit Backend — Architecture (v1)",
+  "summary": "Technical architecture and deployment spec for a privacy-preserving BMTC bus ETA learning service on FastAPI/SQLite.",
+  "scope": [
+    "FastAPI backend",
+    "SQLite WAL database",
+    "Cloudflare Tunnel",
+    "WireGuard admin VPN",
+    "ride_summary endpoint",
+    "eta endpoint",
+    "Welford/EMA learning algorithm",
+    "systemd services",
+    "backup and retention jobs",
+    "rate limiting",
+    "idempotency",
+    "data model and indexes",
+    "security and privacy controls",
+    "deployment topology",
+    "observability metrics"
+  ],
+  "cross_refs": [
+    "backend/app/main.py",
+    "backend/app/routes.py",
+    "backend/app/models.py",
+    "backend/app/learning.py",
+    "backend/app/db.py",
+    "backend/app/config.py",
+    "backend/app/auth.py",
+    "backend/app/idempotency.py",
+    "app/schema.sql"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

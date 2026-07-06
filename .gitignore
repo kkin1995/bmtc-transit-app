@@ -31,9 +31,6 @@ docs.zip
 # GTFS extracted files (keep zip)
 gtfs/*.txt
 
-# uv
-uv.lock
-
 # Created by https://www.toptal.com/developers/gitignore/api/python
 # Edit at https://www.toptal.com/developers/gitignore?templates=python
 

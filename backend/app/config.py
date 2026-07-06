@@ -12,11 +12,10 @@ class Settings(BaseSettings):
     db_path: str = "/var/lib/bmtc-api/bmtc.db"
     gtfs_path: str = "/var/lib/bmtc-api/gtfs"
     n0: int = 20
-    ema_alpha: float = 0.1
-    half_life_days: int = 30
     stale_threshold_days: int = 90
     retention_days: int = 90
     server_version: str = "0.2.0"  # Bumped for global aggregation
+    cors_origins: str = "http://localhost:8081,http://localhost:19006"
 
     # Global aggregation settings
     mapmatch_min_conf: float = 0.7

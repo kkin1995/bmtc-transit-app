@@ -1,0 +1,13 @@
+{
+  "source_path": "/home/karankinariwala/KARAN/1-Projects/Active/bmtc-transit-app/docs/SECURITY_REVIEW/2025-10-22_v0.2.0-stride-review.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "Security Review: BMTC Transit API v0.2.0 (STRIDE-lite)",
+  "summary": "STRIDE-based security/privacy audit of BMTC API v0.2.0 identifying tampering, DoS, and information disclosure findings.",
+  "scope": ["auth.py", "idempotency.py", "rate_limit.py", "routes.py", "config.py", "models.py", "learning.py", "schema.sql", "STRIDE threat model", "device_bucket privacy"],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": null,
+  "notes": "Filename date-prefix superficially resembles ADR numbering, but content is a findings/audit report (Executive Summary, Findings, Checklist, Recommendations, Sign-off) with no Decision/Consequences or Accepted/Proposed status fields. Classified as DOC (security audit context) rather than ADR."
+}

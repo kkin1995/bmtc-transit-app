@@ -1,0 +1,13 @@
+{
+  "source_path": "/home/karankinariwala/KARAN/1-Projects/Active/bmtc-transit-app/docs/ops-metrics.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "Operational Metrics Guide",
+  "summary": "Runbook of SQL queries, logging patterns, and troubleshooting steps for monitoring BMTC Transit API health in production.",
+  "scope": ["health check endpoint", "segment_stats", "rate_limit_buckets", "idempotency_keys", "rejection_log", "ride_segments", "device_buckets", "retention timers", "route search analytics"],
+  "cross_refs": ["docs/api.md", "docs/gtfs-database.md", "backend/app/schema.sql"],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

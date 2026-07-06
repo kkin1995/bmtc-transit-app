@@ -17,6 +17,8 @@ Testing approach:
 - Ensure backward compatibility where applicable
 """
 
+import math
+
 import pytest
 from datetime import datetime, timezone
 
@@ -170,6 +172,127 @@ def test_get_stops_returns_x_api_version(client):
     assert response.status_code == 200
     assert "X-API-Version" in response.headers
     assert response.headers["X-API-Version"] == "1"
+
+
+# ==============================================================================
+# GET /v1/stops - Radius Search Tests (API-03, D-12..D-17)
+# ==============================================================================
+
+
+EARTH_RADIUS_M = 6_371_000.0
+
+
+def destination_point(lat: float, lon: float, bearing_deg: float, distance_m: float) -> tuple[float, float]:
+    """Compute a lat/lon that is exactly `distance_m` meters from (lat, lon)
+    at the given compass bearing. Useful for generating deterministic
+    boundary-condition test fixtures (e.g., "exactly 500m away")."""
+    phi1 = math.radians(lat)
+    lam1 = math.radians(lon)
+    theta = math.radians(bearing_deg)
+    delta = distance_m / EARTH_RADIUS_M
+
+    phi2 = math.asin(
+        math.sin(phi1) * math.cos(delta) + math.cos(phi1) * math.sin(delta) * math.cos(theta)
+    )
+    lam2 = lam1 + math.atan2(
+        math.sin(theta) * math.sin(delta) * math.cos(phi1),
+        math.cos(delta) - math.sin(phi1) * math.sin(phi2),
+    )
+    return math.degrees(phi2), math.degrees(lam2)
+
+
+def insert_test_stop(client, stop_id: str, stop_name: str, lat: float, lon: float):
+    """Helper to insert a single stop directly into the test DB (idempotent)."""
+    from app.config import get_settings
+    from app.db import get_connection
+
+    settings = get_settings()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR IGNORE INTO stops (stop_id, stop_name, stop_lat, stop_lon, zone_id) VALUES (?, ?, ?, ?, ?)",
+            (stop_id, stop_name, lat, lon, None),
+        )
+        conn.commit()
+
+
+def test_get_stops_radius_boundary(client):
+    """A stop within 500m is included; a diagonal-bearing stop at 600m is
+    excluded (proves the Haversine second pass, not just the bbox pre-filter,
+    RESEARCH.md Pitfall 2 / ROADMAP success criterion #3)."""
+    origin_lat, origin_lon = 12.97, 77.59
+
+    inside_lat, inside_lon = destination_point(origin_lat, origin_lon, bearing_deg=45, distance_m=450)
+    outside_lat, outside_lon = destination_point(origin_lat, origin_lon, bearing_deg=45, distance_m=600)
+
+    insert_test_stop(client, "RADIUS_INSIDE", "Inside Radius Stop", inside_lat, inside_lon)
+    insert_test_stop(client, "RADIUS_OUTSIDE", "Outside Radius Stop", outside_lat, outside_lon)
+
+    response = client.get(
+        "/v1/stops",
+        params={"lat": origin_lat, "lon": origin_lon, "radius_m": 500, "limit": 1000},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    stop_ids = {stop["stop_id"] for stop in data["stops"]}
+
+    assert "RADIUS_INSIDE" in stop_ids
+    assert "RADIUS_OUTSIDE" not in stop_ids
+
+
+def test_get_stops_bbox_radius_mutually_exclusive(client):
+    """bbox + lat/lon/radius_m together returns 400 invalid_request (D-13)."""
+    response = client.get(
+        "/v1/stops",
+        params={"bbox": "1,2,3,4", "lat": 12.97, "lon": 77.59, "radius_m": 500},
+    )
+
+    assert response.status_code == 400
+    data = response.json()
+    assert data["error"] == "invalid_request"
+
+
+def test_get_stops_radius_all_or_nothing(client):
+    """Partial lat/lon/radius_m (radius_m missing) returns 400 invalid_request (D-14)."""
+    response = client.get("/v1/stops", params={"lat": 12.97, "lon": 77.59})
+
+    assert response.status_code == 400
+    data = response.json()
+    assert data["error"] == "invalid_request"
+
+
+def test_get_stops_radius_exceeds_cap(client):
+    """radius_m above the 2000m cap returns 400 invalid_request (D-15)."""
+    response = client.get(
+        "/v1/stops",
+        params={"lat": 12.97, "lon": 77.59, "radius_m": 5000},
+    )
+
+    assert response.status_code == 400
+    data = response.json()
+    assert data["error"] == "invalid_request"
+
+
+def test_get_stops_radius_invalid_latlon(client):
+    """Out-of-range lat for radius search returns 400 invalid_request (D-16)."""
+    response = client.get(
+        "/v1/stops",
+        params={"lat": 999, "lon": 77.59, "radius_m": 500},
+    )
+
+    assert response.status_code == 400
+    data = response.json()
+    assert data["error"] == "invalid_request"
+
+
+def test_get_stops_bbox_invalid_range(client):
+    """bbox with an out-of-range coordinate returns 400 invalid_request (D-17 drive-by)."""
+    response = client.get("/v1/stops", params={"bbox": "999,2,3,4"})
+
+    assert response.status_code == 400
+    data = response.json()
+    assert data["error"] == "invalid_request"
 
 
 # ==============================================================================
@@ -543,6 +666,190 @@ def test_get_schedule_returns_x_api_version(client):
 
 
 # ==============================================================================
+# GET /v1/stops/{stop_id} - Stop Detail Tests (API-01)
+# ==============================================================================
+#
+# NOTE on error envelope shape: get_stop_detail() raises HTTPException(404,
+# detail={"error": ..., "message": ..., "details": {...}}). The project's
+# custom http_exception_handler (backend/app/main.py) unwraps a dict-shaped
+# `detail` that already contains an "error" key and returns it as the FLAT
+# top-level JSON body (content=exc.detail) -- it does NOT nest it under a
+# "detail" key. This is the same wire shape already produced by the existing
+# JSONResponse-style 404s (e.g. test_get_schedule_stop_not_found above) and
+# by GET /v1/eta's existing HTTPException(404, detail={...}) 404, verified
+# against backend/tests/test_api_errors_alignment.py::test_eta_segment_not_found
+# (asserts the flat `data["error"]` shape via assert_error_response()). Tests
+# below assert the flat shape to match this verified, already-passing
+# precedent -- not a nested `data["detail"]["error"]` shape.
+
+
+def test_get_stop_detail_success(client, db_with_test_stop_routes):
+    """GET /v1/stops/{stop_id} returns stop detail + full route objects (D-07/D-08/D-09)."""
+    response = client.get("/v1/stops/STOP_X")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Stop fields
+    assert data["stop_id"] == "STOP_X"
+    assert data["stop_name"] == "Test Junction"
+    assert data["stop_lat"] == 12.9716
+    assert data["stop_lon"] == 77.5946
+    assert data["zone_id"] == "ZONE_A"
+
+    # D-07: routes array present with 2 full RouteResponse-shaped entries
+    assert "routes" in data
+    assert len(data["routes"]) == 2
+    for route in data["routes"]:
+        assert set(route.keys()) == {
+            "route_id",
+            "route_short_name",
+            "route_long_name",
+            "route_type",
+            "agency_id",
+        }
+
+    # D-08: NOT deduplicated by route_short_name -- both distinct route_ids present
+    # even though they share route_short_name "285"
+    route_ids = {route["route_id"] for route in data["routes"]}
+    assert route_ids == {"ROUTE_A1", "ROUTE_A2"}
+    assert all(route["route_short_name"] == "285" for route in data["routes"])
+
+    # D-09: ordered by route_short_name (both share "285", so order is stable
+    # but we still assert the sort key was applied, not left unordered by chance)
+    short_names = [route["route_short_name"] for route in data["routes"]]
+    assert short_names == sorted(short_names)
+
+
+def test_get_stop_detail_not_found(client):
+    """GET /v1/stops/{stop_id} returns 404 not_found for an unknown stop_id (D-11)."""
+    response = client.get("/v1/stops/NONEXISTENT_STOP")
+
+    assert response.status_code == 404
+    data = response.json()
+
+    # Flat error envelope -- see NOTE above this test group.
+    assert data["error"] == "not_found"
+    assert "message" in data
+    assert "details" in data
+    assert data["details"]["stop_id"] == "NONEXISTENT_STOP"
+
+
+def test_get_stop_detail_no_routes(client, db_with_test_stop_routes):
+    """A stop with zero serving routes returns 200 + routes: [], never 404 (D-10)."""
+    response = client.get("/v1/stops/STOP_ORPHAN")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["stop_id"] == "STOP_ORPHAN"
+    assert data["routes"] == []
+
+
+# ==============================================================================
+# GET /v1/routes/{route_id} - Route Detail Tests (API-02)
+# ==============================================================================
+#
+# NOTE on error envelope shape: like the stop-detail tests above, the new
+# get_route_detail() handler uses HTTPException(404, detail={"error": ...}).
+# main.py's http_exception_handler unwraps this to a FLAT top-level body
+# (content=exc.detail) -- the same shape as JSONResponse-style 404s. Tests
+# below assert data["error"] (flat), NOT data["detail"]["error"] (nested).
+# See 03-01-SUMMARY.md and 03-02-PLAN.md's <known_correction_from_prior_plan>.
+
+
+def test_get_route_detail_success(client, db_with_test_route_branches):
+    """GET /v1/routes/{route_id} returns route metadata + ordered stops per direction (D-01..D-03)."""
+    response = client.get("/v1/routes/ROUTE_M")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Full RouteResponse field set (D-01)
+    assert data["route_id"] == "ROUTE_M"
+    assert data["route_short_name"] == "M"
+    assert data["route_long_name"] == "Route M Test Line"
+    assert data["route_type"] == 3
+    assert data["agency_id"] == "BMTC"
+
+    # No trip-level or schedule data anywhere in the body (D-01)
+    assert "trip_id" not in data
+    assert "trips" not in data
+    assert "arrival_time" not in data
+    assert "departure_time" not in data
+
+    # directions is an array of {direction_id, stops} objects (D-02)
+    assert "directions" in data
+    assert len(data["directions"]) == 2
+    direction_ids = {d["direction_id"] for d in data["directions"]}
+    assert direction_ids == {0, 1}
+
+    for direction in data["directions"]:
+        assert set(direction.keys()) == {"direction_id", "stops"}
+        for stop in direction["stops"]:
+            assert set(stop.keys()) == {
+                "stop_id",
+                "stop_name",
+                "stop_lat",
+                "stop_lon",
+                "stop_sequence",
+            }
+            assert "trip_id" not in stop
+
+    # Direction 0 ordered M_S1 -> M_S2 -> M_S3 by stop_sequence (D-03)
+    dir0 = next(d for d in data["directions"] if d["direction_id"] == 0)
+    assert [s["stop_id"] for s in dir0["stops"]] == ["M_S1", "M_S2", "M_S3"]
+    assert [s["stop_sequence"] for s in dir0["stops"]] == [1, 2, 3]
+
+    # Direction 1 ordered M_S3 -> M_S2 -> M_S1 by stop_sequence
+    dir1 = next(d for d in data["directions"] if d["direction_id"] == 1)
+    assert [s["stop_id"] for s in dir1["stops"]] == ["M_S3", "M_S2", "M_S1"]
+
+
+def test_get_route_detail_not_found(client):
+    """GET /v1/routes/{route_id} returns 404 not_found for an unknown route_id (D-06)."""
+    response = client.get("/v1/routes/NONEXISTENT_ROUTE")
+
+    assert response.status_code == 404
+    data = response.json()
+
+    # Flat error envelope -- see NOTE above this test group.
+    assert data["error"] == "not_found"
+    assert "message" in data
+    assert "details" in data
+    assert data["details"]["route_id"] == "NONEXISTENT_ROUTE"
+
+
+def test_get_route_detail_no_trips(client, db_with_test_route_branches):
+    """A route with zero trips returns 200 + directions: [], never 404 (D-05)."""
+    response = client.get("/v1/routes/ROUTE_EMPTY")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["route_id"] == "ROUTE_EMPTY"
+    assert data["directions"] == []
+
+
+def test_get_route_detail_branch_selection(client, db_with_test_route_branches):
+    """Most-common shape's trip determines stop order (D-04); zero-trip direction omitted (D-23)."""
+    response = client.get("/v1/routes/ROUTE_BRANCH")
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # D-23: direction 1 has zero trips for ROUTE_BRANCH -- omitted entirely,
+    # not included with stops: []. Exactly one direction entry.
+    assert len(data["directions"]) == 1
+    direction = data["directions"][0]
+    assert direction["direction_id"] == 0
+
+    # D-04: shape A (3 trips: M_S1, M_S2, M_S3) is more common than shape B
+    # (1 trip: M_S1, BR_S4) -- shape A's stop sequence wins.
+    assert [s["stop_id"] for s in direction["stops"]] == ["M_S1", "M_S2", "M_S3"]
+
+
+# ==============================================================================
 # GET /v1/eta - New Structured Response Tests (v1.1)
 # ==============================================================================
 
@@ -553,34 +860,100 @@ def setup_test_segment_for_eta(client):
     from app.db import get_connection
 
     settings = get_settings()
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
 
-    # Insert segment (idempotent)
-    cursor.execute(
-        "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
-        ("ROUTE1", 0, "STOP_A", "STOP_B"),
-    )
-
-    # Get segment_id
-    cursor.execute(
-        "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
-        ("ROUTE1", 0, "STOP_A", "STOP_B"),
-    )
-    segment_id = cursor.fetchone()[0]
-
-    # Insert segment_stats for all 192 bins (idempotent)
-    for bin_id in range(192):
+        # Insert parent rows for the ETA-enrichment LEFT JOIN (API-04): a route
+        # and both stops referenced by the segment below. Idempotent so this
+        # helper can be called repeatedly across tests without conflict.
         cursor.execute(
-            """
-            INSERT OR IGNORE INTO segment_stats (segment_id, bin_id, schedule_mean)
-            VALUES (?, ?, ?)
-            """,
-            (segment_id, bin_id, 300.0),  # 5 min schedule baseline
+            "INSERT OR IGNORE INTO routes (route_id, route_short_name, route_long_name, route_type, agency_id) VALUES (?, ?, ?, ?, ?)",
+            ("ROUTE1", "R1", "Route 1 Test Line", 3, None),
+        )
+        cursor.executemany(
+            "INSERT OR IGNORE INTO stops (stop_id, stop_name, stop_lat, stop_lon, zone_id) VALUES (?, ?, ?, ?, ?)",
+            [
+                ("STOP_A", "Test Origin Stop", 12.9716, 77.5946, None),
+                ("STOP_B", "Test Destination Stop", 12.9800, 77.6100, None),
+            ],
         )
 
-    conn.commit()
-    conn.close()
+        # Insert segment (idempotent)
+        cursor.execute(
+            "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
+            ("ROUTE1", 0, "STOP_A", "STOP_B"),
+        )
+
+        # Get segment_id
+        cursor.execute(
+            "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
+            ("ROUTE1", 0, "STOP_A", "STOP_B"),
+        )
+        segment_id = cursor.fetchone()[0]
+
+        # Insert segment_stats for all 192 bins (idempotent)
+        for bin_id in range(192):
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO segment_stats (segment_id, bin_id, schedule_mean)
+                VALUES (?, ?, ?)
+                """,
+                (segment_id, bin_id, 300.0),  # 5 min schedule baseline
+            )
+
+        conn.commit()
+
+
+def setup_test_segment_for_eta_orphaned_from_stop(client):
+    """Helper to setup an ETA segment whose from_stop_id has NO matching `stops`
+    row, while to_stop_id and route_id resolve normally (API-04, D-20).
+
+    Reuses ROUTE1/STOP_B from setup_test_segment_for_eta() (must be called
+    first, or independently -- this helper inserts its own route/stop parent
+    rows too so it can also be called standalone). The app's `get_connection()`
+    does not set `PRAGMA foreign_keys = ON` (see backend/app/db.py), so
+    inserting a segment referencing a non-existent stops row does not raise
+    an FK violation here, matching RESEARCH.md's Wave 0 Gaps note.
+    """
+    from app.config import get_settings
+    from app.db import get_connection
+
+    settings = get_settings()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+
+        # Parent rows that DO resolve: route + destination stop.
+        cursor.execute(
+            "INSERT OR IGNORE INTO routes (route_id, route_short_name, route_long_name, route_type, agency_id) VALUES (?, ?, ?, ?, ?)",
+            ("ROUTE1", "R1", "Route 1 Test Line", 3, None),
+        )
+        cursor.execute(
+            "INSERT OR IGNORE INTO stops (stop_id, stop_name, stop_lat, stop_lon, zone_id) VALUES (?, ?, ?, ?, ?)",
+            ("STOP_B", "Test Destination Stop", 12.9800, 77.6100, None),
+        )
+
+        # Segment references STOP_ORPHAN_FROM, which has NO row in `stops`.
+        cursor.execute(
+            "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
+            ("ROUTE1", 0, "STOP_ORPHAN_FROM", "STOP_B"),
+        )
+
+        cursor.execute(
+            "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
+            ("ROUTE1", 0, "STOP_ORPHAN_FROM", "STOP_B"),
+        )
+        segment_id = cursor.fetchone()[0]
+
+        for bin_id in range(192):
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO segment_stats (segment_id, bin_id, schedule_mean)
+                VALUES (?, ?, ?)
+                """,
+                (segment_id, bin_id, 300.0),
+            )
+
+        conn.commit()
 
 
 def test_get_eta_new_structure_basic(client):
@@ -920,3 +1293,57 @@ def test_get_eta_new_format_with_when_parameter(client):
     assert "query_time" in data
     assert "scheduled" in data
     assert "prediction" in data
+
+
+# ==============================================================================
+# GET /v1/eta - Segment Name Enrichment Tests (API-04, D-18..D-20)
+# ==============================================================================
+
+
+def test_get_eta_segment_names_populated(client):
+    """segment object includes from_stop_name/to_stop_name/route_short_name
+    resolved from GTFS via LEFT JOIN when all references exist (D-18)."""
+    setup_test_segment_for_eta(client)
+
+    response = client.get(
+        "/v1/eta",
+        params={
+            "route_id": "ROUTE1",
+            "direction_id": 0,
+            "from_stop_id": "STOP_A",
+            "to_stop_id": "STOP_B",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    segment = data["segment"]
+
+    assert segment["from_stop_name"] == "Test Origin Stop"
+    assert segment["to_stop_name"] == "Test Destination Stop"
+    assert segment["route_short_name"] == "R1"
+
+
+def test_get_eta_segment_names_orphaned_null(client):
+    """An orphaned from_stop_id nulls only that field via LEFT JOIN and still
+    returns 200 -- never 500 (D-20). to_stop_name/route_short_name, whose
+    references DO resolve, remain populated."""
+    setup_test_segment_for_eta_orphaned_from_stop(client)
+
+    response = client.get(
+        "/v1/eta",
+        params={
+            "route_id": "ROUTE1",
+            "direction_id": 0,
+            "from_stop_id": "STOP_ORPHAN_FROM",
+            "to_stop_id": "STOP_B",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    segment = data["segment"]
+
+    assert segment["from_stop_name"] is None
+    assert segment["to_stop_name"] == "Test Destination Stop"
+    assert segment["route_short_name"] == "R1"

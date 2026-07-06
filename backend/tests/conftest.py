@@ -9,6 +9,14 @@ from typing import Generator
 import pytest
 from fastapi.testclient import TestClient
 
+# `Settings.api_key` has no default (BMTC_API_KEY is required). Tests that don't
+# request the `test_env`/`test_settings` fixtures were silently relying on a
+# developer's local, gitignored `backend/.env` to supply it — passing locally but
+# failing in CI, which has no `.env` (surfaced by adding CI in OPS-03). Set a
+# process-wide fallback once, before any test imports Settings; monkeypatch-based
+# per-test overrides in `test_env` still take precedence and unwind to this value.
+os.environ.setdefault("BMTC_API_KEY", "test-key-conftest-default-00000000000000")
+
 
 # ==============================================================================
 # Settings Isolation Fixtures
@@ -361,6 +369,192 @@ def db_with_test_routes(temp_db) -> Generator[tuple[str, sqlite3.Connection], No
         "INSERT OR IGNORE INTO routes (route_id, route_short_name, route_long_name, route_type, agency_id) VALUES (?, ?, ?, ?, ?)",
         test_routes
     )
+    conn.commit()
+
+    yield db_path, conn
+
+    # Cleanup handled by temp_db fixture
+
+
+@pytest.fixture
+def db_with_test_stop_routes(temp_db) -> Generator[tuple[str, sqlite3.Connection], None, None]:
+    """Provide database with a served stop, an orphan stop, and 2 routes serving the stop.
+
+    Used for GET /v1/stops/{stop_id} tests (API-01):
+    - STOP_X: served by ROUTE_A1 and ROUTE_A2, which share `route_short_name` ("285")
+      to exercise D-08 (routes list must NOT dedupe by short_name)
+    - STOP_ORPHAN: exists in `stops` but has no trips/stop_times referencing it,
+      to exercise D-10 (200 + routes: [], never 404)
+
+    Use this for testing GET /v1/stops/{stop_id}.
+    """
+    db_path, conn = temp_db
+    cursor = conn.cursor()
+
+    # Insert test agency
+    cursor.execute(
+        "INSERT OR IGNORE INTO agency (agency_id, agency_name, agency_url, agency_timezone) VALUES (?, ?, ?, ?)",
+        ("BMTC", "Bangalore Metropolitan Transport Corporation", "http://mybmtc.com", "Asia/Kolkata")
+    )
+
+    # Insert test calendar (service_id FK required by trips)
+    cursor.execute(
+        """
+        INSERT OR IGNORE INTO calendar
+        (service_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, start_date, end_date)
+        VALUES (?, 1, 1, 1, 1, 1, 0, 0, 20250101, 20261231)
+        """,
+        ("WEEKDAY",)
+    )
+
+    # Insert stops: STOP_X (served) and STOP_ORPHAN (no serving routes)
+    cursor.executemany(
+        "INSERT OR IGNORE INTO stops (stop_id, stop_name, stop_lat, stop_lon, zone_id) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("STOP_X", "Test Junction", 12.9716, 77.5946, "ZONE_A"),
+            ("STOP_ORPHAN", "Orphan Layout Stop", 12.9800, 77.6000, None),
+        ]
+    )
+
+    # Insert 2 routes that share route_short_name "285" (D-08: not unique per route_id)
+    cursor.executemany(
+        "INSERT OR IGNORE INTO routes (route_id, route_short_name, route_long_name, route_type, agency_id) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("ROUTE_A1", "285", "Route A1 Long Name", 3, "BMTC"),
+            ("ROUTE_A2", "285", "Route A2 Variant Long Name", 3, "BMTC"),
+        ]
+    )
+
+    # Insert trips: one per route, both serving STOP_X
+    cursor.executemany(
+        "INSERT OR IGNORE INTO trips (trip_id, route_id, service_id, trip_headsign, direction_id) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("TRIP_A1", "ROUTE_A1", "WEEKDAY", "Headsign A1", 0),
+            ("TRIP_A2", "ROUTE_A2", "WEEKDAY", "Headsign A2", 0),
+        ]
+    )
+
+    # Insert stop_times linking both trips through STOP_X
+    cursor.executemany(
+        "INSERT OR IGNORE INTO stop_times (trip_id, stop_sequence, stop_id, arrival_time, departure_time) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("TRIP_A1", 1, "STOP_X", "10:00:00", "10:00:00"),
+            ("TRIP_A2", 1, "STOP_X", "10:05:00", "10:05:00"),
+        ]
+    )
+
+    conn.commit()
+
+    yield db_path, conn
+
+    # Cleanup handled by temp_db fixture
+
+
+@pytest.fixture
+def db_with_test_route_branches(temp_db) -> Generator[tuple[str, sqlite3.Connection], None, None]:
+    """Provide database with routes exercising GET /v1/routes/{route_id} (API-02).
+
+    This fixture adds three routes:
+    - ROUTE_M: two directions, one shape each (3 stops per direction) — the
+      "normal" success-path case (D-01..D-03).
+    - ROUTE_EMPTY: a route row with ZERO trips — exercises D-05 (200 +
+      directions: [], never 404).
+    - ROUTE_BRANCH: direction 0 has TWO shape_id variants — shape A used by
+      3 trips (stops M_S1, M_S2, M_S3) and shape B used by 1 trip (stops
+      M_S1, BR_S4) — exercises D-04 (most-common-shape selection). It has
+      NO direction-1 trips, exercising D-23 (omit the zero-trip direction
+      entirely rather than including it with stops: []).
+
+    Use this for testing GET /v1/routes/{route_id}.
+    """
+    db_path, conn = temp_db
+    cursor = conn.cursor()
+
+    # Insert test agency
+    cursor.execute(
+        "INSERT OR IGNORE INTO agency (agency_id, agency_name, agency_url, agency_timezone) VALUES (?, ?, ?, ?)",
+        ("BMTC", "Bangalore Metropolitan Transport Corporation", "http://mybmtc.com", "Asia/Kolkata")
+    )
+
+    # Insert test calendar (service_id FK required by trips)
+    cursor.execute(
+        """
+        INSERT OR IGNORE INTO calendar
+        (service_id, monday, tuesday, wednesday, thursday, friday, saturday, sunday, start_date, end_date)
+        VALUES (?, 1, 1, 1, 1, 1, 0, 0, 20250101, 20261231)
+        """,
+        ("WEEKDAY",)
+    )
+
+    # Insert routes: ROUTE_M (2 directions), ROUTE_EMPTY (0 trips), ROUTE_BRANCH (branch variants)
+    cursor.executemany(
+        "INSERT OR IGNORE INTO routes (route_id, route_short_name, route_long_name, route_type, agency_id) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("ROUTE_M", "M", "Route M Test Line", 3, "BMTC"),
+            ("ROUTE_EMPTY", "EMPTY", "Route Empty Test Line", 3, "BMTC"),
+            ("ROUTE_BRANCH", "BRANCH", "Route Branch Test Line", 3, "BMTC"),
+        ]
+    )
+
+    # Insert stops used by ROUTE_M and ROUTE_BRANCH
+    cursor.executemany(
+        "INSERT OR IGNORE INTO stops (stop_id, stop_name, stop_lat, stop_lon, zone_id) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("M_S1", "M Stop 1", 12.90, 77.48, None),
+            ("M_S2", "M Stop 2", 12.93, 77.52, None),
+            ("M_S3", "M Stop 3", 12.97, 77.57, None),
+            ("BR_S4", "Branch Stop 4", 12.99, 77.60, None),
+        ]
+    )
+
+    # ROUTE_M: direction 0 (M_S1 -> M_S2 -> M_S3), direction 1 (M_S3 -> M_S2 -> M_S1)
+    cursor.executemany(
+        "INSERT OR IGNORE INTO trips (trip_id, route_id, service_id, trip_headsign, direction_id, shape_id) VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            ("TRIP_M_D0", "ROUTE_M", "WEEKDAY", "M Direction 0", 0, "M_SHAPE_0"),
+            ("TRIP_M_D1", "ROUTE_M", "WEEKDAY", "M Direction 1", 1, "M_SHAPE_1"),
+        ]
+    )
+    cursor.executemany(
+        "INSERT OR IGNORE INTO stop_times (trip_id, stop_sequence, stop_id, arrival_time, departure_time) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("TRIP_M_D0", 1, "M_S1", "08:00:00", "08:00:00"),
+            ("TRIP_M_D0", 2, "M_S2", "08:10:00", "08:10:00"),
+            ("TRIP_M_D0", 3, "M_S3", "08:20:00", "08:20:00"),
+            ("TRIP_M_D1", 1, "M_S3", "09:00:00", "09:00:00"),
+            ("TRIP_M_D1", 2, "M_S2", "09:10:00", "09:10:00"),
+            ("TRIP_M_D1", 3, "M_S1", "09:20:00", "09:20:00"),
+        ]
+    )
+
+    # ROUTE_BRANCH: direction 0 only. Shape A (3 trips: M_S1, M_S2, M_S3) is the
+    # most-common shape; shape B (1 trip: M_S1, BR_S4) is the minority variant.
+    cursor.executemany(
+        "INSERT OR IGNORE INTO trips (trip_id, route_id, service_id, trip_headsign, direction_id, shape_id) VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            ("TRIP_BR_A1", "ROUTE_BRANCH", "WEEKDAY", "Branch Shape A", 0, "BRANCH_SHAPE_A"),
+            ("TRIP_BR_A2", "ROUTE_BRANCH", "WEEKDAY", "Branch Shape A", 0, "BRANCH_SHAPE_A"),
+            ("TRIP_BR_A3", "ROUTE_BRANCH", "WEEKDAY", "Branch Shape A", 0, "BRANCH_SHAPE_A"),
+            ("TRIP_BR_B1", "ROUTE_BRANCH", "WEEKDAY", "Branch Shape B", 0, "BRANCH_SHAPE_B"),
+        ]
+    )
+    cursor.executemany(
+        "INSERT OR IGNORE INTO stop_times (trip_id, stop_sequence, stop_id, arrival_time, departure_time) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("TRIP_BR_A1", 1, "M_S1", "10:00:00", "10:00:00"),
+            ("TRIP_BR_A1", 2, "M_S2", "10:10:00", "10:10:00"),
+            ("TRIP_BR_A1", 3, "M_S3", "10:20:00", "10:20:00"),
+            ("TRIP_BR_A2", 1, "M_S1", "11:00:00", "11:00:00"),
+            ("TRIP_BR_A2", 2, "M_S2", "11:10:00", "11:10:00"),
+            ("TRIP_BR_A2", 3, "M_S3", "11:20:00", "11:20:00"),
+            ("TRIP_BR_A3", 1, "M_S1", "12:00:00", "12:00:00"),
+            ("TRIP_BR_A3", 2, "M_S2", "12:10:00", "12:10:00"),
+            ("TRIP_BR_A3", 3, "M_S3", "12:20:00", "12:20:00"),
+            ("TRIP_BR_B1", 1, "M_S1", "13:00:00", "13:00:00"),
+            ("TRIP_BR_B1", 2, "BR_S4", "13:10:00", "13:10:00"),
+        ]
+    )
+
     conn.commit()
 
     yield db_path, conn

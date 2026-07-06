@@ -1,0 +1,13 @@
+{
+  "source_path": "/home/karankinariwala/KARAN/1-Projects/Active/bmtc-transit-app/docs/DB_NOTES.md",
+  "type": "SPEC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "Database Implementation Notes",
+  "summary": "Implementation details for the rate_limit_buckets SQLite table: schema, atomic token-bucket operations, indexing, retention, and troubleshooting.",
+  "scope": ["rate_limit_buckets table", "SQLite WAL mode", "token bucket rate limiting", "migration 003", "retention cleanup", "index strategy"],
+  "cross_refs": ["../docs/api.md", "../backend/README.md", "backend/app/migrations/003_rate_limit_up.sql", "backend/app/migrations/003_rate_limit_down.sql", "backend/scripts/rate_limit_cleanup.sh"],
+  "locked": false,
+  "precedence": null,
+  "notes": "Contains a concrete schema/DDL contract and EXPLAIN QUERY PLAN expectations (SPEC signals) but is written in a prose/runbook/troubleshooting style typical of DOC (tutorial structure, future-enhancements section, troubleshooting guide). Classified as SPEC because the schema and atomic-operation contracts are load-bearing implementation constraints, but confidence is medium due to mixed DOC framing."
+}

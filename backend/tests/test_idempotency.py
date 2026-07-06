@@ -47,10 +47,11 @@ def test_idempotency_key_store_and_retrieve(idempotency_db):
     from app.idempotency import store_idempotency_key, check_idempotency_key, compute_response_hash
 
     key = "test-key-456"
+    body_data = {"route_id": "335E", "direction_id": 0}
     response_data = {"accepted": True, "rejected_count": 2}
 
     # Store key
-    store_idempotency_key(key, response_data)
+    store_idempotency_key(key, body_data, response_data)
 
     # Retrieve key
     cached = check_idempotency_key(key)
@@ -75,32 +76,29 @@ def test_idempotency_key_ttl(idempotency_db):
 
     # Manually insert with old timestamp (2 hours ago)
     settings = get_settings()
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
-
     old_timestamp = int(time.time()) - (2 * 3600)  # 2 hours ago
     response_hash = compute_response_hash(response_data)
 
-    cursor.execute(
-        "INSERT INTO idempotency_keys (key, submitted_at, response_hash) VALUES (?, ?, ?)",
-        (key, old_timestamp, response_hash),
-    )
-    conn.commit()
-    conn.close()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO idempotency_keys (key, submitted_at, response_hash) VALUES (?, ?, ?)",
+            (key, old_timestamp, response_hash),
+        )
+        conn.commit()
 
     # Should not find expired key (TTL is 24 hours by default in test_env)
     # But if TTL is 1 hour, this should be expired
     # Let's test with a very old key (25 hours ago)
     key_old = "test-key-very-old"
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
     very_old_timestamp = int(time.time()) - (25 * 3600)
-    cursor.execute(
-        "INSERT INTO idempotency_keys (key, submitted_at, response_hash) VALUES (?, ?, ?)",
-        (key_old, very_old_timestamp, response_hash),
-    )
-    conn.commit()
-    conn.close()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO idempotency_keys (key, submitted_at, response_hash) VALUES (?, ?, ?)",
+            (key_old, very_old_timestamp, response_hash),
+        )
+        conn.commit()
 
     # This should be expired
     cached = check_idempotency_key(key_old)
@@ -117,33 +115,31 @@ def test_cleanup_expired_keys(idempotency_db):
     settings = get_settings()
 
     # Clean all existing keys first
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM idempotency_keys")
-    conn.commit()
-    conn.close()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM idempotency_keys")
+        conn.commit()
 
     # Insert 3 keys: 1 recent, 2 expired
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
-
     now = int(time.time())
     old_timestamp = now - (25 * 3600)  # 25 hours ago (past 24h TTL)
 
-    cursor.execute(
-        "INSERT INTO idempotency_keys (key, submitted_at, response_hash) VALUES (?, ?, ?)",
-        ("recent-key-cleanup", now, "hash1"),
-    )
-    cursor.execute(
-        "INSERT INTO idempotency_keys (key, submitted_at, response_hash) VALUES (?, ?, ?)",
-        ("expired-key-cleanup-1", old_timestamp, "hash2"),
-    )
-    cursor.execute(
-        "INSERT INTO idempotency_keys (key, submitted_at, response_hash) VALUES (?, ?, ?)",
-        ("expired-key-cleanup-2", old_timestamp, "hash3"),
-    )
-    conn.commit()
-    conn.close()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "INSERT INTO idempotency_keys (key, submitted_at, response_hash) VALUES (?, ?, ?)",
+            ("recent-key-cleanup", now, "hash1"),
+        )
+        cursor.execute(
+            "INSERT INTO idempotency_keys (key, submitted_at, response_hash) VALUES (?, ?, ?)",
+            ("expired-key-cleanup-1", old_timestamp, "hash2"),
+        )
+        cursor.execute(
+            "INSERT INTO idempotency_keys (key, submitted_at, response_hash) VALUES (?, ?, ?)",
+            ("expired-key-cleanup-2", old_timestamp, "hash3"),
+        )
+        conn.commit()
 
     # Run cleanup
     deleted_count = cleanup_expired_keys()
@@ -161,17 +157,18 @@ def test_idempotency_key_replace(idempotency_db):
     from app.idempotency import store_idempotency_key, check_idempotency_key
 
     key = "replace-key-123"
+    body_data = {"route_id": "335E", "direction_id": 0}
     response1 = {"accepted": True, "rejected_count": 1}
     response2 = {"accepted": True, "rejected_count": 2}
 
     # Store first time
-    store_idempotency_key(key, response1)
+    store_idempotency_key(key, body_data, response1)
     cached1 = check_idempotency_key(key)
     hash1 = cached1["response_hash"]
 
     # Store again with different response (simulates retry with different result)
     time.sleep(0.1)
-    store_idempotency_key(key, response2)
+    store_idempotency_key(key, body_data, response2)
     cached2 = check_idempotency_key(key)
     hash2 = cached2["response_hash"]
 

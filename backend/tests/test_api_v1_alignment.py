@@ -25,34 +25,33 @@ def setup_test_segment(client):
     from app.db import get_connection
 
     settings = get_settings()
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
 
-    # Insert segment (idempotent)
-    cursor.execute(
-        "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
-        ("ROUTE1", 0, "STOP_A", "STOP_B"),
-    )
-
-    # Get segment_id
-    cursor.execute(
-        "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
-        ("ROUTE1", 0, "STOP_A", "STOP_B"),
-    )
-    segment_id = cursor.fetchone()[0]
-
-    # Insert segment_stats for all 192 bins (idempotent)
-    for bin_id in range(192):
+        # Insert segment (idempotent)
         cursor.execute(
-            """
-            INSERT OR IGNORE INTO segment_stats (segment_id, bin_id, schedule_mean)
-            VALUES (?, ?, ?)
-            """,
-            (segment_id, bin_id, 300.0),  # 5 min schedule baseline
+            "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
+            ("ROUTE1", 0, "STOP_A", "STOP_B"),
         )
 
-    conn.commit()
-    conn.close()
+        # Get segment_id
+        cursor.execute(
+            "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
+            ("ROUTE1", 0, "STOP_A", "STOP_B"),
+        )
+        segment_id = cursor.fetchone()[0]
+
+        # Insert segment_stats for all 192 bins (idempotent)
+        for bin_id in range(192):
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO segment_stats (segment_id, bin_id, schedule_mean)
+                VALUES (?, ?, ?)
+                """,
+                (segment_id, bin_id, 300.0),  # 5 min schedule baseline
+            )
+
+        conn.commit()
 
 
 # ==============================================================================
@@ -820,8 +819,8 @@ def test_get_config_has_all_spec_fields(client):
     required_fields = {
         "n0": int,
         "time_bin_minutes": int,
-        "half_life_days": int,
-        "ema_alpha": (int, float),
+        "half_life_days": (int, type(None)),  # DEPRECATED: EMA removed, see LEARN-01 (D-14)
+        "ema_alpha": (int, float, type(None)),  # DEPRECATED: EMA removed, see LEARN-01 (D-14)
         "outlier_sigma": (int, float),
         "mapmatch_min_conf": (int, float),
         "max_segments_per_ride": int,
@@ -851,8 +850,8 @@ def test_get_config_values_are_reasonable(client):
     # Check reasonable default values
     assert data["n0"] == 20
     assert data["time_bin_minutes"] == 15
-    assert data["half_life_days"] == 30
-    assert 0.0 <= data["ema_alpha"] <= 1.0
+    assert data["half_life_days"] is None  # DEPRECATED: EMA removed, see LEARN-01 (D-14)
+    assert data["ema_alpha"] is None  # DEPRECATED: EMA removed, see LEARN-01 (D-14)
     assert data["outlier_sigma"] > 0
     assert 0.0 <= data["mapmatch_min_conf"] <= 1.0
     assert data["max_segments_per_ride"] > 0

@@ -1,0 +1,47 @@
+name: CI
+
+# Runs the full backend test suite on every push and pull request to main so
+# regressions are caught automatically with a visible red/green status (OPS-03).
+#
+# Scope: backend only (D-11). Mobile Jest suite is out of scope for this workflow.
+# Trigger: `pull_request` (never `pull_request_target`) so a malicious fork PR never
+# runs untrusted head code with base-branch secrets (T-05-08).
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Least-privilege token: this job only checks out code and runs tests, it never
+# writes to the repository and uses no real secrets (T-05-09, ASVS V14).
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Backend test suite
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      # Action tags below were confirmed as the latest stable releases via the GitHub
+      # Releases/tags API at implementation time (2026-07-05): actions/checkout has a
+      # rolling `v7` major tag (currently v7.0.0). astral-sh/setup-uv does NOT publish a
+      # rolling `v8` major tag yet (only exact v8.x.y and the older rolling `v7`), so it
+      # is pinned to the exact latest release v8.3.0 instead. Re-confirm against latest
+      # stable if bumping (Assumption A2).
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.3.0
+        with:
+          enable-cache: true
+          python-version: "3.12"
+          cache-dependency-glob: "backend/uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --locked --all-extras --dev
+
+      - name: Run backend test suite
+        run: uv run pytest -n auto --dist loadfile

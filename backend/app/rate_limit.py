@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Tuple, Optional
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -53,7 +53,6 @@ async def extract_bucket_id(request: Request) -> str:
 
     # H3 SECURITY FIX: NO IP FALLBACK (privacy violation)
     # Reject requests without device_bucket to prevent raw IP persistence
-    from fastapi import HTTPException
     raise HTTPException(
         status_code=400,
         detail={
@@ -89,59 +88,57 @@ def check_and_spend_token(
     now_iso = now.isoformat()
     reset_time = int((now + timedelta(hours=1)).timestamp())
 
-    conn = get_connection(db_path)
-    cursor = conn.cursor()
+    with get_connection(db_path) as conn:
+        cursor = conn.cursor()
 
-    try:
-        # Atomic UPSERT with refill logic
-        # Pattern: INSERT with ON CONFLICT handles both creation and update
-        # Note: We decrement BEFORE checking, so tokens can go to -1 to detect exhaustion
-        # Under high concurrency, clamp at -1 to respect CHECK constraint
-        cursor.execute(
-            """
-            INSERT INTO rate_limit_buckets (bucket_id, tokens, last_refill)
-            VALUES (?, ?, ?)
-            ON CONFLICT(bucket_id) DO UPDATE SET
-                tokens = CASE
-                    WHEN (unixepoch('now') - unixepoch(last_refill)) >= 3600 THEN ?
-                    ELSE MAX(-1, tokens - 1)
-                END,
-                last_refill = CASE
-                    WHEN (unixepoch('now') - unixepoch(last_refill)) >= 3600 THEN excluded.last_refill
-                    ELSE last_refill
-                END
-            """,
-            (bucket_id, limit - 1, now_iso, limit - 1),
-        )
+        try:
+            # Atomic UPSERT with refill logic
+            # Pattern: INSERT with ON CONFLICT handles both creation and update
+            # Note: We decrement BEFORE checking, so tokens can go to -1 to detect exhaustion
+            # Under high concurrency, clamp at -1 to respect CHECK constraint
+            cursor.execute(
+                """
+                INSERT INTO rate_limit_buckets (bucket_id, tokens, last_refill)
+                VALUES (?, ?, ?)
+                ON CONFLICT(bucket_id) DO UPDATE SET
+                    tokens = CASE
+                        WHEN (unixepoch('now') - unixepoch(last_refill)) >= 3600 THEN ?
+                        ELSE MAX(-1, tokens - 1)
+                    END,
+                    last_refill = CASE
+                        WHEN (unixepoch('now') - unixepoch(last_refill)) >= 3600 THEN excluded.last_refill
+                        ELSE last_refill
+                    END
+                """,
+                (bucket_id, limit - 1, now_iso, limit - 1),
+            )
 
-        # Read current state after update
-        cursor.execute(
-            "SELECT tokens, last_refill FROM rate_limit_buckets WHERE bucket_id = ?",
-            (bucket_id,),
-        )
-        row = cursor.fetchone()
+            # Read current state after update
+            cursor.execute(
+                "SELECT tokens, last_refill FROM rate_limit_buckets WHERE bucket_id = ?",
+                (bucket_id,),
+            )
+            row = cursor.fetchone()
 
-        conn.commit()
+            conn.commit()
 
-        if row:
-            tokens = row["tokens"]
-            # Token was already spent in the UPDATE, so tokens is post-decrement value
-            # If tokens < 0, we went negative which means we were at 0 before spending
-            allowed = tokens >= 0
-            remaining = max(0, tokens)
+            if row:
+                tokens = row["tokens"]
+                # Token was already spent in the UPDATE, so tokens is post-decrement value
+                # If tokens < 0, we went negative which means we were at 0 before spending
+                allowed = tokens >= 0
+                remaining = max(0, tokens)
 
-            return allowed, remaining, reset_time
+                return allowed, remaining, reset_time
 
-        # Should never reach here due to INSERT guarantee
-        return False, 0, reset_time
+            # Should never reach here due to INSERT guarantee
+            return False, 0, reset_time
 
-    except Exception as e:
-        logger.error(f"Rate limit check failed for {bucket_id}: {e}")
-        conn.rollback()
-        # Fail open: allow request on error
-        return True, limit, reset_time
-    finally:
-        conn.close()
+        except Exception as e:
+            logger.error(f"Rate limit check failed for {bucket_id}: {e}")
+            conn.rollback()
+            # Fail open: allow request on error
+            return True, limit, reset_time
 
 
 def refill_if_needed(bucket_id: str, db_path: str, limit: int = 500) -> None:
@@ -158,25 +155,23 @@ def refill_if_needed(bucket_id: str, db_path: str, limit: int = 500) -> None:
     now = datetime.now(timezone.utc)
     now_iso = now.isoformat()
 
-    conn = get_connection(db_path)
-    cursor = conn.cursor()
+    with get_connection(db_path) as conn:
+        cursor = conn.cursor()
 
-    try:
-        cursor.execute(
-            """
-            UPDATE rate_limit_buckets
-            SET tokens = ?, last_refill = ?
-            WHERE bucket_id = ?
-              AND (unixepoch('now') - unixepoch(last_refill)) >= 3600
-            """,
-            (limit, now_iso, bucket_id),
-        )
-        conn.commit()
-    except Exception as e:
-        logger.error(f"Refill check failed for {bucket_id}: {e}")
-        conn.rollback()
-    finally:
-        conn.close()
+        try:
+            cursor.execute(
+                """
+                UPDATE rate_limit_buckets
+                SET tokens = ?, last_refill = ?
+                WHERE bucket_id = ?
+                  AND (unixepoch('now') - unixepoch(last_refill)) >= 3600
+                """,
+                (limit, now_iso, bucket_id),
+            )
+            conn.commit()
+        except Exception as e:
+            logger.error(f"Refill check failed for {bucket_id}: {e}")
+            conn.rollback()
 
 
 def get_current_limit_state(bucket_id: str, db_path: str, limit: int = 500) -> Tuple[int, int]:
@@ -195,38 +190,36 @@ def get_current_limit_state(bucket_id: str, db_path: str, limit: int = 500) -> T
     now = datetime.now(timezone.utc)
     reset_time = int((now + timedelta(hours=1)).timestamp())
 
-    conn = get_connection(db_path)
-    cursor = conn.cursor()
+    with get_connection(db_path) as conn:
+        cursor = conn.cursor()
 
-    try:
-        cursor.execute(
-            "SELECT tokens, last_refill FROM rate_limit_buckets WHERE bucket_id = ?",
-            (bucket_id,),
-        )
-        row = cursor.fetchone()
+        try:
+            cursor.execute(
+                "SELECT tokens, last_refill FROM rate_limit_buckets WHERE bucket_id = ?",
+                (bucket_id,),
+            )
+            row = cursor.fetchone()
 
-        if row:
-            tokens = row["tokens"]
-            last_refill_iso = row["last_refill"]
+            if row:
+                tokens = row["tokens"]
+                last_refill_iso = row["last_refill"]
 
-            # Check if refill needed
-            last_refill = datetime.fromisoformat(last_refill_iso)
-            if (now - last_refill.replace(tzinfo=timezone.utc)).total_seconds() >= 3600:
-                # Would be refilled
-                remaining = limit
-            else:
-                remaining = max(0, tokens)
+                # Check if refill needed
+                last_refill = datetime.fromisoformat(last_refill_iso)
+                if (now - last_refill.replace(tzinfo=timezone.utc)).total_seconds() >= 3600:
+                    # Would be refilled
+                    remaining = limit
+                else:
+                    remaining = max(0, tokens)
 
-            return remaining, reset_time
+                return remaining, reset_time
 
-        # No entry yet - full quota available
-        return limit, reset_time
+            # No entry yet - full quota available
+            return limit, reset_time
 
-    except Exception as e:
-        logger.error(f"Failed to get limit state for {bucket_id}: {e}")
-        return limit, reset_time
-    finally:
-        conn.close()
+        except Exception as e:
+            logger.error(f"Failed to get limit state for {bucket_id}: {e}")
+            return limit, reset_time
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -254,18 +247,28 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             cached_response = check_idempotency_key(idempotency_key)
             if cached_response:
                 # Get bucket_id for headers
-                bucket_id = await extract_bucket_id(request)
+                try:
+                    bucket_id = await extract_bucket_id(request)
+                except HTTPException as exc:
+                    # extract_bucket_id raises HTTPException, but BaseHTTPMiddleware sits
+                    # outside FastAPI's exception-handling middleware, so it would otherwise
+                    # propagate as an unhandled 500 rather than the intended 4xx response.
+                    return JSONResponse(status_code=exc.status_code, content=exc.detail)
 
                 # Get current limit state (don't spend token)
                 remaining, reset_time = get_current_limit_state(
                     bucket_id, settings.db_path, settings.rate_limit_per_hour
                 )
 
-                # Return cached response with rate limit headers
-                response = JSONResponse(
-                    status_code=200,
-                    content={"accepted": True, "rejected_count": 0, "rejected_by_reason": {}}
-                )
+                # Do NOT fabricate a response here. A prior version returned a hardcoded
+                # {"accepted": True, ...} body before call_next() ever ran, which (a) used
+                # the wrong response schema (routes.py's real replay uses accepted_segments/
+                # rejected_segments, not accepted/rejected_count) and (b) skipped routes.py's
+                # H1 body-hash tamper check entirely, so a key reused with a genuinely
+                # different body silently got a fabricated 200 instead of the intended 409.
+                # Let the route handler own body-hash verification and cached-response
+                # replay; only attach rate-limit headers here and skip the token spend.
+                response = await call_next(request)
                 response.headers["X-RateLimit-Limit"] = str(settings.rate_limit_per_hour)
                 response.headers["X-RateLimit-Remaining"] = str(remaining)
                 response.headers["X-RateLimit-Reset"] = str(reset_time)
@@ -274,7 +277,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 return response
 
         # Extract bucket_id from request
-        bucket_id = await extract_bucket_id(request)
+        try:
+            bucket_id = await extract_bucket_id(request)
+        except HTTPException as exc:
+            # See comment above: middleware-raised HTTPExceptions bypass FastAPI's
+            # @app.exception_handler, so convert to a JSONResponse here directly.
+            return JSONResponse(status_code=exc.status_code, content=exc.detail)
 
         # Check and spend token atomically
         allowed, remaining, reset_time = check_and_spend_token(

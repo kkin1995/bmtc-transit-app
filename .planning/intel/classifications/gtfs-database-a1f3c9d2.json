@@ -1,0 +1,13 @@
+{
+  "source_path": "/home/karankinariwala/KARAN/1-Projects/Active/bmtc-transit-app/docs/gtfs-database.md",
+  "type": "SPEC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "GTFS Database Schema Documentation",
+  "summary": "Complete SQLite schema reference for GTFS static data, learning tables, views, bootstrap process, and query examples.",
+  "scope": ["GTFS static data", "segments", "segment_stats", "time_bins", "rides", "ride_segments", "bootstrap process", "database views", "SQLite schema"],
+  "cross_refs": ["app/schema.sql", "app/gtfs_bootstrap.py", "app/bootstrap.py"],
+  "locked": false,
+  "precedence": null,
+  "notes": "Reads as a prose/tutorial reference guide (Overview, Bootstrap Process, Maintenance, References sections) rather than a formal spec, but contains concrete CREATE TABLE schemas, FK constraints, and data model definitions that function as implementation contracts. Classified SPEC over DOC due to schema/data-model dominance, though tutorial structure creates ambiguity."
+}

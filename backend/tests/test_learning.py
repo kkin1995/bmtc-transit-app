@@ -4,21 +4,22 @@ These are pure unit tests that test mathematical functions without
 database or API dependencies. They use pytest markers for organization.
 """
 
+import inspect
 import pytest
+import statistics
 import time
 
 # Mark all tests in this module as unit tests
 pytestmark = pytest.mark.unit
 from app.learning import (
     update_welford,
-    update_ema,
     compute_variance,
     is_outlier,
     compute_blend_weight,
     compute_blended_mean,
     compute_percentiles,
     compute_percentiles_robust,
-    compute_time_based_alpha,
+    update_segment_stats,
 )
 
 
@@ -44,14 +45,6 @@ def test_welford_convergence():
     assert abs(mean - 100.0) < 0.01  # Mean should be ~100
     variance = compute_variance(m2, n)
     assert variance > 0  # Should have non-zero variance
-
-
-def test_ema_update():
-    """Test EMA update."""
-    mean, var = 100.0, 25.0
-    mean, var = update_ema(mean, var, 110.0, alpha=0.1)
-
-    assert mean == pytest.approx(101.0)  # 0.1*110 + 0.9*100
 
 
 def test_outlier_detection():
@@ -129,26 +122,151 @@ def test_percentiles_robust_low_n():
     assert low_n_warning is False
 
 
-def test_time_based_alpha():
-    """Test time-based alpha computation."""
-    now = int(time.time())
+def test_compute_variance_uses_sample_formula_not_population():
+    """BUGFIX-05: compute_variance must return m2/(n-1), not m2/n, for n>=2."""
+    samples = [100.0, 110.0, 90.0, 105.0, 95.0, 102.0, 98.0, 107.0, 93.0, 101.0]  # n=10
+    n, mean, m2 = 0, 0.0, 0.0
+    for x in samples:
+        n, mean, m2 = update_welford(n, mean, m2, x)
 
-    # First observation (None): default alpha
-    alpha = compute_time_based_alpha(None, half_life_days=30)
-    assert alpha == pytest.approx(0.1)
+    sample_variance = compute_variance(m2, n)
+    expected_sample_variance = statistics.variance(samples)  # ddof=1, i.e. n-1
+    wrong_population_variance = statistics.pvariance(samples)  # ddof=0, i.e. n
 
-    # Same time: alpha ≈ 0
-    alpha = compute_time_based_alpha(now, half_life_days=30)
-    assert alpha < 0.01
+    assert sample_variance == pytest.approx(expected_sample_variance, rel=1e-9)
+    assert sample_variance != pytest.approx(wrong_population_variance, rel=1e-9)
+    assert sample_variance > wrong_population_variance  # sample formula always >= population
 
-    # 1 day elapsed: small alpha
-    alpha = compute_time_based_alpha(now - 86400, half_life_days=30)
-    assert 0.02 < alpha < 0.03
 
-    # 30 days elapsed: alpha = 0.5 (half-life)
-    alpha = compute_time_based_alpha(now - 30 * 86400, half_life_days=30)
-    assert alpha == pytest.approx(0.5, abs=0.01)
+def test_compute_variance_guards_n_less_than_2():
+    """Guard must survive the divisor change — n=0 and n=1 both return 0.0."""
+    assert compute_variance(m2=0.0, n=0) == 0.0
+    assert compute_variance(m2=0.0, n=1) == 0.0
+    assert compute_variance(m2=50.0, n=1) == 0.0  # m2 nonzero but n<2 still guarded
 
-    # Very old data: alpha → 1.0
-    alpha = compute_time_based_alpha(now - 365 * 86400, half_life_days=30)
-    assert alpha > 0.99
+
+def test_p90_wider_with_sample_variance_than_population_variance():
+    """ROADMAP Phase 2 criterion #2: sample-variance P90 must be strictly wider than population-variance P90."""
+    samples = [100.0, 110.0, 90.0, 105.0, 95.0, 102.0, 98.0, 107.0, 93.0, 101.0]  # n=10
+    n, mean, m2 = 0, 0.0, 0.0
+    for x in samples:
+        n, mean, m2 = update_welford(n, mean, m2, x)
+
+    population_variance = m2 / n  # the OLD (buggy) formula, inlined for comparison
+    sample_variance = m2 / (n - 1)  # the NEW (correct) formula
+
+    _, p90_old, _ = compute_percentiles_robust(mean, population_variance, n, schedule_mean=mean)
+    _, p90_new, _ = compute_percentiles_robust(mean, sample_variance, n, schedule_mean=mean)
+
+    assert p90_new > p90_old  # sample-variance P90 bound must be strictly wider
+
+
+def _insert_bare_segment(conn, route_id, from_stop_id="STOP_A", to_stop_id="STOP_B"):
+    """Insert a segments row, satisfying FK dependencies on routes/stops/time_bins first."""
+    conn.execute(
+        "INSERT INTO routes (route_id, route_type) VALUES (?, 3)",
+        (route_id,),
+    )
+    for stop_id in (from_stop_id, to_stop_id):
+        conn.execute(
+            "INSERT OR IGNORE INTO stops (stop_id, stop_name, stop_lat, stop_lon) VALUES (?, ?, 0.0, 0.0)",
+            (stop_id, stop_id),
+        )
+    for bin_id in (0, 5):
+        conn.execute(
+            "INSERT OR IGNORE INTO time_bins (bin_id, weekday_type, hour_start, minute_start) VALUES (?, 0, 0, 0)",
+            (bin_id,),
+        )
+    conn.execute(
+        "INSERT INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
+        (route_id, 0, from_stop_id, to_stop_id),
+    )
+    conn.commit()
+    return conn.execute(
+        "SELECT segment_id FROM segments WHERE route_id=?", (route_id,)
+    ).fetchone()[0]
+
+
+def test_update_segment_stats_seeds_new_bin_and_accepts(in_memory_db):
+    """BUGFIX-04: a never-seen (segment_id, bin_id) must seed a row and accept the observation."""
+    conn = in_memory_db
+    segment_id = _insert_bare_segment(conn, "ROUTE_SEED")
+
+    # Existing segment_stats row for bin 0 with a known schedule_mean
+    conn.execute(
+        """
+        INSERT INTO segment_stats (segment_id, bin_id, n, welford_mean, welford_m2, schedule_mean)
+        VALUES (?, 0, 0, 0.0, 0.0, 300.0)
+        """,
+        (segment_id,),
+    )
+    conn.commit()
+
+    accepted, reason = update_segment_stats(
+        conn, segment_id, bin_id=5, duration_sec=310.0, mapmatch_conf=1.0
+    )
+
+    assert (accepted, reason) == (True, None)
+
+    row = conn.execute(
+        "SELECT n, welford_mean, schedule_mean FROM segment_stats WHERE segment_id=? AND bin_id=5",
+        (segment_id,),
+    ).fetchone()
+    assert row is not None
+    n, welford_mean, schedule_mean = row
+    assert n == 1
+    assert welford_mean == pytest.approx(310.0)
+    assert schedule_mean == pytest.approx(300.0)  # seeded from AVG of existing bin
+
+
+def test_seed_falls_back_to_zero_when_no_existing_bins(in_memory_db):
+    """BUGFIX-04/D-10: with zero existing segment_stats rows, seed schedule_mean falls back to 0.0."""
+    conn = in_memory_db
+    segment_id = _insert_bare_segment(conn, "ROUTE_SEED_EMPTY")
+
+    accepted, reason = update_segment_stats(
+        conn, segment_id, bin_id=5, duration_sec=250.0, mapmatch_conf=1.0
+    )
+
+    assert (accepted, reason) == (True, None)
+
+    row = conn.execute(
+        "SELECT n, schedule_mean FROM segment_stats WHERE segment_id=? AND bin_id=5",
+        (segment_id,),
+    ).fetchone()
+    assert row is not None
+    n, schedule_mean = row
+    assert n == 1
+    assert schedule_mean == 0.0
+
+
+def test_seed_row_is_not_falsely_rejected_as_outlier(in_memory_db):
+    """BUGFIX-04: the first observation on a freshly seeded n=0 row must never be rejected as an outlier."""
+    conn = in_memory_db
+    segment_id = _insert_bare_segment(conn, "ROUTE_SEED_OUTLIER")
+
+    accepted, reason = update_segment_stats(
+        conn, segment_id, bin_id=5, duration_sec=9999.0, mapmatch_conf=1.0
+    )
+
+    assert (accepted, reason) == (True, None)
+
+
+def test_update_ema_and_compute_time_based_alpha_and_is_stale_are_removed():
+    """LEARN-01 D-03/D-07: EMA and staleness dead code must no longer exist in app.learning."""
+    import app.learning as learning_module
+
+    assert not hasattr(learning_module, "update_ema")
+    assert not hasattr(learning_module, "compute_time_based_alpha")
+    assert not hasattr(learning_module, "is_stale")
+
+
+def test_ema_columns_not_written_by_update_segment_stats():
+    """LEARN-01 D-02: update_segment_stats must not reference EMA columns or missing_stats."""
+    source = inspect.getsource(update_segment_stats)
+
+    assert "ema_mean" not in source
+    assert "ema_var" not in source
+    assert "update_ema(" not in source
+    assert "compute_time_based_alpha(" not in source
+    assert "missing_stats" not in source

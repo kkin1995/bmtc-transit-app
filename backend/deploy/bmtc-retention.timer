@@ -2,7 +2,7 @@
 Description=BMTC API Daily Retention Cleanup
 
 [Timer]
-OnCalendar=daily
+OnCalendar=*-*-* 00:00:00
 Persistent=true
 
 [Install]

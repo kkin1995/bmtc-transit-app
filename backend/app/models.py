@@ -142,8 +142,8 @@ class ConfigResponse(BaseModel):
 
     n0: int
     time_bin_minutes: int
-    half_life_days: int
-    ema_alpha: float
+    half_life_days: Optional[int] = None  # DEPRECATED: EMA removed from active pipeline, see LEARN-01
+    ema_alpha: Optional[float] = None  # DEPRECATED: EMA removed from active pipeline, see LEARN-01
     outlier_sigma: float
     mapmatch_min_conf: float
     max_segments_per_ride: int
@@ -197,6 +197,41 @@ class RoutesListResponse(BaseModel):
     offset: int
 
 
+class StopDetailResponse(BaseModel):
+    """GET /v1/stops/{stop_id} response (API-01, D-07)."""
+    stop_id: str
+    stop_name: str
+    stop_lat: float
+    stop_lon: float
+    zone_id: Optional[str] = None
+    routes: List[RouteResponse]
+
+
+class DirectionStopInfo(BaseModel):
+    """Single stop within a route direction's ordered stop list (API-02, D-03)."""
+    stop_id: str
+    stop_name: str
+    stop_lat: float
+    stop_lon: float
+    stop_sequence: int
+
+
+class DirectionInfo(BaseModel):
+    """Ordered stops for one direction of a route (API-02, D-02)."""
+    direction_id: int
+    stops: List[DirectionStopInfo]
+
+
+class RouteDetailResponse(BaseModel):
+    """GET /v1/routes/{route_id} response (API-02, D-01)."""
+    route_id: str
+    route_short_name: Optional[str] = None
+    route_long_name: Optional[str] = None
+    route_type: int
+    agency_id: Optional[str] = None
+    directions: List[DirectionInfo]
+
+
 class StopInfo(BaseModel):
     """Stop information for schedule response."""
     stop_id: str
@@ -242,6 +277,9 @@ class SegmentInfo(BaseModel):
     direction_id: int
     from_stop_id: str
     to_stop_id: str
+    from_stop_name: Optional[str] = None   # NEW (API-04, D-18)
+    to_stop_name: Optional[str] = None     # NEW (API-04, D-18)
+    route_short_name: Optional[str] = None # NEW (API-04, D-18)
 
 
 class ScheduledInfo(BaseModel):

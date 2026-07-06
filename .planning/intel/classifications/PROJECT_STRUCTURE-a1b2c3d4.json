@@ -1,0 +1,13 @@
+{
+  "source_path": "/home/karankinariwala/KARAN/1-Projects/Active/bmtc-transit-app/docs/PROJECT_STRUCTURE.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "Project Structure",
+  "summary": "Describes monorepo directory layout, file counts, dependencies, data flow, and build/deploy commands for the BMTC Transit App.",
+  "scope": ["backend", "mobile", "docs", "gtfs", "monorepo structure", "deployment paths", "build commands"],
+  "cross_refs": ["docs/PLAN.md", "docs/gtfs-analysis.md", "docs/api.md", "docs/deploy.md", "docs/quickstart.md"],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

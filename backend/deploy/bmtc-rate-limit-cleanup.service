@@ -1,0 +1,18 @@
+[Unit]
+Description=BMTC API Rate Limit Bucket Cleanup
+
+[Service]
+Type=oneshot
+User=bmtc
+Group=bmtc
+EnvironmentFile=/etc/bmtc-api/env
+ExecStart=/opt/bmtc-api/scripts/rate_limit_cleanup.sh
+
+# Security (WR-06) -- matches the hardening convention documented for
+# bmtc-api.service: this unit executes arbitrary sqlite3 DML against the
+# production DB, so it gets the same sandboxing.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/bmtc-api

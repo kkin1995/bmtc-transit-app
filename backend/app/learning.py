@@ -3,7 +3,7 @@
 import logging
 import math
 import time
-from typing import Optional, Tuple
+from typing import Tuple
 
 from app.config import get_settings
 
@@ -33,28 +33,11 @@ def update_welford(
     return n_new, mean_new, m2_new
 
 
-def update_ema(mean: float, var: float, x: float, alpha: float) -> Tuple[float, float]:
-    """Update exponential moving average and variance.
-
-    Args:
-        mean: Current EMA mean
-        var: Current EMA variance
-        x: New observation
-        alpha: Smoothing factor (typically 0.1)
-
-    Returns:
-        (mean', var')
-    """
-    mean_new = alpha * x + (1 - alpha) * mean
-    var_new = alpha * (x - mean_new) ** 2 + (1 - alpha) * var
-    return mean_new, var_new
-
-
 def compute_variance(m2: float, n: int) -> float:
     """Compute sample variance from Welford M2."""
     if n < 2:
         return 0.0
-    return m2 / n
+    return m2 / (n - 1)
 
 
 def is_outlier(x: float, mean: float, variance: float, n: int) -> bool:
@@ -131,41 +114,6 @@ def compute_percentiles_robust(
         return p50, p90, low_n_warning
 
 
-def compute_time_based_alpha(last_update: Optional[int], half_life_days: int) -> float:
-    """Compute time-based alpha from half-life.
-
-    Uses exponential decay: α(Δt) = 1 - exp(-ln(2) · Δt / half_life)
-
-    Args:
-        last_update: Unix timestamp of last update (None for first observation)
-        half_life_days: Half-life period in days (default 30)
-
-    Returns:
-        alpha in [0, 1] based on time elapsed
-        Returns 0.1 if last_update is None (first observation)
-    """
-    if last_update is None:
-        return 0.1  # Default for first observation
-
-    elapsed_sec = time.time() - last_update
-    elapsed_days = elapsed_sec / 86400
-
-    # α = 1 - exp(-ln(2) * Δt / half_life)
-    # Capped at 1.0 to prevent overflow on very old data
-    alpha = 1.0 - math.exp(-0.693147 * elapsed_days / half_life_days)
-    return min(alpha, 1.0)
-
-
-def is_stale(last_update: Optional[int]) -> bool:
-    """Check if data is stale (>90 days old)."""
-    if last_update is None:
-        return True
-
-    settings = get_settings()
-    threshold_sec = settings.stale_threshold_days * 24 * 3600
-    return (int(time.time()) - last_update) > threshold_sec
-
-
 def update_device_bucket(conn, device_bucket: str) -> None:
     """Update or create device bucket entry.
 
@@ -195,8 +143,6 @@ def update_device_bucket(conn, device_bucket: str) -> None:
             """,
             (device_bucket, now, now),
         )
-
-    conn.commit()
 
 
 def log_rejection(
@@ -235,7 +181,6 @@ def log_rejection(
             mapmatch_conf,
         ),
     )
-    conn.commit()
 
 
 def update_segment_stats(
@@ -252,7 +197,7 @@ def update_segment_stats(
 
     Returns:
         (accepted: bool, rejection_reason: str | None)
-        rejection_reason is one of: 'low_mapmatch_conf', 'outlier', 'missing_stats', None if accepted
+        rejection_reason is one of: 'low_mapmatch_conf', 'outlier', None if accepted
     """
     settings = get_settings()
     cursor = conn.cursor()
@@ -265,10 +210,10 @@ def update_segment_stats(
         )
         return False, "low_mapmatch_conf"
 
-    # Fetch current stats (include last_update for time-based alpha)
+    # Fetch current stats
     cursor.execute(
         """
-        SELECT n, welford_mean, welford_m2, ema_mean, ema_var, schedule_mean, last_update
+        SELECT n, welford_mean, welford_m2, schedule_mean, last_update
         FROM segment_stats
         WHERE segment_id = ? AND bin_id = ?
         """,
@@ -277,12 +222,33 @@ def update_segment_stats(
     row = cursor.fetchone()
 
     if row is None:
-        logger.warning(
-            f"segment_stats not found for segment_id={segment_id}, bin_id={bin_id}"
+        # Never-seen (segment_id, bin_id): seed a new row from the segment's
+        # other bins (or 0.0 if the segment has no bins yet) and fall through
+        # so the triggering observation is accepted, not rejected.
+        cursor.execute(
+            "SELECT AVG(schedule_mean) FROM segment_stats WHERE segment_id = ?",
+            (segment_id,),
         )
-        return False, "missing_stats"
+        avg_row = cursor.fetchone()
+        seed_schedule_mean = avg_row[0] if avg_row and avg_row[0] is not None else 0.0
 
-    n, welford_mean, welford_m2, ema_mean, ema_var, schedule_mean, last_update = row
+        cursor.execute(
+            """
+            INSERT INTO segment_stats
+                (segment_id, bin_id, n, welford_mean, welford_m2, schedule_mean)
+            VALUES (?, ?, 0, ?, 0.0, ?)
+            """,
+            (segment_id, bin_id, seed_schedule_mean, seed_schedule_mean),
+        )
+        n, welford_mean, welford_m2, schedule_mean, last_update = (
+            0,
+            seed_schedule_mean,
+            0.0,
+            seed_schedule_mean,
+            None,
+        )
+    else:
+        n, welford_mean, welford_m2, schedule_mean, last_update = row
 
     # Check for outlier
     variance = compute_variance(welford_m2, n)
@@ -298,27 +264,20 @@ def update_segment_stats(
         n, welford_mean, welford_m2, duration_sec
     )
 
-    # Update EMA with time-based alpha (prevents stale/volatile estimates)
-    alpha = compute_time_based_alpha(last_update, settings.half_life_days)
-    ema_mean_new, ema_var_new = update_ema(ema_mean, ema_var, duration_sec, alpha)
-
     # Write back
     cursor.execute(
         """
         UPDATE segment_stats
-        SET n = ?, welford_mean = ?, welford_m2 = ?, ema_mean = ?, ema_var = ?, last_update = ?
+        SET n = ?, welford_mean = ?, welford_m2 = ?, last_update = ?
         WHERE segment_id = ? AND bin_id = ?
         """,
         (
             n_new,
             welford_mean_new,
             welford_m2_new,
-            ema_mean_new,
-            ema_var_new,
             int(time.time()),
             segment_id,
             bin_id,
         ),
     )
-    conn.commit()
     return True, None

@@ -9,6 +9,7 @@ These tests verify end-to-end API functionality including:
 All tests use isolated fixtures from conftest.py for proper test isolation.
 """
 
+import sqlite3
 import time
 import pytest
 from datetime import datetime, timedelta
@@ -28,34 +29,33 @@ def setup_test_segment(client):
     from app.db import get_connection
 
     settings = get_settings()
-    conn = get_connection(settings.db_path)
-    cursor = conn.cursor()
+    with get_connection(settings.db_path) as conn:
+        cursor = conn.cursor()
 
-    # Insert segment (idempotent)
-    cursor.execute(
-        "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
-        ("ROUTE1", 0, "STOP_A", "STOP_B"),
-    )
-
-    # Get segment_id
-    cursor.execute(
-        "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
-        ("ROUTE1", 0, "STOP_A", "STOP_B"),
-    )
-    segment_id = cursor.fetchone()[0]
-
-    # Insert segment_stats for all 192 bins (idempotent)
-    for bin_id in range(192):
+        # Insert segment (idempotent)
         cursor.execute(
-            """
-            INSERT OR IGNORE INTO segment_stats (segment_id, bin_id, schedule_mean)
-            VALUES (?, ?, ?)
-            """,
-            (segment_id, bin_id, 300.0),  # 5 min schedule baseline
+            "INSERT OR IGNORE INTO segments (route_id, direction_id, from_stop_id, to_stop_id) VALUES (?, ?, ?, ?)",
+            ("ROUTE1", 0, "STOP_A", "STOP_B"),
         )
 
-    conn.commit()
-    conn.close()
+        # Get segment_id
+        cursor.execute(
+            "SELECT segment_id FROM segments WHERE route_id=? AND direction_id=? AND from_stop_id=? AND to_stop_id=?",
+            ("ROUTE1", 0, "STOP_A", "STOP_B"),
+        )
+        segment_id = cursor.fetchone()[0]
+
+        # Insert segment_stats for all 192 bins (idempotent)
+        for bin_id in range(192):
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO segment_stats (segment_id, bin_id, schedule_mean)
+                VALUES (?, ?, ?)
+                """,
+                (segment_id, bin_id, 300.0),  # 5 min schedule baseline
+            )
+
+        conn.commit()
 
 
 def test_health_check(client):
@@ -235,6 +235,70 @@ def test_low_n_warning_in_eta(client):
     assert eta["low_confidence"] is True
     assert "p50_sec" in eta
     assert "p90_sec" in eta
+
+
+def test_ride_with_50_segments_commits_exactly_once(client, auth_headers, monkeypatch):
+    """BUGFIX-06: a 50-segment ride must call conn.commit() exactly once, not ~100 times.
+
+    Today, update_device_bucket() and log_rejection() each commit internally on
+    every segment, so a 50-segment ride issues far more than one commit. This
+    pins the single-transaction-per-POST invariant (routes.py:210 is the sole
+    commit for the whole ride).
+
+    Note: sqlite3.Connection is an immutable C type on this Python/sqlite3
+    build (`cannot set 'commit' attribute of immutable type 'sqlite3.Connection'`),
+    so RESEARCH.md's direct `monkeypatch.setattr(sqlite3.Connection, "commit", ...)`
+    pattern raises TypeError here. Instead, monkeypatch the plain-function
+    `sqlite3.connect` to inject a `Connection` subclass (a regular, patchable
+    Python-level function) whose overridden `commit()` counts calls and
+    delegates to the real implementation — same counting intent, compatible
+    with this build.
+    """
+    # Seed the fixture segment/segment_stats rows and commit them BEFORE
+    # monkeypatching sqlite3.connect — otherwise the fixture's own setup
+    # commits would be counted too (RESEARCH.md ordering note).
+    setup_test_segment(client)
+
+    commit_calls = []
+    original_connect = sqlite3.connect
+
+    class _CountingConnection(sqlite3.Connection):
+        def commit(self, *args, **kwargs):
+            commit_calls.append(1)
+            return super().commit(*args, **kwargs)
+
+    def _patched_connect(*args, **kwargs):
+        kwargs.setdefault("factory", _CountingConnection)
+        return original_connect(*args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", _patched_connect)
+
+    observed_at = (datetime.now(ZoneInfo("UTC")) - timedelta(hours=1)).isoformat().replace(
+        "+00:00", "Z"
+    )
+    ride_data = {
+        "route_id": "ROUTE1",
+        "direction_id": 0,
+        "device_bucket": "d" * 64,
+        "segments": [
+            {
+                "from_stop_id": "STOP_A",
+                "to_stop_id": "STOP_B",
+                "duration_sec": 300.0 + i,
+                "observed_at_utc": observed_at,
+                "mapmatch_conf": 0.95,
+            }
+            for i in range(50)
+        ],
+    }
+
+    response = client.post(
+        "/v1/ride_summary",
+        json=ride_data,
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    assert len(commit_calls) == 1  # exactly one commit for the whole ride
 
 
 def test_timezone_bin_mapping():
